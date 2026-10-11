@@ -1,0 +1,117 @@
+name: Release
+
+# Builds Groovelight, packages a DMG and publishes it on a GitHub Release.
+# - Push a tag like v0.2.0 to release that version.
+# - Or run it from the Actions tab: set a version, and turn "publish" off for a test build (the DMG is kept as an
+#   artifact of the run instead).
+#
+# Signing is ad-hoc unless the Developer ID secrets below exist; notarization also needs the App Store Connect key:
+#   DEVELOPER_ID_P12             base64 of the "Developer ID Application" certificate exported as .p12
+#   DEVELOPER_ID_P12_PASSWORD    its export password
+#   DEVELOPER_ID_IDENTITY        e.g. "Developer ID Application: Name (TEAMID)"
+#   NOTARY_KEY_P8                base64 of the App Store Connect API key (.p8)
+#   NOTARY_KEY_ID, NOTARY_ISSUER_ID
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version (e.g. 0.2.0); empty uses MARKETING_VERSION from project.yml"
+        required: false
+      publish:
+        description: "Publish a GitHub Release (off: only keep the DMG as a run artifact)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      # Secrets cannot be tested in a step's `if`, so their presence is exposed here.
+      HAS_DEVELOPER_ID: ${{ secrets.DEVELOPER_ID_P12 != '' }}
+      HAS_NOTARY_KEY: ${{ secrets.NOTARY_KEY_P8 != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select the newest Xcode
+        run: |
+          XCODE=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)
+          sudo xcode-select -s "$XCODE/Contents/Developer"
+          xcodebuild -version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Cache Swift packages
+        uses: actions/cache@v4
+        with:
+          path: GroovelightKit/.build
+          key: spm-${{ runner.os }}-${{ hashFiles('GroovelightKit/Package.resolved') }}
+
+      - name: Test
+        # Playback tests need an audio output device, which the runners do not have.
+        run: swift test --package-path GroovelightKit --skip PlaybackTests
+
+      - name: Import Developer ID certificate
+        if: ${{ env.HAS_DEVELOPER_ID == 'true' }}
+        env:
+          DEVELOPER_ID_P12: ${{ secrets.DEVELOPER_ID_P12 }}
+          DEVELOPER_ID_P12_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD=$(uuidgen)
+          echo "$DEVELOPER_ID_P12" | base64 --decode > "$RUNNER_TEMP/developer-id.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 3600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/developer-id.p12" -k "$KEYCHAIN" -P "$DEVELOPER_ID_P12_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          rm "$RUNNER_TEMP/developer-id.p12"
+
+      - name: Write notarization key
+        if: ${{ env.HAS_NOTARY_KEY == 'true' }}
+        env:
+          NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}
+        run: echo "$NOTARY_KEY_P8" | base64 --decode > "$RUNNER_TEMP/notary.p8"
+
+      - name: Build DMG
+        id: dmg
+        env:
+          VERSION: ${{ github.ref_type == 'tag' && github.ref_name || inputs.version }}
+          BUILD_NUMBER: ${{ github.run_number }}
+          DEVELOPER_ID_IDENTITY: ${{ secrets.DEVELOPER_ID_IDENTITY }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
+        run: |
+          if [ -f "$RUNNER_TEMP/notary.p8" ]; then export NOTARY_KEY_PATH="$RUNNER_TEMP/notary.p8"; fi
+          scripts/make-dmg.sh
+
+      - name: Keep the DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: Groovelight-${{ steps.dmg.outputs.version }}
+          path: ${{ steps.dmg.outputs.dmg }}
+
+      - name: Publish release
+        if: ${{ github.ref_type == 'tag' || inputs.publish }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: v${{ steps.dmg.outputs.version }}
+          DMG: ${{ steps.dmg.outputs.dmg }}
+        run: |
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" "$DMG" --clobber
+          else
+            gh release create "$TAG" "$DMG" --title "Groovelight ${TAG#v}" --generate-notes --target "$GITHUB_SHA"
+          fi
