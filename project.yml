@@ -46,6 +46,8 @@ targets:
       path: App/Info.plist
       properties:
         CFBundleDisplayName: Groovelight
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSApplicationCategoryType: public.app-category.music
         UTExportedTypeDeclarations:
           - UTTypeIdentifier: dev.irwingbraga.groovelight.backup
