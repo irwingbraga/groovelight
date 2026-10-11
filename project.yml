@@ -1,0 +1,65 @@
+name: Groovelight
+options:
+  bundleIdPrefix: dev.irwingbraga
+  deploymentTarget:
+    macOS: "26.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+packages:
+  GroovelightKit:
+    path: GroovelightKit
+targets:
+  Groovelight:
+    type: application
+    platform: macOS
+    sources:
+      - App/Sources
+      - path: App/Resources
+        excludes:
+          - "Groovelight.icon/**"
+      # An Icon Composer document is one file for Xcode (compiled into the asset catalog), not a folder of resources.
+      - path: App/Resources/Groovelight.icon
+        type: file
+        buildPhase: resources
+    dependencies:
+      - package: GroovelightKit
+        product: PlayerCore
+      - package: GroovelightKit
+        product: LibraryKit
+      - package: GroovelightKit
+        product: Visualizers
+      - package: GroovelightKit
+        product: MetadataKit
+    entitlements:
+      path: App/Groovelight.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.files.user-selected.read-write: true
+        com.apple.security.files.bookmarks.app-scope: true
+        com.apple.security.network.client: true
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: Groovelight
+        LSApplicationCategoryType: public.app-category.music
+        UTExportedTypeDeclarations:
+          - UTTypeIdentifier: dev.irwingbraga.groovelight.backup
+            UTTypeDescription: Groovelight Backup
+            UTTypeConformsTo: [com.apple.package, public.composite-content]
+            UTTypeTagSpecification:
+              public.filename-extension: [groovelightbackup]
+        NSHumanReadableCopyright: ""
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.irwingbraga.groovelight
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "-"
+        ENABLE_HARDENED_RUNTIME: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: Groovelight
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        GENERATE_INFOPLIST_FILE: NO

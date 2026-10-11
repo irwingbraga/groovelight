@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="13.4" height="17" viewBox="255 65 563 715">
+  <!-- The app icon's note (Groovelight.icon), cropped and without background, as a menu bar template image. -->
+  <g fill="#000000">
+    <ellipse cx="370" cy="690" rx="112" ry="80" transform="rotate(-20 370 690)"/>
+    <ellipse cx="690" cy="610" rx="112" ry="80" transform="rotate(-20 690 610)"/>
+    <rect x="441" y="161" width="34" height="509"/>
+    <rect x="778" y="81" width="34" height="509"/>
+    <polygon points="441,151 812,71 812,143 441,223"/>
+    <polygon points="441,261 812,181 812,253 441,333"/>
+  </g>
+</svg>

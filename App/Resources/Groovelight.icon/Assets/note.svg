@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Two beamed sixteenth notes: tilted note heads, stems, and a double beam rising to the right. Size and position
+       follow the Music app icon's note (optically centered, slightly left and above the middle). -->
+  <g fill="#FFFFFF" transform="translate(-51 80)">
+    <ellipse cx="370" cy="690" rx="112" ry="80" transform="rotate(-20 370 690)"/>
+    <ellipse cx="690" cy="610" rx="112" ry="80" transform="rotate(-20 690 610)"/>
+    <rect x="441" y="161" width="34" height="509"/>
+    <rect x="778" y="81" width="34" height="509"/>
+    <polygon points="441,151 812,71 812,143 441,223"/>
+    <polygon points="441,261 812,181 812,253 441,333"/>
+  </g>
+</svg>
