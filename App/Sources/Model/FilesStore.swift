@@ -3,6 +3,7 @@ import Foundation
 import LibraryKit
 import MetadataKit
 import Observation
+import UniformTypeIdentifiers
 
 /// File operations on the library folder: Organize (rename and move files with the naming template), Import (bring
 /// songs into the library: identify, tag, name), and undoing the last of either.
@@ -101,14 +102,15 @@ final class FilesStore {
 
     // MARK: - Import
 
-    func chooseAndImport(folders: Bool) {
+    /// Asks for songs or folders of music (both at once, like Music's Import) and starts an import session.
+    func chooseAndImport() {
         let panel = NSOpenPanel()
-        panel.canChooseDirectories = folders
-        panel.canChooseFiles = !folders
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = true
         panel.allowsMultipleSelection = true
-        if !folders { panel.allowedContentTypes = [.audio] }
+        panel.allowedContentTypes = [.audio] + [UTType(filenameExtension: "cue")].compactMap { $0 }
         panel.prompt = "Import"
-        panel.message = folders ? "Choose folders of music to import into your library." : "Choose songs to import into your library."
+        panel.message = "Choose songs or folders of music to import into your library."
         guard panel.runModal() == .OK, !panel.urls.isEmpty else { return }
         guard !((try? model.database.writer.read { try LibraryDatabase.roots($0) }) ?? []).isEmpty else {
             model.errorMessage = "Add a library folder first (Settings, Library): imported songs are moved there."
@@ -358,9 +360,18 @@ final class ImportSession: Identifiable {
                 let folder = url.deletingLastPathComponent()
                 let siblings = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
                 cues.formUnion(siblings.filter { $0.pathExtension.lowercased() == "cue" }.map(\.standardizedFileURL))
+            } else if url.pathExtension.lowercased() == "cue", let sheet = CueSheet.read(url) {
+                // A sheet chosen on its own brings the audio it describes.
+                let folder = url.deletingLastPathComponent()
+                let siblings = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
+                let audio = Set(siblings.filter { extensions.contains($0.pathExtension.lowercased()) }.map(\.standardizedFileURL.path))
+                for file in sheet.files {
+                    if let match = CueSheet.resolve(file.name, relativeTo: folder, audioFiles: audio) { files.append(match.standardizedFileURL) }
+                }
+                cues.insert(url.standardizedFileURL)
             }
         }
-        let sorted = files.sorted { $0.path.localizedStandardCompare($1.path) == .orderedAscending }
+        let sorted = Set(files).sorted { $0.path.localizedStandardCompare($1.path) == .orderedAscending }
         return (sorted, cues.sorted { $0.path < $1.path })
     }
 

@@ -134,7 +134,7 @@ extension LibraryDatabase {
             guard let root = try LibraryRoot.fetchOne(db, key: rootId) else { return 0 }
             let old = root.path.hasSuffix("/") ? String(root.path.dropLast()) : root.path
             let new = newPath.hasSuffix("/") ? String(newPath.dropLast()) : newPath
-            try db.execute(sql: "UPDATE libraryRoot SET path = ?, bookmark = ? WHERE id = ?", arguments: [new, bookmark, rootId])
+            try db.execute(sql: "UPDATE libraryRoot SET path = ?, bookmark = ?, eventId = NULL, eventsVolumeId = NULL WHERE id = ?", arguments: [new, bookmark, rootId])
             guard old != new else { return 0 }
             try db.execute(sql: """
                 UPDATE track SET path = ? || substr(path, ?) WHERE rootId = ? AND (path = ? OR path LIKE ? ESCAPE '\\')

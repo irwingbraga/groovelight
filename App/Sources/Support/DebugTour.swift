@@ -77,6 +77,128 @@ enum DebugTour {
                 if phase == "set" { NSApp.terminate(nil) }
                 return
             }
+            // `-GLDebugTourShortcuts YES` lists the menu shortcuts (flagging duplicates) and presses a few of them.
+            if UserDefaults.standard.bool(forKey: "GLDebugTourShortcuts") {
+                await shortcutsTest(model: model, output: output)
+                try? "done".write(to: output.appendingPathComponent("DONE"), atomically: true, encoding: .utf8)
+                return
+            }
+            // `-GLDebugTourHold now-playing` opens Now Playing while a song plays and leaves it up (for a real screen capture).
+            if UserDefaults.standard.string(forKey: "GLDebugTourHold") == "now-playing" {
+                try? await Task.sleep(for: .seconds(2))
+                let tracks: [Track] = (try? await model.database.writer.read { db in
+                    try LibraryKitQueries.firstAlbum(db).map { try LibraryKitQueries.tracks(db, albumKey: $0) } ?? []
+                }) ?? []
+                model.play(tracks)
+                model.isShowingNowPlaying = true
+                try? "done".write(to: output.appendingPathComponent("DONE"), atomically: true, encoding: .utf8)
+                return
+            }
+            // `-GLDebugTourSync live|check` tests keeping the library in step with `-GLDebugSyncFolder` (a scratch copy):
+            // live changes, then (check, after the folder changed while the app was closed) catching up at launch.
+            if let phase = UserDefaults.standard.string(forKey: "GLDebugTourSync") {
+                await syncTest(model: model, phase: phase, output: output)
+                try? "done".write(to: output.appendingPathComponent("DONE"), atomically: true, encoding: .utf8)
+                if phase != "check" { NSApp.terminate(nil) }
+                return
+            }
+            // `-GLDebugTourHold artist` opens Radiohead's page and leaves it up, writing the window's frame (top-left
+            // screen points) to WINDOW for a real screen capture of just the window (snapshots miss the color wash).
+            if UserDefaults.standard.string(forKey: "GLDebugTourHold") == "artist" {
+                try? await Task.sleep(for: .seconds(2))
+                NSApp.activate()
+                model.showArtist(UserDefaults.standard.string(forKey: "GLDebugArtist") ?? "Radiohead")
+                try? await Task.sleep(for: .seconds(3))
+                if let window = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("main") == true }), let screen = window.screen {
+                    let frame = window.frame
+                    let top = screen.frame.maxY - frame.maxY
+                    try? "\(Int(frame.minX)),\(Int(top)),\(Int(frame.width)),\(Int(frame.height))".write(to: output.appendingPathComponent("WINDOW"), atomically: true, encoding: .utf8)
+                }
+                try? "done".write(to: output.appendingPathComponent("DONE"), atomically: true, encoding: .utf8)
+                return
+            }
+            // `-GLDebugTourHold covers` shows Albums at three cover sizes, writing WINDOW and SIZE-n files so a script
+            // can capture each (screencapture -R), and reports the cover size menu items.
+            if UserDefaults.standard.string(forKey: "GLDebugTourHold") == "covers" {
+                try? await Task.sleep(for: .seconds(2))
+                NSApp.activate()
+                model.selection = .albums
+                var lines: [String] = []
+                @MainActor func items() -> String {
+                    NSApp.mainMenu?.items.flatMap { $0.submenu?.items ?? [] }
+                        .filter { $0.title.contains("Covers") || $0.title.contains("Cover Size") }
+                        .map { "\($0.title) key '\($0.keyEquivalent)' enabled \($0.isEnabled)" }.joined(separator: "; ") ?? ""
+                }
+                try? await Task.sleep(for: .seconds(1))
+                NSApp.mainMenu?.update()
+                lines.append("on Albums: \(items())")
+                if let window = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("main") == true }), let screen = window.screen {
+                    let frame = window.frame
+                    try? "\(Int(frame.minX)),\(Int(screen.frame.maxY - frame.maxY)),\(Int(frame.width)),\(Int(frame.height))"
+                        .write(to: output.appendingPathComponent("WINDOW"), atomically: true, encoding: .utf8)
+                }
+                for (index, size) in [110.0, 180, 380].enumerated() {
+                    UserDefaults.standard.set(size, forKey: CoverSize.key)
+                    try? await Task.sleep(for: .seconds(2.5))
+                    try? "\(size)".write(to: output.appendingPathComponent("SIZE-\(index)"), atomically: true, encoding: .utf8)
+                    try? await Task.sleep(for: .seconds(2))
+                }
+                CoverSize.change(by: -1)
+                lines.append("Smaller from 380: \(UserDefaults.standard.double(forKey: CoverSize.key))")
+                CoverSize.reset()
+                lines.append("Default: \(UserDefaults.standard.object(forKey: CoverSize.key) == nil ? "standard" : "set")")
+                model.selection = .artists
+                try? await Task.sleep(for: .seconds(1))
+                NSApp.mainMenu?.update()
+                lines.append("on Artists: \(items())")
+                try? lines.joined(separator: "\n").write(to: output.appendingPathComponent("COVERS"), atomically: true, encoding: .utf8)
+                try? "done".write(to: output.appendingPathComponent("DONE"), atomically: true, encoding: .utf8)
+                return
+            }
+            // `-GLDebugTourHold hover` opens an artist page (`-GLDebugArtist`; `-GLDebugArtistAlone YES` as opened from search,
+            // `-GLDebugPage genres` for Genres; `-GLDebugWindowWidth` resizes) and stays up for 12 s, writing the toolbar's
+            // screen rectangle to TOOLBAR and its song rows' screen points to POINTS, for a script that moves the real
+            // pointer (the terminal needs Accessibility access) to check the page while hovering and scrolling.
+            if UserDefaults.standard.string(forKey: "GLDebugTourHold") == "hover" {
+                try? await Task.sleep(for: .seconds(2))
+                NSApp.activate()
+                let name = UserDefaults.standard.string(forKey: "GLDebugArtist") ?? "Radiohead"
+                if UserDefaults.standard.string(forKey: "GLDebugPage") == "genres" {
+                    model.selection = .genres
+                } else if UserDefaults.standard.bool(forKey: "GLDebugArtistAlone") {
+                    // The artist page by itself (as opened from search): one scroll view under the toolbar.
+                    model.selection = .search
+                    model.path = [.artist(name)]
+                } else {
+                    model.showArtist(name)
+                }
+                try? await Task.sleep(for: .seconds(3))
+                guard let window = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("main") == true }),
+                      let screen = window.screen else { return }
+                // `-GLDebugWindowWidth N` resizes the window first (keeping its top left corner).
+                let wanted = UserDefaults.standard.double(forKey: "GLDebugWindowWidth")
+                if wanted > 0 {
+                    var frame = window.frame
+                    frame.size.width = wanted
+                    window.setFrame(frame, display: true)
+                    try? await Task.sleep(for: .seconds(1.5))
+                }
+                let top = screen.frame.maxY - window.frame.maxY
+                try? "\(Int(window.frame.minX)),\(Int(top)),\(Int(window.frame.width)),52".write(to: output.appendingPathComponent("TOOLBAR"), atomically: true, encoding: .utf8)
+                let cells = DebugHitTargets.playCells.values.filter { $0.minY > 60 }.sorted { $0.minY < $1.minY }
+                // Screen points (top-left) of each row's middle, for a script to move the pointer over.
+                let points = cells.map { "\(Int(window.frame.minX + $0.maxX + 250)) \(Int(top + $0.midY))" }.joined(separator: " ")
+                try? points.write(to: output.appendingPathComponent("POINTS"), atomically: true, encoding: .utf8)
+                try? await Task.sleep(for: .seconds(12))
+                try? "done".write(to: output.appendingPathComponent("DONE"), atomically: true, encoding: .utf8)
+                return
+            }
+            // `-GLDebugTourSearch YES` only tests the Search page: the sidebar link, results by category and the toolbar field.
+            if UserDefaults.standard.bool(forKey: "GLDebugTourSearch") {
+                await searchTest(model: model, output: output)
+                try? "done".write(to: output.appendingPathComponent("DONE"), atomically: true, encoding: .utf8)
+                return
+            }
             // `-GLDebugTourMiniPlayer YES` renders the menu bar panel (in a test window) while a song plays, and the menu bar note.
             if UserDefaults.standard.bool(forKey: "GLDebugTourMiniPlayer") {
                 await miniPlayerTest(model: model, output: output)
@@ -615,6 +737,335 @@ enum DebugTour {
         let inboxBack = (try? FileManager.default.contentsOfDirectory(atPath: inbox).filter { !$0.hasPrefix(".") }) ?? []
         lines.append("undo import: songs \(songsAfterImport) to \(songsAfterUndo), inbox has \(inboxBack.count) files again")
         save()
+    }
+
+    private static func syncTest(model: AppModel, phase: String, output: URL) async {
+        var lines: [String] = []
+        guard let given = UserDefaults.standard.string(forKey: "GLDebugSyncFolder") else { return }
+        // As the library spells it (standardized: /private/tmp is /tmp).
+        let root = URL(fileURLWithPath: given, isDirectory: true).standardizedFileURL
+        let folder = root.path
+        func tracks(under path: String) async -> [Track] {
+            (try? await model.database.writer.read { db in
+                try Track.filter(sql: "path >= ? AND path < ?", arguments: [path + "/", path + "0"]).fetchAll(db)
+            }) ?? []
+        }
+        /// Waits up to 15 s for `condition`, returning how long it took.
+        func wait(_ what: String, _ condition: () async -> Bool) async {
+            let start = Date.now
+            for _ in 0..<150 {
+                if await condition() {
+                    lines.append("\(what): after \(String(format: "%.1f", Date.now.timeIntervalSince(start))) s")
+                    return
+                }
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+            lines.append("\(what): NOT SEEN in 15 s")
+        }
+        if UserDefaults.standard.string(forKey: "GLDebugLibraryPath") != nil {
+            // The folder added by the launch argument: wait for its first scan.
+            await wait("first scan") { await !tracks(under: folder).isEmpty && model.scanProgress == nil }
+        }
+        try? await Task.sleep(for: .seconds(2))
+        let fm = FileManager.default
+        let source = root.appendingPathComponent("Source", isDirectory: true)
+
+        if phase == "volume", let image = UserDefaults.standard.string(forKey: "GLDebugSyncImage") {
+            // A library folder on a drive: unplugged (songs kept, folder unavailable), plugged back (checked, watched).
+            func hdiutil(_ arguments: [String]) {
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: "/usr/bin/hdiutil")
+                process.arguments = arguments
+                try? process.run()
+                process.waitUntilExit()
+            }
+            let mount = "/Volumes/GLSyncTest"
+            hdiutil(["attach", image, "-nobrowse"])
+            let music = URL(fileURLWithPath: mount + "/Music", isDirectory: true)
+            model.addLibraryFolder(music)
+            await wait("drive folder scanned") { await tracks(under: music.path).count == 4 }
+            hdiutil(["detach", mount])
+            await wait("unplugged: folder unavailable, songs kept") {
+                let kept = await tracks(under: music.path).count
+                return model.unavailableFolders.contains(music.path) && kept == 4
+            }
+            hdiutil(["attach", image, "-nobrowse"])
+            await wait("plugged back: available again") { !model.unavailableFolders.contains(music.path) }
+            // After its check, so only the watcher can find the next file.
+            try? await Task.sleep(for: .seconds(3))
+            try? fm.copyItem(at: music.appendingPathComponent("Source/01 Long Track 1.flac"), to: music.appendingPathComponent("New.flac"))
+            await wait("and watched: a new file appears") { await tracks(under: music.path).count == 5 }
+            if let id = (try? await model.database.writer.read { try LibraryDatabase.roots($0) })?.first(where: { $0.path == music.path })?.id {
+                model.removeRoot(LibraryRoot(id: id, path: music.path, bookmark: Data()))
+            }
+            try? await Task.sleep(for: .seconds(1))
+            hdiutil(["detach", mount])
+        } else if phase == "live" {
+            let album = root.appendingPathComponent("Live Artist/Live Album", isDirectory: true)
+            try? fm.createDirectory(at: album.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? fm.copyItem(at: source, to: album)
+            let count = (try? fm.contentsOfDirectory(atPath: source.path).filter { !$0.hasPrefix(".") && !$0.hasSuffix(".jpg") }.count) ?? 0
+            await wait("copied album (\(count) files) appears") { await tracks(under: album.path).count == count }
+            let ids = Set(await tracks(under: album.path).compactMap(\.id))
+            try? await Task.sleep(for: .seconds(1))
+            await snapshot("187-sync-note", output)
+
+            let cover = NSImage(size: NSSize(width: 64, height: 64), flipped: false) { rect in NSColor.systemTeal.setFill(); rect.fill(); return true }
+            let png = cover.tiffRepresentation.flatMap { NSBitmapImageRep(data: $0)?.representation(using: .png, properties: [:]) }
+            let before = Set(await tracks(under: album.path).compactMap(\.artworkHash))
+            try? png?.write(to: album.appendingPathComponent("cover.png"))
+            await wait("new cover.png picked up") {
+                let hashes = Set(await tracks(under: album.path).compactMap(\.artworkHash))
+                return !hashes.isEmpty && hashes != before
+            }
+
+            let renamed = root.appendingPathComponent("Live Artist/Renamed Album", isDirectory: true)
+            try? fm.moveItem(at: album, to: renamed)
+            await wait("renamed folder keeps song ids") { await Set(tracks(under: renamed.path).compactMap(\.id)) == ids }
+
+            if let first = try? fm.contentsOfDirectory(at: renamed, includingPropertiesForKeys: nil).first(where: { $0.pathExtension != "png" && $0.pathExtension != "jpg" }) {
+                try? fm.removeItem(at: first)
+                await wait("deleted file removed") { await tracks(under: renamed.path).count == count - 1 }
+            }
+            // A burst while scanning: two albums copied right after each other are both picked up.
+            let burstA = root.appendingPathComponent("Burst/A", isDirectory: true), burstB = root.appendingPathComponent("Burst/B", isDirectory: true)
+            try? fm.createDirectory(at: burstA.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? fm.copyItem(at: source, to: burstA)
+            try? await Task.sleep(for: .milliseconds(700))
+            try? fm.copyItem(at: source, to: burstB)
+            await wait("burst of two albums") {
+                let a = await tracks(under: burstA.path).count, b = await tracks(under: burstB.path).count
+                return a == count && b == count
+            }
+        } else {
+            let offline = root.appendingPathComponent("Offline Artist/Offline Album", isDirectory: true)
+            let count = (try? fm.contentsOfDirectory(atPath: offline.path).filter { !$0.hasPrefix(".") && !$0.hasSuffix(".jpg") }.count) ?? -1
+            await wait("album added while closed (\(count) files)") { await tracks(under: offline.path).count == count }
+            await wait("folder deleted while closed is gone") { await tracks(under: root.appendingPathComponent("Burst").path).isEmpty }
+        }
+        lines.append("")
+        lines.append("activity:")
+        lines += model.sync.activity
+        try? lines.joined(separator: "\n").write(to: output.appendingPathComponent("SYNC-\(phase)"), atomically: true, encoding: .utf8)
+    }
+
+    private static func shortcutsTest(model: AppModel, output: URL) async {
+        try? await Task.sleep(for: .seconds(3))
+        var lines: [String] = []
+        func describe(_ item: NSMenuItem) -> String {
+            let flags = item.keyEquivalentModifierMask
+            var text = ""
+            if flags.contains(.control) { text += "⌃" }
+            if flags.contains(.option) { text += "⌥" }
+            if flags.contains(.shift) { text += "⇧" }
+            if flags.contains(.command) { text += "⌘" }
+            let names: [Character: String] = ["\u{F700}": "↑", "\u{F701}": "↓", "\u{F702}": "←", "\u{F703}": "→", " ": "Space"]
+            return text + item.keyEquivalent.map { names[$0] ?? $0.uppercased() }.joined()
+        }
+        var seen: [String: String] = [:]
+        func walk(_ menu: NSMenu, path: String) {
+            for item in menu.items {
+                if let submenu = item.submenu { walk(submenu, path: path + item.title + " > ") }
+                guard !item.keyEquivalent.isEmpty else { continue }
+                let key = describe(item)
+                let title = path + item.title
+                lines.append("\(key)\t\(title)")
+                if let other = seen[key] { lines.append("  DUPLICATE with \(other)") }
+                seen[key] = title
+            }
+        }
+        if let menu = NSApp.mainMenu { walk(menu, path: "") }
+
+        var keyCodes: [String: UInt16] = ["l": 37, "s": 1, "r": 15, "u": 32, "f": 3, "2": 19, "6": 22, "[": 33,
+                                          "\u{F701}": 125, "\u{F703}": 124]
+        func press(_ characters: String, _ flags: NSEvent.ModifierFlags) -> Bool {
+            // Built from the virtual key, so the keyboard layout fills in the characters as real typing does.
+            guard let code = keyCodes[characters], let cgEvent = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: true) else { return false }
+            var cgFlags: CGEventFlags = []
+            if flags.contains(.command) { cgFlags.insert(.maskCommand) }
+            if flags.contains(.option) { cgFlags.insert(.maskAlternate) }
+            if flags.contains(.shift) { cgFlags.insert(.maskShift) }
+            if code >= 123 && code <= 126 { cgFlags.formUnion([.maskSecondaryFn, .maskNumericPad]) }
+            cgEvent.flags = cgFlags
+            guard let event = NSEvent(cgEvent: cgEvent) else { return false }
+            return NSApp.mainMenu?.performKeyEquivalent(with: event) ?? false
+        }
+        lines.append("")
+        _ = press("2", .command); try? await Task.sleep(for: .seconds(0.5))
+        lines.append("⌘2: selection \(String(describing: model.selection))")
+        let tracks: [Track] = (try? await model.database.writer.read { db in
+            try LibraryKitQueries.firstAlbum(db).map { try LibraryKitQueries.tracks(db, albumKey: $0) } ?? []
+        }) ?? []
+        model.play(tracks)
+        try? await Task.sleep(for: .seconds(1))
+        _ = press("6", .command); try? await Task.sleep(for: .seconds(0.3))
+        let loved = await model.currentTrack()?.isLoved
+        _ = press("l", .command); try? await Task.sleep(for: .seconds(1))
+        lines.append("loved before ⌘L \(String(describing: loved)), after \(String(describing: await model.currentTrack()?.isLoved))")
+        lines.append("⌘6 then ⌘L: selection \(String(describing: model.selection)), pushed \(model.albumPath.map(\.title))")
+        model.selection = .shelf
+        model.goToCurrentSong(); try? await Task.sleep(for: .seconds(1.5))
+        lines.append("direct goToCurrentSong: current \(model.player.current?.title ?? "-"), selection \(String(describing: model.selection)), pushed \(model.albumPath.map(\.title))")
+        for code: UInt16 in [41, 33] {
+            keyCodes["["] = code
+            if model.path.isEmpty { model.path = [.artist("Radiohead")] }
+            try? await Task.sleep(for: .seconds(0.3))
+            _ = press("[", .command); try? await Task.sleep(for: .seconds(0.5))
+            lines.append("⌘[ (key \(code)): pushed \(model.path.count)")
+        }
+        let volume = model.player.volume
+        _ = press("\u{F701}", [.command, .option]); try? await Task.sleep(for: .seconds(0.2))
+        let muted = model.player.volume
+        _ = press("\u{F701}", [.command, .option]); try? await Task.sleep(for: .seconds(0.2))
+        lines.append("⌥⌘↓ twice: \(volume) -> \(muted) -> \(model.player.volume)")
+        let shiftLoved = await model.currentTrack()?.isLoved
+        _ = press("l", [.command, .shift]); try? await Task.sleep(for: .seconds(0.5))
+        lines.append("⇧⌘L: loved \(String(describing: shiftLoved)) -> \(String(describing: await model.currentTrack()?.isLoved))")
+        _ = press("f", [.command, .shift]); try? await Task.sleep(for: .seconds(0.5))
+        lines.append("⇧⌘F: now playing \(model.isShowingNowPlaying), selection \(String(describing: model.selection))")
+        model.isShowingNowPlaying = false
+        let title = model.player.current?.title
+        let time = model.player.currentTime
+        _ = press("\u{F703}", [.command, .option]); try? await Task.sleep(for: .seconds(0.5))
+        lines.append("⌥⌘→: '\(title ?? "-")' \(String(format: "%.1f", time)) -> '\(model.player.current?.title ?? "-")' \(String(format: "%.1f", model.player.currentTime)) of \(String(format: "%.0f", model.player.duration))")
+        _ = press("r", .command)
+        lines.append("⌘R: repeat \(model.player.repeatMode)")
+        _ = press("s", .command)
+        lines.append("⌘S: shuffled \(model.player.isShuffled)")
+        _ = press("s", .command); _ = press("r", .command); _ = press("r", .command)
+        _ = press("l", [.command, .option]); try? await Task.sleep(for: .seconds(0.3))
+        lines.append("⌥⌘L: side panel \(String(describing: model.sidePanel))")
+        _ = press("u", [.command, .option]); try? await Task.sleep(for: .seconds(0.3))
+        lines.append("⌥⌘U: side panel \(String(describing: model.sidePanel))")
+        _ = press("f", .command); try? await Task.sleep(for: .seconds(0.3))
+        lines.append("⌘F: selection \(String(describing: model.selection))")
+        model.player.togglePlayPause()
+        func mainWindows() -> [NSWindow] { NSApp.windows.filter { $0.identifier?.rawValue.hasPrefix("main") == true && $0.isVisible } }
+        lines.append("main windows: \(mainWindows().count) (\(mainWindows().map { $0.identifier?.rawValue ?? "" }))")
+        mainWindows().first?.performClose(nil)
+        try? await Task.sleep(for: .seconds(1))
+        lines.append("after closing: \(mainWindows().count)")
+        keyCodes["0"] = 29
+        _ = press("0", .command); try? await Task.sleep(for: .seconds(1.5))
+        lines.append("⌘0: \(mainWindows().count)")
+        _ = press("0", .command); try? await Task.sleep(for: .seconds(1))
+        lines.append("⌘0 again: \(mainWindows().count)")
+        // ⌘F with the app in front puts the cursor in the toolbar search field.
+        NSApp.activate()
+        mainWindows().first?.makeKeyAndOrderFront(nil)
+        model.selection = .albums
+        try? await Task.sleep(for: .seconds(1))
+        keyCodes["f"] = 3
+        _ = press("f", .command); try? await Task.sleep(for: .seconds(1))
+        lines.append("⌘F in front: active \(NSApp.isActive), key window \(NSApp.keyWindow?.identifier?.rawValue ?? "none"), selection \(String(describing: model.selection)), main window first responder \(mainWindows().first?.firstResponder.map { String(describing: type(of: $0)) } ?? "none")")
+
+        // Remapping: the store refuses taken and reserved keys, the menus follow, and the change is saved.
+        let store = model.shortcuts
+        let cmdJ = ShortcutStore.Stored(key: "j", modifiers: Int(EventModifiers.command.rawValue))
+        lines.append("⌘L for Shuffle: \(store.set(ShortcutStore.stored(ShortcutAction.goToCurrentSong.defaultShortcut), for: .shuffle) ?? "accepted")")
+        lines.append("⌘Q for Shuffle: \(store.set(ShortcutStore.Stored(key: "q", modifiers: Int(EventModifiers.command.rawValue)), for: .shuffle) ?? "accepted")")
+
+        // The recorder in Settings, fed queued key presses as the keyboard would.
+        let window = NSWindow(contentRect: NSRect(x: 200, y: 100, width: 720, height: 560), styleMask: [.titled], backing: .buffered, defer: false)
+        window.title = "Shortcuts"
+        window.contentView = NSHostingView(rootView: ShortcutsSettings().environment(model).tint(.brand))
+        window.makeKeyAndOrderFront(nil)
+        try? await Task.sleep(for: .seconds(1))
+        func post(_ code: UInt16, _ flags: CGEventFlags) {
+            for down in [true, false] {
+                guard let cgEvent = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: down) else { continue }
+                cgEvent.flags = flags
+                if let event = NSEvent(cgEvent: cgEvent) { NSApp.postEvent(event, atStart: false) }
+            }
+        }
+        store.recording = .shuffle
+        try? await Task.sleep(for: .seconds(0.5))
+        post(37, .maskCommand)  // ⌘L: taken by Go to Current Song
+        try? await Task.sleep(for: .seconds(0.5))
+        lines.append("recorder ⌘L: shuffle \(store.shortcut(for: .shuffle).map(ShortcutStore.display) ?? "none"), still recording \(store.recording == .shuffle)")
+        await snapshot("185-shortcuts-conflict", output)
+        post(38, .maskCommand)  // ⌘J
+        try? await Task.sleep(for: .seconds(0.5))
+        lines.append("recorder ⌘J: shuffle \(store.shortcut(for: .shuffle).map(ShortcutStore.display) ?? "none"), recording \(String(describing: store.recording)), saved \(UserDefaults.standard.data(forKey: ShortcutStore.key).map { String(decoding: $0, as: UTF8.self) } ?? "-")")
+        store.recording = .visualizer
+        try? await Task.sleep(for: .seconds(0.3))
+        post(51, [])  // Delete removes it
+        try? await Task.sleep(for: .seconds(0.5))
+        lines.append("recorder Delete: visualizer \(store.shortcut(for: .visualizer).map(ShortcutStore.display) ?? "none")")
+        await snapshot("186-shortcuts-settings", output)
+        window.orderOut(nil)
+
+        try? await Task.sleep(for: .seconds(0.5))
+        var shuffle = "", visualizer = ""
+        if let menu = NSApp.mainMenu {
+            func find(_ menu: NSMenu) {
+                for item in menu.items {
+                    if let sub = item.submenu { find(sub) }
+                    if item.title == "Shuffle" { shuffle = describe(item) }
+                    if item.title == "Show Visualizer" { visualizer = describe(item) }
+                }
+            }
+            find(menu)
+        }
+        lines.append("menus: Shuffle '\(shuffle)', Show Visualizer '\(visualizer)'")
+        let before = model.player.isShuffled
+        keyCodes["j"] = 38
+        _ = press("j", .command); try? await Task.sleep(for: .seconds(0.3))
+        let afterJ = model.player.isShuffled
+        _ = press("s", .command); try? await Task.sleep(for: .seconds(0.3))
+        lines.append("shuffle \(before), after ⌘J \(afterJ), after ⌘S \(model.player.isShuffled)")
+        _ = cmdJ
+        store.resetAll()
+        lines.append("after Restore Defaults: shuffle \(store.shortcut(for: .shuffle).map(ShortcutStore.display) ?? "none"), saved \(UserDefaults.standard.data(forKey: ShortcutStore.key) == nil ? "nothing" : "data")")
+        try? lines.joined(separator: "\n").write(to: output.appendingPathComponent("SHORTCUTS"), atomically: true, encoding: .utf8)
+    }
+
+    private static func searchTest(model: AppModel, output: URL) async {
+        try? await Task.sleep(for: .seconds(3))
+        var lines: [String] = []
+        func responder() -> String { NSApp.keyWindow?.firstResponder.map { String(describing: type(of: $0)) } ?? "none" }
+        // An artist, and someone from the credits who is not a library artist.
+        let artist = (try? await model.database.writer.read { try LibraryDatabase.artists($0) })?.first { $0.albumCount > 1 }?.name ?? "Radiohead"
+        let personName = try? await model.database.writer.read { db in
+            try String.fetchOne(db, sql: """
+                SELECT name FROM creditIndex WHERE nameKey NOT IN (SELECT LOWER(COALESCE(NULLIF(albumArtist, ''), artist)) FROM track)
+                GROUP BY nameKey ORDER BY COUNT(*) DESC LIMIT 1
+                """)
+        }
+
+        model.showSearch()
+        try? await Task.sleep(for: .seconds(1))
+        lines.append("Search item: selection \(String(describing: model.selection)), first responder \(responder())")
+        await snapshot("180-search-landing", output)
+
+        for (index, query) in [artist, personName ?? "producer"].enumerated() {
+            model.searchText = String(query.split(separator: " ").last ?? "")
+            try? await Task.sleep(for: .seconds(1.5))
+            let results = (try? await model.database.writer.read { [text = model.searchText] in try LibraryDatabase.search($0, query: text) })
+            lines.append("'\(model.searchText)': artists \(results?.artists.prefix(3).map(\.name) ?? []), albums \(results?.albums.count ?? 0), songs \(results?.songs.count ?? 0), people \(results?.people.prefix(3).map { "\($0.person.name) (\($0.roles.prefix(2).joined(separator: ", ")))" } ?? [])")
+            await snapshot("18\(index + 1)-search-results", output)
+        }
+
+        // Typing from another page switches to the results; opening a result remembers the search.
+        model.selection = .albums
+        lines.append("after leaving: searchText '\(model.searchText)'")
+        model.searchText = String(artist.prefix(4))
+        lines.append("typing on Albums: selection \(String(describing: model.selection))")
+        model.path.append(.artist(artist))
+        try? await Task.sleep(for: .seconds(1.5))
+        await snapshot("183-search-artist-page", output)
+        lines.append("recent searches: \(RecentSearches.list(UserDefaults.standard.string(forKey: RecentSearches.key) ?? ""))")
+        model.path = []
+
+        // With the sidebar collapsed the field stays in the toolbar.
+        NSApp.keyWindow?.firstResponder?.tryToPerform(#selector(NSSplitViewController.toggleSidebar(_:)), with: nil)
+        try? await Task.sleep(for: .seconds(1.5))
+        await snapshot("184-search-sidebar-collapsed", output)
+        model.showSearch()
+        try? await Task.sleep(for: .seconds(0.5))
+        lines.append("Command-F with the sidebar collapsed: first responder \(responder())")
+        NSApp.keyWindow?.firstResponder?.tryToPerform(#selector(NSSplitViewController.toggleSidebar(_:)), with: nil)
+        try? lines.joined(separator: "\n").write(to: output.appendingPathComponent("SEARCH"), atomically: true, encoding: .utf8)
     }
 
     private static func miniPlayerTest(model: AppModel, output: URL) async {

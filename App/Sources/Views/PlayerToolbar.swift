@@ -2,24 +2,6 @@ import LibraryKit
 import PlayerCore
 import SwiftUI
 
-/// Window toolbar: playback lives in the floating bar at the bottom, so only app-level tools stay here.
-struct LibraryToolbar: ToolbarContent {
-    @Environment(AppModel.self) private var model
-    @Environment(\.openWindow) private var openWindow
-
-    var body: some ToolbarContent {
-        ToolbarItem(placement: .primaryAction) {
-            Menu("More", systemImage: "ellipsis") {
-                Button("Visualizer", systemImage: "waveform") { openWindow.visualizer() }
-                Button("Equalizer", systemImage: "slider.vertical.3") { openWindow(id: WindowID.equalizer) }
-                Divider()
-                Button("Add Music Folder…", systemImage: "folder.badge.plus") { model.chooseLibraryFolder() }
-                Button("Rescan Library", systemImage: "arrow.clockwise") { model.rescanAll() }
-            }
-        }
-    }
-}
-
 /// Thin progress bar that grows when hovered and can be dragged to seek.
 struct ScrubBar: View {
     var value: Double
@@ -50,18 +32,12 @@ struct ScrubBar: View {
 
 struct VolumeControl: View {
     @Environment(AppModel.self) private var model
-    @State private var volumeBeforeMute: Float = 0.8
 
     var body: some View {
         @Bindable var player = model.player
         HStack(spacing: 6) {
             Button {
-                if player.volume > 0 {
-                    volumeBeforeMute = player.volume
-                    player.volume = 0
-                } else {
-                    player.volume = max(volumeBeforeMute, 0.1)
-                }
+                model.toggleMute()
             } label: {
                 Image(systemName: player.volume == 0 ? "speaker.slash.fill" : "speaker.wave.1.fill")
                     .frame(width: 16)

@@ -19,6 +19,8 @@ public struct ScanSummary: Sendable, Equatable {
     public var removed = 0
     public var unchanged = 0
     public var failed: [String] = []
+
+    public init() {}
 }
 
 /// Walks a library root, reads tags of new or changed files and keeps the `track` table in sync.
@@ -56,13 +58,15 @@ public actor LibraryScanner {
     /// Tail of the scans queued so far: scans run one at a time.
     private var lastScan: Task<Void, Never>?
 
-    /// Scans `root`. Calls are serialized: two overlapping scans (a folder change during a manual rescan, adding a
-    /// folder at launch) would otherwise both insert the same new files and hit the unique path constraint.
-    public func scan(root: LibraryRoot, progress: (@Sendable (ScanProgress) -> Void)? = nil) async throws -> ScanSummary {
+    /// Scans `root`, all of it or only some of its folders. Calls are serialized: two overlapping scans (a folder
+    /// change during a manual rescan, adding a folder at launch) would otherwise both insert the same new files and hit
+    /// the unique path constraint.
+    public func scan(root: LibraryRoot, scope: ScanScope = .full,
+                     progress: (@Sendable (ScanProgress) -> Void)? = nil) async throws -> ScanSummary {
         let previous = lastScan
         let task = Task {
             await previous?.value
-            return try await self.performScan(root: root, progress: progress)
+            return try await self.performScan(root: root, scope: scope, progress: progress)
         }
         lastScan = Task { _ = await task.result }
         return try await task.value
@@ -79,7 +83,7 @@ public actor LibraryScanner {
         }
     }
 
-    private func performScan(root: LibraryRoot, progress: (@Sendable (ScanProgress) -> Void)?) async throws -> ScanSummary {
+    private func performScan(root: LibraryRoot, scope: ScanScope, progress: (@Sendable (ScanProgress) -> Void)?) async throws -> ScanSummary {
         guard let rootId = root.id else { return ScanSummary() }
         let rootURL = URL(fileURLWithPath: root.path, isDirectory: true)
         // A missing folder would look like every file was deleted, and removing its songs would lose their history.
@@ -88,15 +92,34 @@ public actor LibraryScanner {
               FileManager.default.isReadableFile(atPath: rootURL.path) else {
             throw ScanError.folderUnavailable(root.path)
         }
-        let (allAudio, cueFiles) = Self.enumerateFiles(in: rootURL)
+        // The folders to look at, and the songs the library has there.
+        var allAudio: [FileInfo] = []
+        var cueFiles: [FileInfo] = []
+        var area = "rootId = ?"
+        var arguments: StatementArguments = [rootId]
+        var refreshArtwork = Set<String>()
+        switch scope {
+        case .full:
+            (allAudio, cueFiles) = Self.enumerateFiles(in: rootURL)
+        case .folders(let folders, let artworkFolders):
+            refreshArtwork = artworkFolders
+            for folder in folders.sorted() {
+                let found = Self.enumerateFiles(in: URL(fileURLWithPath: folder, isDirectory: true))
+                allAudio += found.audio
+                cueFiles += found.cues
+            }
+            // Paths under each folder: from "folder/" up to (not including) "folder0", '0' being the character after '/'.
+            area += " AND (" + folders.map { _ in "(path >= ? AND path < ?)" }.joined(separator: " OR ") + ")"
+            for folder in folders.sorted() { arguments += [folder + "/", folder + "0"] }
+        }
         progress?(ScanProgress(filesFound: allAudio.count, filesProcessed: 0))
 
-        let existing: [String: Existing] = try await database.writer.read { db in
+        let existing: [String: Existing] = try await database.writer.read { [area, arguments] db in
             let rows = try Row.fetchAll(db, sql: """
                 SELECT id, path, fileSize, modifiedAt, dateAdded, rating, isLoved, playCount, skipCount, lastPlayedAt,
                        metadataOverrides, fetchedLyrics, lyricsCheckedAt, fetchedArtworkHash, lovedAt
-                FROM track WHERE rootId = ?
-                """, arguments: [rootId])
+                FROM track WHERE \(area)
+                """, arguments: arguments)
             var map: [String: Existing] = [:]
             for row in rows {
                 map[row["path"]] = Existing(id: row["id"], size: row["fileSize"], modifiedAt: row["modifiedAt"], dateAdded: row["dateAdded"],
@@ -133,9 +156,13 @@ public actor LibraryScanner {
         var summary = ScanSummary()
         var seenPaths = Set<String>()
         var changed: [FileInfo] = []
+        // Songs beside a new or changed cover image are read again for it.
+        func coverChanged(_ url: URL) -> Bool { refreshArtwork.contains(url.deletingLastPathComponent().path) }
         for file in files {
             seenPaths.insert(file.url.path)
-            if let old = existing[file.url.path], old.size == file.size, abs(old.modifiedAt.timeIntervalSince(file.modifiedAt)) < 1 {
+            if coverChanged(file.url) {
+                changed.append(file)
+            } else if let old = existing[file.url.path], old.size == file.size, abs(old.modifiedAt.timeIntervalSince(file.modifiedAt)) < 1 {
                 summary.unchanged += 1
             } else if let virtual = virtualByBase[file.url.path], virtual.allSatisfy({ abs(existing[$0]!.modifiedAt.timeIntervalSince(file.modifiedAt)) < 1 }) {
                 // A file with an embedded cue sheet, unchanged: keep its tracks.
@@ -147,7 +174,7 @@ public actor LibraryScanner {
         }
         var changedCues: [CueGroup] = []
         for group in cueGroups {
-            if let virtual = virtualByBase[group.base], virtual.count == group.tracks.count,
+            if !coverChanged(group.audio.url), let virtual = virtualByBase[group.base], virtual.count == group.tracks.count,
                virtual.allSatisfy({ abs(existing[$0]!.modifiedAt.timeIntervalSince(group.modifiedAt)) < 1 }) {
                 seenPaths.formUnion(virtual)
                 summary.unchanged += virtual.count
@@ -248,8 +275,13 @@ public actor LibraryScanner {
             summary.removed = missing.count
             _ = try await database.writer.write { db in try Track.deleteAll(db, keys: missing) }
         }
+        let isFull = scope == .full
         try await database.writer.write { db in
-            try db.execute(sql: "UPDATE libraryRoot SET lastScanAt = ? WHERE id = ?", arguments: [Date.now, rootId])
+            if isFull {
+                try db.execute(sql: "UPDATE libraryRoot SET lastScanAt = ?, lastFullScanAt = ? WHERE id = ?", arguments: [Date.now, Date.now, rootId])
+            } else {
+                try db.execute(sql: "UPDATE libraryRoot SET lastScanAt = ? WHERE id = ?", arguments: [Date.now, rootId])
+            }
         }
         progress?(ScanProgress(filesFound: allAudio.count, filesProcessed: allAudio.count))
         return summary

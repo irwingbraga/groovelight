@@ -9,7 +9,14 @@ public struct LibraryRoot: Codable, Hashable, Sendable, Identifiable, FetchableR
     /// Security-scoped bookmark data so the sandboxed app can reopen the folder after relaunch.
     public var bookmark: Data
     public var addedAt: Date
+    /// Last time anything in the folder was checked (a change was picked up, or a full scan).
     public var lastScanAt: Date?
+    /// File system event id up to which the folder's changes are in the library (nil: unknown, a full scan is needed).
+    public var eventId: Int64? = nil
+    /// The volume's event history id when `eventId` was saved; a different one means the history was reset.
+    public var eventsVolumeId: String? = nil
+    /// Last time every file of the folder was checked.
+    public var lastFullScanAt: Date? = nil
 
     public init(id: Int64? = nil, path: String, bookmark: Data, addedAt: Date = .now, lastScanAt: Date? = nil) {
         self.id = id

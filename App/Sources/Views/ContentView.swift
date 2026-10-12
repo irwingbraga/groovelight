@@ -7,25 +7,60 @@ struct ContentView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openWindow) private var openWindow
     @State private var systemAppearance = SystemAppearance()
+    @FocusState private var isSearchFocused: Bool
 
     /// The whole window goes dark on the Shelf, like the Cover Flow screens it is modeled on.
-    private var isShowingShelf: Bool {
-        model.selection == .shelf && model.searchText.trimmingCharacters(in: .whitespaces).isEmpty
+    private var isShowingShelf: Bool { model.selection == .shelf }
+
+    /// Artists and Genres get a list column between the sidebar and the page, like Music: macOS then gives the list its
+    /// own part of the toolbar (side by side in one column, two scroll views under one toolbar made it flicker).
+    @ViewBuilder private var splitView: some View {
+        @Bindable var model = model
+        switch model.selection {
+        case .artists, .genres:
+            NavigationSplitView {
+                sidebar
+            } content: {
+                Group {
+                    if model.selection == .genres { GenreListColumn() } else { ArtistListColumn() }
+                }
+                .navigationSplitViewColumnWidth(min: 200, ideal: 250, max: 340)
+            } detail: {
+                pages
+            }
+        default:
+            NavigationSplitView {
+                sidebar
+            } detail: {
+                pages
+            }
+        }
+    }
+
+    private var sidebar: some View {
+        SidebarView()
+            .navigationSplitViewColumnWidth(min: 200, ideal: 230, max: 300)
+    }
+
+    private var pages: some View {
+        @Bindable var model = model
+        return NavigationStack(path: $model.path) {
+            DetailView()
+        }
     }
 
     var body: some View {
         @Bindable var model = model
         ZStack {
-            NavigationSplitView {
-                SidebarView()
-                    .navigationSplitViewColumnWidth(min: 200, ideal: 230, max: 300)
-            } detail: {
-                NavigationStack(path: $model.path) {
-                    DetailView()
-                }
+            splitView
+            // In the toolbar so it stays reachable with the sidebar collapsed; the sidebar's Search item focuses it.
+            .searchable(text: $model.searchText, placement: .toolbar, prompt: "Artists, Albums, Songs, Credits")
+            .searchFocused($isSearchFocused)
+            .onSubmit(of: .search) { RecentSearches.add(model.searchText) }
+            .onChange(of: model.selection) { _, selection in
+                if selection == .search { isSearchFocused = true }
             }
-            .searchable(text: $model.searchText, placement: .sidebar, prompt: "Search")
-            .toolbar { LibraryToolbar() }
+            .onChange(of: model.searchFocusRequest) { isSearchFocused = true }
             .toolbar(model.isShowingNowPlaying ? .hidden : .automatic, for: .windowToolbar)
 
             if model.isShowingNowPlaying {
@@ -58,28 +93,35 @@ struct DetailView: View {
 
     var body: some View {
         Group {
-            if !model.searchText.trimmingCharacters(in: .whitespaces).isEmpty {
-                SearchResultsView(query: model.searchText)
-            } else {
-                switch model.selection ?? .albums {
-                case .recentlyAdded: AlbumsGridView(mode: .recentlyAdded)
-                case .albums: AlbumsGridView(mode: .all)
-                case .artists: ArtistsView()
-                case .songs: SongsView()
-                case .genres: GenresView()
-                case .shelf: ShelfView()
-                case .allPlaylists: AllPlaylistsView()
-                case .lovedSongs: LovedSongsView()
-                case .playlist(let id): PlaylistView(playlistId: id)
-                }
+            switch model.selection ?? .albums {
+            case .search: SearchView()
+            case .recentlyAdded: AlbumsGridView(mode: .recentlyAdded)
+            case .albums: AlbumsGridView(mode: .all)
+            case .artists: ArtistsView()
+            case .songs: SongsView()
+            case .genres: GenresView()
+            case .shelf: ShelfView()
+            case .allPlaylists: AllPlaylistsView()
+            case .lovedSongs: LovedSongsView()
+            case .playlist(let id): PlaylistView(playlistId: id)
             }
         }
         // Fresh identity per destination: avoids SwiftUI reusing a Table/List subtree mid-update when switching.
-        .id(model.searchText.isEmpty ? model.selection : nil)
+        .id(model.selection)
+        .animation(.smooth, value: model.sync.note)
         .overlay(alignment: .bottom) {
             if let progress = model.scanProgress {
                 ScanProgressBadge(progress: progress)
                     .padding(.bottom, 16)
+            } else if let note = model.sync.note {
+                // What a quiet update picked up from the folders.
+                Label(note, systemImage: "checkmark.circle")
+                    .font(.callout)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .glassEffect(.regular, in: .capsule)
+                    .padding(.bottom, 16)
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
         }
         .playerBarInset()
@@ -89,6 +131,8 @@ struct DetailView: View {
                 switch route {
                 case .album(let album): AlbumDetailView(album: album)
                 case .person(let person): PersonView(person: person)
+                case .artist(let name): ArtistDetailView(artist: name)
+                case .searchCategory(let category, let query): SearchCategoryView(category: category, query: query)
                 }
             }
             .playerBarInset()

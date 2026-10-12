@@ -29,7 +29,7 @@ final class BackupManager {
     }
 
     /// Preferences that travel with a backup (machine specific ones, like the backup folder, stay behind).
-    static let preferencePrefixes = ["eq.", "metadata.", "visualizer.", "albums.", "player.", "appearance."]
+    static let preferencePrefixes = ["eq.", "metadata.", "visualizer.", "albums.", "player.", "appearance.", "shortcuts."]
 
     private(set) var isWorking = false
     private(set) var lastBackup: Date?
@@ -198,6 +198,7 @@ final class BackupManager {
             }
             model.equalizer.reloadFromDefaults()
             AppTheme.current.apply()
+            model.shortcuts.load()
             await model.reopenLibraryAfterRestore()
         } catch {
             model.errorMessage = "The restore failed: \(error.localizedDescription)"
@@ -218,7 +219,11 @@ final class BackupManager {
             _ = url.startAccessingSecurityScopedResource()
             try model.database.relocateRoot(id, to: url.standardizedFileURL.path, bookmark: bookmark)
             foldersToLocate.removeAll { $0.id == id }
-            model.rescanAll()
+            model.unavailableFolders.remove(root.path)
+            Task {
+                await model.sync.foldersChanged()
+                model.rescanAll()
+            }
         } catch {
             model.errorMessage = "Could not use that folder: \(error.localizedDescription)"
         }

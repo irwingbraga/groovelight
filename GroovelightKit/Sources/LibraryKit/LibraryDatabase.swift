@@ -165,6 +165,15 @@ public final class LibraryDatabase: Sendable {
                 t.add(column: "endTime", .double)
             }
         }
+        migrator.registerMigration("v9-watchState") { db in
+            // Where each folder's change history was last read (to catch up on what changed while the app was closed),
+            // and when every file was last checked.
+            try db.alter(table: LibraryRoot.databaseTableName) { t in
+                t.add(column: "eventId", .integer)
+                t.add(column: "eventsVolumeId", .text)
+                t.add(column: "lastFullScanAt", .datetime)
+            }
+        }
         return migrator
     }
 
@@ -261,21 +270,6 @@ extension LibraryDatabase {
 
     public static func allTracks(_ db: Database) throws -> [Track] {
         try Track.order(Column("title").collating(.nocase)).fetchAll(db)
-    }
-
-    /// Full-text search with prefix matching on every word ("beat yel" finds "Yellow Submarine" by The Beatles).
-    public static func search(_ db: Database, query: String, limit: Int = 300) throws -> [Track] {
-        let words = query.split(whereSeparator: \.isWhitespace)
-            .map { $0.replacingOccurrences(of: "\"", with: "") }
-            .filter { !$0.isEmpty }
-        guard !words.isEmpty else { return [] }
-        let pattern = words.map { "\"\($0)\"*" }.joined(separator: " ")
-        return try Track.fetchAll(db, sql: """
-            SELECT track.* FROM track
-            JOIN track_ft ON track_ft.rowid = track.id AND track_ft MATCH ?
-            ORDER BY rank
-            LIMIT ?
-            """, arguments: [pattern, limit])
     }
 
     public static func playlists(_ db: Database) throws -> [Playlist] {
@@ -486,6 +480,15 @@ extension LibraryDatabase {
         try writer.write { db in
             try db.execute(sql: "INSERT OR REPLACE INTO albumInfo (albumKey, data, fetchedAt) VALUES (?, ?, ?)",
                            arguments: [albumKey, data, date])
+        }
+    }
+
+    /// Records that a folder's changes are in the library up to `eventId` of the volume history `volumeId` (nil
+    /// forgets it, so the next launch checks every file).
+    public func setWatchState(rootId: Int64, eventId: UInt64?, volumeId: String?) throws {
+        try writer.write { db in
+            try db.execute(sql: "UPDATE libraryRoot SET eventId = ?, eventsVolumeId = ? WHERE id = ?",
+                           arguments: [eventId.map { Int64(bitPattern: $0) }, volumeId, rootId])
         }
     }
 

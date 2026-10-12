@@ -6,6 +6,8 @@ import PlayerCore
 import SwiftUI
 
 enum SidebarItem: Hashable {
+    /// Search results for the toolbar search field (the sidebar's Search item focuses it).
+    case search
     case recentlyAdded
     case artists
     case albums
@@ -30,10 +32,15 @@ final class AppModel {
     private(set) var backup: BackupManager!
     private(set) var files: FilesStore!
     /// Library folders that could not be opened at the last scan (an unplugged drive, a moved folder).
-    private(set) var unavailableFolders: Set<String> = []
+    var unavailableFolders: Set<String> = []
 
     var selection: SidebarItem? = .albums {
-        didSet { if selection != oldValue { path = [] } }
+        didSet {
+            guard selection != oldValue else { return }
+            path = []
+            // Leaving the results clears the search, so the field never shows text the page does not reflect.
+            if oldValue == .search { searchText = "" }
+        }
     }
     /// Pages pushed on the detail navigation stack.
     var path: [Route] = []
@@ -42,6 +49,10 @@ final class AppModel {
         case album(AlbumSummary)
         /// A musician, producer, songwriter or studio from the credits.
         case person(CreditPerson)
+        /// An artist's page pushed from search results (the Artists page shows it beside the artist list instead).
+        case artist(String)
+        /// Every search result of one category ("Albums ›" in the results), for a query.
+        case searchCategory(SearchCategory, String)
     }
 
     /// The pushed album pages (the common case; person pages are reached with `showPerson`).
@@ -51,6 +62,8 @@ final class AppModel {
     }
     /// Artist selected on the Artists page (kept here so other pages can open an artist).
     var selectedArtist: String?
+    /// Genre selected on the Genres page.
+    var selectedGenre: String?
     /// Smart playlist editor sheet request (nil playlist creates a new one).
     var smartPlaylistEditor: SmartEditorRequest?
 
@@ -61,7 +74,16 @@ final class AppModel {
 
     /// All playlists, kept current for menus (menus cannot load data when they open).
     private(set) var playlists: [Playlist] = []
-    var searchText = ""
+    /// Keyboard shortcuts of the menu commands, with the user's changes.
+    let shortcuts = ShortcutStore()
+    var searchText = "" {
+        didSet {
+            // Typing anywhere shows the results.
+            if !searchText.trimmingCharacters(in: .whitespaces).isEmpty, selection != .search { selection = .search }
+        }
+    }
+    /// Bumped to move the keyboard focus to the toolbar search field.
+    private(set) var searchFocusRequest = 0
     var isShowingNowPlaying = false
     /// What the right side panel shows, nil when it is closed.
     var sidePanel: SidePanel?
@@ -85,8 +107,8 @@ final class AppModel {
     var errorMessage: String?
 
     @ObservationIgnored private let scanner: LibraryScanner
-    @ObservationIgnored private var watcher: FolderWatcher?
-    @ObservationIgnored private var rescanTask: Task<Void, Never>?
+    /// Keeps the library in step with its folders (watching, catching up at launch, drives, timers).
+    private(set) var sync: LibrarySync!
     @ObservationIgnored private let nowPlaying = NowPlayingCenter()
 
     static let volumeKey = "player.volume"
@@ -122,9 +144,12 @@ final class AppModel {
         player.onItemFinished = { [weak self] item, listened in
             self?.recordListen(item: item, seconds: listened)
         }
+        // A song whose file is gone: its folder is checked, so the library catches up with what moved or was deleted.
+        player.onItemFailed = { [weak self] item in self?.sync.checkFolder(of: item.url) }
         nowPlaying.attach(to: player)
         ArtworkLoader.shared.cache = artwork
 
+        sync = LibrarySync(model: self, scanner: scanner)
         backup = BackupManager(model: self)
         files = FilesStore(model: self)
         AppTheme.current.apply()
@@ -162,10 +187,8 @@ final class AppModel {
             let bookmark = try FolderAccess.makeBookmark(for: url)
             _ = url.startAccessingSecurityScopedResource()
             let root = try database.addRoot(path: url.standardizedFileURL.path, bookmark: bookmark)
-            Task {
-                await scan(root)
-                await watchRoots()
-            }
+            unavailableFolders.remove(root.path)
+            Task { await sync.foldersChanged(newRootId: root.id) }
         } catch {
             errorMessage = "Could not add folder: \(error.localizedDescription)"
         }
@@ -175,21 +198,21 @@ final class AppModel {
         guard let id = root.id else { return }
         do {
             try database.removeRoot(id)
-            Task { await watchRoots() }
+            unavailableFolders.remove(root.path)
+            Task { await sync.foldersChanged() }
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
+    /// Checks every file of every library folder, showing progress (Rescan Now).
     func rescanAll() {
-        Task {
-            for root in (try? await roots()) ?? [] { await scan(root) }
-        }
+        sync.checkEverything(loud: true)
     }
 
     /// Rescans every library folder and returns when done (after an import).
     func rescanAndWait() async {
-        for root in (try? await roots()) ?? [] { await scan(root) }
+        await sync.checkEverythingAndWait()
     }
 
     private func roots() async throws -> [LibraryRoot] {
@@ -210,28 +233,7 @@ final class AppModel {
                 continue
             }
         }
-        for root in roots { await scan(root) }
-        await watchRoots()
-    }
-
-    private func scan(_ root: LibraryRoot) async {
-        scanProgress = ScanProgress(filesFound: 0, filesProcessed: 0)
-        unavailableFolders.remove(root.path)
-        do {
-            let summary = try await scanner.scan(root: root) { [weak self] progress in
-                Task { @MainActor in
-                    guard self?.scanProgress != nil else { return }
-                    self?.scanProgress = progress
-                }
-            }
-            lastScanSummary = summary
-        } catch LibraryScanner.ScanError.folderUnavailable(let path) {
-            // Not an error worth an alert: the folder's songs and their history are kept until it is back.
-            unavailableFolders.insert(path)
-        } catch {
-            errorMessage = "Scan failed: \(error.localizedDescription)"
-        }
-        scanProgress = nil
+        await sync.start()
     }
 
     /// After a restore: reopen each library folder from its bookmark (works on the same Mac); folders that cannot be
@@ -252,30 +254,9 @@ final class AppModel {
             }
         }
         backup.foldersToLocate = missing
-        for root in (try? await self.roots()) ?? [] where !missing.contains(where: { $0.id == root.id }) {
-            await scan(root)
-        }
-        await watchRoots()
-    }
-
-    private func watchRoots() async {
-        let paths = ((try? await roots()) ?? []).map(\.path)
-        if watcher == nil {
-            watcher = FolderWatcher { [weak self] _ in
-                Task { @MainActor in self?.scheduleRescan() }
-            }
-        }
-        watcher?.watch(paths)
-    }
-
-    /// Debounces bursts of file system events (copying an album) into one incremental rescan.
-    private func scheduleRescan() {
-        rescanTask?.cancel()
-        rescanTask = Task {
-            try? await Task.sleep(for: .seconds(2))
-            guard !Task.isCancelled, scanProgress == nil else { return }
-            for root in (try? await roots()) ?? [] { await scan(root) }
-        }
+        unavailableFolders = Set(missing.map(\.path))
+        await sync.foldersChanged()
+        sync.checkEverything(loud: false)
     }
 
     // MARK: - Queue across launches
@@ -399,6 +380,13 @@ final class AppModel {
         }
     }
 
+    /// Shows the search page and focuses the toolbar search field (the sidebar's Search item, Command-F).
+    func showSearch() {
+        isShowingNowPlaying = false
+        if selection != .search { selection = .search } else { path = [] }
+        searchFocusRequest += 1
+    }
+
     /// Switches to the Artists page with `name` selected.
     func showArtist(_ name: String) {
         searchText = ""
@@ -438,6 +426,49 @@ final class AppModel {
             }
             albumPath = [album]
         }
+    }
+
+    /// Shows the album of the song that is playing (from the Search page or the Shelf, on the Albums page).
+    func goToCurrentSong() {
+        isShowingNowPlaying = false
+        Task {
+            guard let track = await currentTrack() else { return }
+            if selection == .search || selection == .shelf { selection = .albums }
+            showAlbum(albumKey: track.albumKey)
+        }
+    }
+
+    /// Loves the song that is playing, or undoes it.
+    func toggleLovedCurrent() {
+        Task {
+            if let track = await currentTrack() { toggleLoved(track) }
+        }
+    }
+
+    /// Lyrics in Now Playing when it is open, otherwise in the side panel.
+    func toggleLyrics() {
+        if isShowingNowPlaying {
+            withAnimation(.smooth) { isShowingLyrics.toggle() }
+        } else {
+            isShowingLyricsPanel.toggle()
+        }
+    }
+
+    /// Volume to go back to when unmuting.
+    @ObservationIgnored private var volumeBeforeMute: Float = 0.8
+
+    func toggleMute() {
+        if player.volume > 0 {
+            volumeBeforeMute = player.volume
+            player.volume = 0
+        } else {
+            player.volume = max(volumeBeforeMute, 0.1)
+        }
+    }
+
+    /// Back from a pushed page (album, artist, person).
+    func goBack() {
+        if !path.isEmpty { path.removeLast() }
     }
 
     /// Opens the album page of a track (after its album changed, the old page would be empty).

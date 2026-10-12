@@ -119,16 +119,7 @@ struct MiniPlayerView: View {
         }
     }
 
-    /// Brings the main window forward (opening one if it was closed).
-    private func showMainWindow() {
-        NSApp.activate()
-        if let window = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("main") == true }) {
-            if window.isMiniaturized { window.deminiaturize(nil) }
-            window.makeKeyAndOrderFront(nil)
-        } else {
-            openWindow(id: "main")
-        }
-    }
+    private func showMainWindow() { openWindow.mainWindow() }
 }
 
 extension View {

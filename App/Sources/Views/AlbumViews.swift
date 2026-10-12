@@ -11,11 +11,38 @@ struct AlbumsGridView: View {
     @Environment(AppModel.self) private var model
     @State private var albums: [AlbumSummary]?
     @AppStorage("albums.sort") private var sort: AlbumSort = .artist
+    /// Cover size of the Albums page (the slider, View > Bigger / Smaller Covers and pinching change it).
+    @AppStorage(CoverSize.key) private var coverSize = CoverSize.standard
+    /// Size when a pinch started.
+    @State private var pinchStart: Double?
+    /// The album at the top of the page, kept in view when the covers change size.
+    @State private var position = ScrollPosition(idType: String.self)
+
+    /// Only the Albums page itself can change its cover size.
+    private var isResizable: Bool { mode == .all && artist == nil }
 
     var body: some View {
         Group {
             if let albums, albums.isEmpty, artist == nil {
                 EmptyLibraryView()
+            } else if isResizable {
+                ScrollView {
+                    AlbumGrid(albums: albums ?? [], tileSize: coverSize)
+                        .scrollTargetLayout()
+                        .padding(24)
+                }
+                .scrollPosition($position, anchor: .top)
+                .simultaneousGesture(MagnifyGesture()
+                    .onChanged { value in
+                        let start = pinchStart ?? coverSize
+                        pinchStart = start
+                        coverSize = CoverSize.clamped(start * value.magnification)
+                    }
+                    .onEnded { _ in pinchStart = nil })
+                .onChange(of: coverSize) {
+                    // The grid reflows into more or fewer columns: bring the album that was at the top back to it.
+                    if let id = position.viewID(type: String.self) { position.scrollTo(id: id, anchor: .top) }
+                }
             } else {
                 ScrollView {
                     AlbumGrid(albums: albums ?? [])
@@ -25,6 +52,22 @@ struct AlbumsGridView: View {
         }
         .navigationTitle(artist ?? (mode == .recentlyAdded ? "Recently Added" : "Albums"))
         .toolbar {
+            if isResizable {
+                ToolbarItem(placement: .automatic) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "square.grid.3x3.fill")
+                            .font(.system(size: 9))
+                        Slider(value: $coverSize, in: CoverSize.range)
+                            .controlSize(.mini)
+                            .frame(width: 100)
+                        Image(systemName: "square.grid.2x2.fill")
+                            .font(.system(size: 13))
+                    }
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 6)
+                    .help("Cover size")
+                }
+            }
             if mode == .all, artist == nil {
                 ToolbarItem(placement: .automatic) {
                     Picker("Sort", selection: $sort) {
@@ -48,12 +91,20 @@ struct AlbumsGridView: View {
 
 struct AlbumGrid: View {
     var albums: [AlbumSummary]
+    /// Smallest cover width (the Albums page's chosen size); nil for the standard grid.
+    var tileSize: Double? = nil
 
     var body: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 170, maximum: 220), spacing: 22)], alignment: .leading, spacing: 26) {
+        let minimum = tileSize ?? 170
+        let maximum = tileSize.map { $0 * 1.25 } ?? 220
+        // Spacing grows a little with the covers.
+        let spacing = tileSize.map { 14 + $0 * 0.05 } ?? 22
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: minimum, maximum: maximum), spacing: spacing)], alignment: .leading,
+                  spacing: spacing + 4) {
             ForEach(albums) { album in
                 NavigationLink(value: AppModel.Route.album(album)) {
-                    AlbumCard(album: album)
+                    // Big covers use the large image so they stay sharp.
+                    AlbumCard(album: album, artworkSize: maximum > 220 ? .large : .small)
                 }
                 .buttonStyle(.plain)
             }
@@ -61,14 +112,33 @@ struct AlbumGrid: View {
     }
 }
 
+/// The Albums page's cover size, in points.
+enum CoverSize {
+    static let key = "albums.coverSize"
+    static let standard: Double = 180
+    static let range: ClosedRange<Double> = 110...380
+    static let step: Double = 30
+
+    static func clamped(_ value: Double) -> Double { min(max(value, range.lowerBound), range.upperBound) }
+
+    /// Changes the saved size by `steps` (View > Bigger / Smaller Covers).
+    static func change(by steps: Double) {
+        let current = UserDefaults.standard.object(forKey: key) as? Double ?? standard
+        UserDefaults.standard.set(clamped(current + steps * step), forKey: key)
+    }
+
+    static func reset() { UserDefaults.standard.removeObject(forKey: key) }
+}
+
 struct AlbumCard: View {
     var album: AlbumSummary
+    var artworkSize: ArtworkCache.Size = .small
     @Environment(AppModel.self) private var model
     @State private var isHovering = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            ArtworkImage(hash: album.artworkHash, size: .small, cornerRadius: 10)
+            ArtworkImage(hash: album.artworkHash, size: artworkSize, cornerRadius: 10)
                 .shadow(color: .black.opacity(0.25), radius: isHovering ? 10 : 4, y: isHovering ? 6 : 2)
                 .overlay(alignment: .bottomLeading) {
                     if isHovering {
@@ -122,17 +192,21 @@ struct AlbumDetailView: View {
     @State private var info: AlbumInfo?
     @State private var artistNames: Set<String> = []
     @State private var isShowingCredits = false
+    @State private var pageWidth: CGFloat = 900
 
     var body: some View {
         let isLoadingInfo = model.metadata.albumInfoInFlight.contains(album.albumKey) && (info?.isEmpty ?? true)
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
-                // Side by side when there is room, stacked in narrow windows.
-                ViewThatFits(in: .horizontal) {
+                // Side by side when there is room, stacked in narrow windows. From the page width rather than
+                // ViewThatFits, which rebuilt the large cover on every layout pass (hovering a song) and made the
+                // toolbar's glass flicker.
+                if pageWidth >= 640 {
                     HStack(alignment: .bottom, spacing: 28) {
                         artwork
                         headerInfo
                     }
+                } else {
                     VStack(alignment: .leading, spacing: 20) {
                         artwork
                         headerInfo
@@ -147,6 +221,7 @@ struct AlbumDetailView: View {
             }
             .padding(32)
         }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { pageWidth = $0 }
         .coverWash { ArtworkImage(hash: album.artworkHash, size: .small, cornerRadius: 0) }
         .navigationTitle(album.title)
         .sheet(isPresented: $isShowingCredits) {
@@ -341,6 +416,9 @@ extension View {
                 cover()
                     .frame(width: geometry.size.width, height: geometry.size.width)
                     .blur(radius: 80)
+                    // Rendered into one flat image: a live blur filter under the toolbar's glass made the toolbar
+                    // flicker whenever anything else on the page redrew (hovering a song row).
+                    .drawingGroup()
                     .opacity(0.35)
                     .frame(maxHeight: .infinity, alignment: .top)
                     .clipped()

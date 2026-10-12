@@ -3,7 +3,9 @@ import MetadataKit
 import PlayerCore
 import SwiftUI
 
-struct ArtistsView: View {
+/// The artist list, a column of its own between the sidebar and the page (like Music). Side by side in one column, the
+/// two scroll views under the same toolbar made it flicker whenever the page redrew while scrolled.
+struct ArtistListColumn: View {
     @Environment(AppModel.self) private var model
     @State private var artists: [ArtistSummary] = []
     /// Artist photos by lowercased name (artists looked up so far).
@@ -11,36 +13,22 @@ struct ArtistsView: View {
 
     var body: some View {
         @Bindable var model = model
-        let selected = model.selectedArtist
-        HStack(spacing: 0) {
-            // Custom list instead of List(selection:): setting the initial selection while an outline table loads its
-            // rows crashes SwiftUI (AttributeGraph precondition) when the window is not key.
-            SelectableList(items: artists, id: \.name, selection: $model.selectedArtist, scrollsToSelection: true) { artist in
-                HStack(spacing: 10) {
-                    // The artist's photo when known, otherwise one of their album covers.
-                    ArtworkImage(hash: photos[artist.name.lowercased()] ?? artist.artworkHash, size: .small, cornerRadius: 20)
-                        .frame(width: 40, height: 40)
-                        .clipShape(.circle)
-                    VStack(alignment: .leading) {
-                        Text(artist.name).lineLimit(1)
-                        Text(artist.albumCount == 1 ? "1 album" : "\(artist.albumCount) albums")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer(minLength: 0)
+        // Custom list instead of List(selection:): setting the initial selection while an outline table loads its
+        // rows crashes SwiftUI (AttributeGraph precondition) when the window is not key.
+        SelectableList(items: artists, id: \.name, selection: $model.selectedArtist, scrollsToSelection: true) { artist in
+            HStack(spacing: 10) {
+                // The artist's photo when known, otherwise one of their album covers.
+                ArtworkImage(hash: photos[artist.name.lowercased()] ?? artist.artworkHash, size: .small, cornerRadius: 20)
+                    .frame(width: 40, height: 40)
+                    .clipShape(.circle)
+                VStack(alignment: .leading) {
+                    Text(artist.name).lineLimit(1)
+                    Text(artist.albumCount == 1 ? "1 album" : "\(artist.albumCount) albums")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
+                Spacer(minLength: 0)
             }
-            .frame(width: 250)
-            Divider()
-
-            Group {
-                if let selected {
-                    ArtistDetailView(artist: selected)
-                } else {
-                    ContentUnavailableView("Select an Artist", systemImage: "music.microphone")
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .navigationTitle("Artists")
         .observing(model.database, id: 0, { try LibraryDatabase.artists($0) }) { value in
@@ -61,36 +49,73 @@ struct ArtistsView: View {
     }
 }
 
+/// The Artists page: the artist chosen in the list column.
+struct ArtistsView: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        Group {
+            if let selected = model.selectedArtist {
+                ArtistDetailView(artist: selected)
+            } else {
+                ContentUnavailableView("Select an Artist", systemImage: "music.microphone")
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .navigationTitle(model.selectedArtist ?? "Artists")
+    }
+}
+
 struct ArtistDetailView: View {
     var artist: String
     @Environment(AppModel.self) private var model
-    @State private var albums: [AlbumSummary] = []
+    @State private var albums: [ArtistAlbum] = []
     @State private var info: ArtistInfo?
+    @State private var pageWidth: CGFloat = 900
+
+    /// One of the artist's albums with its songs.
+    struct ArtistAlbum: Identifiable, Sendable {
+        var album: AlbumSummary
+        var tracks: [Track]
+        var id: String { album.albumKey }
+    }
 
     /// The artist's photo, or their first album's cover until a photo is known.
-    private var headerImage: String? { info?.imageHash ?? albums.first?.artworkHash }
+    private var headerImage: String? { info?.imageHash ?? albums.first?.album.artworkHash }
+    private var allTracks: [Track] { albums.flatMap(\.tracks) }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
-                // Side by side when there is room, stacked in narrow windows.
-                ViewThatFits(in: .horizontal) {
+                // Side by side when there is room, stacked in narrow windows. Decided from the page width, not with
+                // ViewThatFits: that re-measured (and rebuilt) the large photo on every layout pass, such as hovering a
+                // song, and the toolbar's glass flickered as it re-sampled the page.
+                if pageWidth >= 640 {
                     HStack(alignment: .bottom, spacing: 28) {
                         photo
                         title
                     }
+                } else {
                     VStack(alignment: .leading, spacing: 20) {
                         photo
                         title
                     }
                 }
-                AlbumGrid(albums: albums)
+                // Each album like Music's artist pages: cover on the left, its songs on the right.
+                LazyVStack(alignment: .leading, spacing: 44) {
+                    ForEach(albums) { entry in
+                        ArtistAlbumSection(album: entry.album, tracks: entry.tracks)
+                    }
+                }
             }
             .padding(28)
         }
-        // The same color wash as album pages, from the photo (or the cover standing in for it).
-        .coverWash { ArtworkImage(hash: headerImage, size: .small, cornerRadius: 0) }
-        .observing(model.database, id: artist, { [artist] db in try LibraryDatabase.albums(db, sort: .year, artist: artist) }) { albums = $0 }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { pageWidth = $0 }
+        .observing(model.database, id: artist, { [artist] db in
+            try LibraryDatabase.albums(db, sort: .year, artist: artist).map { album in
+                ArtistAlbum(album: album, tracks: try LibraryDatabase.tracks(db, albumKey: album.albumKey))
+            }
+        }) { albums = $0 }
         .observing(model.database, id: "info-\(artist)", { [artist] db in try LibraryDatabase.artistInfo(db, name: artist)?.data }) { data in
             info = data.flatMap { try? JSONDecoder().decode(ArtistInfo.self, from: $0) }
         }
@@ -117,7 +142,8 @@ struct ArtistDetailView: View {
             Text(artist)
                 .font(.system(size: 34, weight: .bold))
                 .lineLimit(2)
-            Text(albums.count == 1 ? "1 album" : "\(albums.count) albums")
+            let songs = allTracks.count
+            Text("\(albums.count == 1 ? "1 album" : "\(albums.count) albums"), \(songs == 1 ? "1 song" : "\(songs) songs")")
                 .foregroundStyle(.secondary)
             if let about = info?.about {
                 AboutExcerpt(about: about)
@@ -129,25 +155,102 @@ struct ArtistDetailView: View {
                 .font(.system(size: 11))
                 .foregroundStyle(.tertiary)
             }
-            Button {
-                Task {
-                    do {
-                        let tracks = try await model.database.writer.read { [artist] in try LibraryDatabase.tracks($0, artist: artist) }
-                        model.play(tracks, shuffle: true)
-                    } catch {
-                        model.errorMessage = "Could not load \(artist): \(error.localizedDescription)"
-                    }
-                }
-            } label: {
-                Label("Shuffle", systemImage: "shuffle")
+            HStack(spacing: 10) {
+                Button { model.play(allTracks) } label: { Label("Play", systemImage: "play.fill") }
+                    .buttonStyle(.glassProminent)
+                Button { model.play(allTracks, shuffle: true) } label: { Label("Shuffle", systemImage: "shuffle") }
+                    .buttonStyle(.glass)
             }
-            .buttonStyle(.glassProminent)
             .controlSize(.large)
+            .disabled(albums.isEmpty)
             .padding(.top, 4)
         }
         .padding(.bottom, 24)
     }
+}
 
+/// An album on its artist's page: the cover on the left; title, genre and year, actions and the songs on the right
+/// (stacked under the cover when the page is narrow).
+private struct ArtistAlbumSection: View {
+    var album: AlbumSummary
+    var tracks: [Track]
+    @Environment(AppModel.self) private var model
+    @State private var width: CGFloat = 900
+
+    var body: some View {
+        let sideBySide = width >= 720
+        let coverSize = sideBySide ? min(320, width * 0.32) : min(260, width)
+        Group {
+            if sideBySide {
+                HStack(alignment: .top, spacing: 32) {
+                    cover(coverSize)
+                    details
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 18) {
+                    cover(coverSize)
+                    details
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+    }
+
+    private func cover(_ size: CGFloat) -> some View {
+        NavigationLink(value: AppModel.Route.album(album)) {
+            ArtworkImage(hash: album.artworkHash, size: .large, cornerRadius: 8)
+                .frame(width: size, height: size)
+                .shadow(color: .black.opacity(0.25), radius: 10, y: 5)
+        }
+        .buttonStyle(.plain)
+        .help("Show \(album.title)")
+    }
+
+    private var details: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    NavigationLink(value: AppModel.Route.album(album)) {
+                        Text(album.title)
+                            .font(.system(size: 22, weight: .bold))
+                            .lineLimit(2)
+                            .multilineTextAlignment(.leading)
+                    }
+                    .buttonStyle(.plain)
+                    let subtitle = [album.genre, album.year.map(String.init)].compactMap { $0 }.joined(separator: " · ")
+                    if !subtitle.isEmpty {
+                        Text(subtitle)
+                            .font(.system(size: 13))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Spacer(minLength: 12)
+                HStack(spacing: 8) {
+                    Button { model.playAlbum(album) } label: { Image(systemName: "play.fill").frame(width: 18, height: 18) }
+                        .help("Play")
+                    Button { model.playAlbum(album, shuffle: true) } label: { Image(systemName: "shuffle").frame(width: 18, height: 18) }
+                        .help("Shuffle")
+                    Menu {
+                        QueueMenuItems(source: .album(album.albumKey))
+                        Divider()
+                        Button("Get Info…") { model.getInfo(albumKey: album.albumKey) }
+                        Button("Fix Metadata…") { model.metadata.review(tracks) }
+                        Button("Show in Finder") { model.showInFinder(tracks) }
+                    } label: {
+                        Image(systemName: "ellipsis").frame(width: 18, height: 18)
+                    }
+                    .menuIndicator(.hidden)
+                    .help("More")
+                }
+                .buttonStyle(.glass)
+                .buttonBorderShape(.circle)
+            }
+            Divider()
+            TrackList(tracks: tracks, style: .album, albumKey: album.albumKey)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
 }
 
 struct SongsView: View {
@@ -235,70 +338,53 @@ private struct SongTitleCell: View {
     }
 }
 
-struct GenresView: View {
+/// The genre list, a column of its own (like the artist list).
+struct GenreListColumn: View {
     @Environment(AppModel.self) private var model
     @State private var genres: [String] = []
-    @State private var selected: String?
-    @State private var tracks: [Track] = []
 
     var body: some View {
-        HStack(spacing: 0) {
-            SelectableList(items: genres, id: \.self, selection: $selected) { genre in
-                Text(genre)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.vertical, 4)
-            }
-            .frame(width: 210)
-            Divider()
-
-            ScrollView {
-                if let selected {
-                    VStack(alignment: .leading, spacing: 16) {
-                        HStack {
-                            Text(selected).font(.system(size: 28, weight: .bold))
-                            Spacer()
-                            Button { model.play(tracks, shuffle: true) } label: { Label("Shuffle", systemImage: "shuffle") }
-                                .buttonStyle(.glassProminent)
-                        }
-                        TrackList(tracks: tracks, style: .playlist)
-                    }
-                    .padding(24)
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        @Bindable var model = model
+        SelectableList(items: genres, id: \.self, selection: $model.selectedGenre) { genre in
+            Text(genre)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 4)
         }
         .navigationTitle("Genres")
         .observing(model.database, id: 0, { try LibraryDatabase.genres($0) }) { value in
             genres = value
-            if selected == nil { selected = value.first }
+            if model.selectedGenre == nil || !value.contains(model.selectedGenre ?? "") { model.selectedGenre = value.first }
         }
-        .observing(model.database, id: selected, { [selected] db in
-            guard let selected else { return [] }
-            return try LibraryDatabase.tracks(db, genre: selected)
-        }) { tracks = $0 }
     }
 }
 
-struct SearchResultsView: View {
-    var query: String
+/// The Genres page: the songs of the genre chosen in the list column.
+struct GenresView: View {
     @Environment(AppModel.self) private var model
     @State private var tracks: [Track] = []
 
     var body: some View {
+        let selected = model.selectedGenre
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("Results for “\(query)”")
-                    .font(.system(size: 24, weight: .bold))
-                if tracks.isEmpty {
-                    ContentUnavailableView.search(text: query)
-                } else {
+            if let selected {
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack {
+                        Text(selected).font(.system(size: 28, weight: .bold))
+                        Spacer()
+                        Button { model.play(tracks, shuffle: true) } label: { Label("Shuffle", systemImage: "shuffle") }
+                            .buttonStyle(.glassProminent)
+                    }
                     TrackList(tracks: tracks, style: .playlist)
                 }
+                .padding(24)
             }
-            .padding(24)
         }
-        .navigationTitle("Search")
-        .observing(model.database, id: query, { [query] db in try LibraryDatabase.search(db, query: query) }) { tracks = $0 }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .navigationTitle(selected ?? "Genres")
+        .observing(model.database, id: selected, { [selected] db in
+            guard let selected else { return [] }
+            return try LibraryDatabase.tracks(db, genre: selected)
+        }) { tracks = $0 }
     }
 }
 

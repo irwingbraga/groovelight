@@ -73,6 +73,8 @@ public final class PlaybackController {
     @ObservationIgnored public var onItemStarted: ((PlayableItem) -> Void)?
     /// Called when an item stops being current, with the seconds actually listened to.
     @ObservationIgnored public var onItemFinished: ((PlayableItem, TimeInterval) -> Void)?
+    /// A song could not be opened (and was skipped).
+    @ObservationIgnored public var onItemFailed: ((PlayableItem) -> Void)?
 
     public let analyzer = SpectrumAnalyzer()
 
@@ -244,6 +246,7 @@ public final class PlaybackController {
             applyPendingStart()
         } catch {
             lastError = "\(item.title): \(error.localizedDescription)"
+            onItemFailed?(item)
             // Skip unplayable files instead of stopping the whole queue.
             if queue.skipForward() != nil, queue.current != item { startCurrent() } else { stop() }
         }

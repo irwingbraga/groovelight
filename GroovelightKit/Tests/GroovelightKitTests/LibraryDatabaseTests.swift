@@ -58,9 +58,54 @@ struct LibraryDatabaseTests {
     @Test func fullTextSearchWithPrefixes() throws {
         let database = try Self.seeded()
         let results = try database.writer.read { try LibraryDatabase.search($0, query: "beat yell") }
-        #expect(results.map(\.title) == ["Yellow Submarine"])
+        #expect(results.songs.map(\.title) == ["Yellow Submarine"])
         let none = try database.writer.read { try LibraryDatabase.search($0, query: "  ") }
         #expect(none.isEmpty)
+    }
+
+    @Test func searchFindsEveryCategory() throws {
+        let database = try Self.seeded()
+        let abbey = Track.makeAlbumKey(album: "Abbey Road", albumArtist: nil, artist: "The Beatles", isCompilation: false)
+        let ok = Track.makeAlbumKey(album: "OK Computer", albumArtist: nil, artist: "Radiohead", isCompilation: false)
+        try database.setCredits([
+            CreditIndexEntry(person: CreditPerson(name: "George Martin", artistId: "gm"), albumKey: abbey, trackId: nil,
+                             roles: ["producer"], wholeRelease: true),
+            CreditIndexEntry(person: CreditPerson(name: "The Beatles", artistId: "tb"), albumKey: abbey, trackId: nil, roles: ["performer"]),
+        ], albumKey: abbey)
+        try database.setCredits([
+            CreditIndexEntry(person: CreditPerson(name: "Nigel Godrich", artistId: "ng"), albumKey: ok, trackId: nil, roles: ["producer"]),
+            CreditIndexEntry(person: CreditPerson(name: "Nigel Godrich", artistId: "ng"), albumKey: ok, trackId: 4, roles: ["engineer"]),
+        ], albumKey: ok)
+
+        let beatles = try database.writer.read { try LibraryDatabase.search($0, query: "beatles") }
+        #expect(beatles.artists.map(\.name) == ["The Beatles"])
+        #expect(Set(beatles.albums.map(\.title)) == ["Abbey Road", "Revolver"])
+        #expect(beatles.songs.count == 3)
+        // A credited name that is also a library artist shows only as the artist.
+        #expect(beatles.people.isEmpty)
+
+        let abbeyRoad = try database.writer.read { try LibraryDatabase.search($0, query: "abbey") }
+        #expect(abbeyRoad.albums.map(\.title) == ["Abbey Road"])
+        #expect(abbeyRoad.artists.isEmpty)
+
+        let nigel = try database.writer.read { try LibraryDatabase.search($0, query: "godr") }
+        #expect(nigel.people.map(\.person.name) == ["Nigel Godrich"])
+        #expect(nigel.people.first?.albumCount == 1)
+        #expect(nigel.people.first?.roles == ["engineer", "producer"])
+
+        // Accents and case are ignored, and an exact title ranks first.
+        let radiohead = try database.writer.read { try LibraryDatabase.search($0, query: "RÁDIOHEAD") }
+        #expect(radiohead.artists.map(\.name) == ["Radiohead"])
+        #expect(radiohead.albums.map(\.title) == ["OK Computer"])
+    }
+
+    @Test func searchMatcherScores() {
+        let matcher = SearchMatcher("ok comp")
+        #expect(matcher.score("OK Computer") == 1)
+        #expect(matcher.score("Computer, OK?") == 2)
+        #expect(matcher.score("Okay") == nil)
+        #expect(SearchMatcher("ac dc").score("AC/DC") == 0)
+        #expect(SearchMatcher("bjork").score("Björk") == 0)
     }
 
     @Test func playlistCoversPersist() throws {

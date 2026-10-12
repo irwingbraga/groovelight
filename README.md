@@ -26,6 +26,30 @@ xcodegen generate
 xcodebuild -project Groovelight.xcodeproj -scheme Groovelight -configuration Debug build
 ```
 
+## Keyboard shortcuts
+
+The defaults are below. Every shortcut is also in the menus, and each one can be changed, removed or reset in Settings, Shortcuts (keys already used by another command or by macOS are refused). On non-US keyboards macOS may move some default keys (Back shows as ⌘Ç on a Portuguese layout); recorded shortcuts keep the exact keys pressed.
+
+| Action | Shortcut |
+|---|---|
+| Play / Pause | Space (outside text fields), ⌥⌘P |
+| Next / Previous | ⌘→ / ⌘← |
+| Skip forward / back 10 seconds | ⌥⌘→ / ⌥⌘← |
+| Volume up / down, Mute | ⌘↑ / ⌘↓, ⌥⌘↓ |
+| Shuffle, cycle Repeat (off, all, one) | ⌘S, ⌘R |
+| Love the current song, Go to Current Song | ⇧⌘L, ⌘L |
+| Search Library | ⌘F |
+| Recently Added, Artists, Albums, Songs, Genres, Shelf, All Playlists, Loved Songs | ⌘1 to ⌘8 |
+| Back | ⌘[ |
+| Now Playing (Esc closes it), Lyrics, Up Next | ⇧⌘F, ⌥⌘L, ⌥⌘U |
+| Visualizer, Equalizer | ⌘T, ⌥⌘E |
+| Bigger / Smaller covers (Albums page; also its toolbar slider and pinching) | ⌘+ / ⌘− |
+| Library window (a single window; reopens it after closing) | ⌘0 |
+| New Playlist, New Smart Playlist | ⌘N, ⌥⌘N |
+| Import (songs or folders), Add Folder to Library | ⌘O, ⇧⌘O |
+| Fetch Missing Info in Background, Back Up Library | ⇧⌘U, ⌥⌘B |
+| Settings | ⌘, |
+
 ## Debug helpers (Debug builds only)
 
 Build without the sandbox to point the app at any folder:
@@ -52,6 +76,15 @@ APP=build/DebugUnsandboxed/Build/Products/Debug/Groovelight.app/Contents/MacOS/G
 "$APP" -GLDebugTour /tmp/tour -GLDebugTourCredits YES        # album credits and Wikipedia background (needs network)
 "$APP" -GLDebugTour /tmp/tour -GLDebugTourLibraryJob YES     # Fetch Missing Info over the whole library (needs network)
 "$APP" -GLDebugTour /tmp/tour -GLDebugTourBackup YES         # backup, restore, relinking folders, automatic backups (~4 min)
+"$APP" -GLDebugTour /tmp/tour -GLDebugLibraryPath "$L" -GLDebugSyncFolder "$L" -GLDebugTourSync live   # live folder changes ($L: a scratch library with a Source/ album); quits
+"$APP" -GLDebugTour /tmp/tour -GLDebugSyncFolder "$L" -GLDebugTourSync check   # after changing $L while closed: caught up from the event history
+"$APP" -GLDebugTour /tmp/tour -GLDebugSyncFolder "$L" -GLDebugSyncImage vol.dmg -GLDebugTourSync volume   # drive unplugged and plugged back (image of a volume "GLSyncTest" with Music/Source/*.flac)
+"$APP" -GLDebugTour /tmp/tour -GLDebugTourHold artist [-GLDebugArtist Name]   # opens an artist page and writes the window frame to WINDOW (then: screencapture -R$(cat /tmp/tour/WINDOW) out.png)
+"$APP" -GLDebugTour /tmp/tour -GLDebugTourHold hover [-GLDebugArtist Name]   # artist page held up 12 s; writes TOOLBAR and POINTS (song rows) for a pointer-moving script (needs Accessibility for the terminal)
+"$APP" -GLDebugTour /tmp/tour -GLDebugTourHold covers   # Albums at three cover sizes (writes WINDOW and SIZE-n for screencapture -R) and the cover size menu items
+"$APP" -GLDebugTour /tmp/tour -GLDebugTourHold now-playing # plays and leaves Now Playing open, for a real screen capture (the tour snapshots do not render Liquid Glass)
+"$APP" -GLDebugTour /tmp/tour -GLDebugTourShortcuts YES    # menu shortcuts (flags duplicates), key presses, remapping in Settings (launch with `open` so ⌘F focus can be checked)
+"$APP" -GLDebugTour /tmp/tour -GLDebugTourSearch YES       # Search page: sidebar link, results by category, toolbar field
 "$APP" -GLDebugTour /tmp/tour -GLDebugTourMiniPlayer YES   # menu bar panel (in a test window) and the menu bar note
 "$APP" -GLDebugTour /tmp/tour -GLDebugTourCue YES          # cue album songs, playback ranges and the move to the next song
 "$APP" -GLDebugTour /tmp/tour -GLDebugTourFiles YES -GLDebugImportInbox /path/to/inbox   # organize, import, undo (use a scratch library copy)

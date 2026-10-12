@@ -10,6 +10,8 @@ struct SidebarView: View {
     var body: some View {
         @Bindable var model = model
         List(selection: $model.selection) {
+            // A link to the toolbar search field (it stays reachable there when the sidebar is collapsed).
+            Label("Search", systemImage: "magnifyingglass").tag(SidebarItem.search)
             Section("Library") {
                 Label("Recently Added", systemImage: "clock").tag(SidebarItem.recentlyAdded)
                 Label("Artists", systemImage: "music.microphone").tag(SidebarItem.artists)

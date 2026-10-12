@@ -67,19 +67,19 @@ struct TransportControls: View {
         let player = model.player
         HStack(spacing: density == .full ? 18 : 12) {
             if density == .full {
-                BarButton(systemImage: "shuffle", help: "Shuffle", isOn: player.isShuffled) {
+                BarButton(systemImage: "shuffle", help: "Shuffle" + model.shortcuts.hint(.shuffle), isOn: player.isShuffled) {
                     player.setShuffle(!player.isShuffled)
                 }
             }
-            BarButton(systemImage: "backward.fill", help: "Previous", size: 17) { player.previous() }
+            BarButton(systemImage: "backward.fill", help: "Previous" + model.shortcuts.hint(.previous), size: 17) { player.previous() }
             BarButton(systemImage: player.state == .playing ? "pause.fill" : "play.fill",
                       help: player.state == .playing ? "Pause" : "Play", size: 24) {
                 player.togglePlayPause()
             }
             .frame(width: 28)
-            BarButton(systemImage: "forward.fill", help: "Next", size: 17) { player.next() }
+            BarButton(systemImage: "forward.fill", help: "Next" + model.shortcuts.hint(.next), size: 17) { player.next() }
             if density == .full {
-                BarButton(systemImage: player.repeatMode == .one ? "repeat.1" : "repeat", help: "Repeat", isOn: player.repeatMode != .off) {
+                BarButton(systemImage: player.repeatMode == .one ? "repeat.1" : "repeat", help: "Repeat" + model.shortcuts.hint(.cycleRepeat), isOn: player.repeatMode != .off) {
                     player.repeatMode = switch player.repeatMode {
                     case .off: .all
                     case .all: .one
@@ -114,7 +114,7 @@ private struct NowPlayingSummary: View {
             }
             .buttonStyle(.plain)
             .disabled(item == nil)
-            .help("Show Now Playing")
+            .help("Show Now Playing" + model.shortcuts.hint(.nowPlaying))
 
             VStack(spacing: 2) {
                 HStack(spacing: 6) {
@@ -155,7 +155,7 @@ private struct NowPlayingSummary: View {
             .frame(maxWidth: .infinity)
 
             if density != .compact {
-                BarButton(systemImage: track?.isLoved == true ? "heart.fill" : "heart", help: "Love",
+                BarButton(systemImage: track?.isLoved == true ? "heart.fill" : "heart", help: "Love" + model.shortcuts.hint(.love),
                           isOn: track?.isLoved == true, onColor: .pink) {
                     if let track { model.toggleLoved(track) }
                 }
@@ -188,15 +188,15 @@ private struct PlayerTools: View {
                           help: player.state == .playing ? "Pause" : "Play", size: 20) {
                     player.togglePlayPause()
                 }
-                BarButton(systemImage: "forward.fill", help: "Next", size: 15) { player.next() }
+                BarButton(systemImage: "forward.fill", help: "Next" + model.shortcuts.hint(.next), size: 15) { player.next() }
             }
             if density != .compact {
                 // Lyrics open in the side panel, like Up Next (Now Playing keeps its own lyrics button).
-                BarButton(systemImage: "quote.bubble", help: "Lyrics", isOn: model.isShowingLyricsPanel) {
+                BarButton(systemImage: "quote.bubble", help: "Lyrics" + model.shortcuts.hint(.lyrics), isOn: model.isShowingLyricsPanel) {
                     model.isShowingLyricsPanel.toggle()
                 }
             }
-            BarButton(systemImage: "list.bullet", help: "Up Next", isOn: model.isShowingQueue) {
+            BarButton(systemImage: "list.bullet", help: "Up Next" + model.shortcuts.hint(.upNext), isOn: model.isShowingQueue) {
                 model.isShowingQueue.toggle()
             }
         }

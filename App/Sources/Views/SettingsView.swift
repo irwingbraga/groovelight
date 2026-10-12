@@ -9,6 +9,7 @@ struct SettingsView: View {
             Tab("Metadata", systemImage: "wand.and.sparkles") { MetadataSettings() }
             Tab("Files", systemImage: "doc.text") { FilesSettings() }
             Tab("Backup", systemImage: "externaldrive.badge.timemachine") { BackupSettings() }
+            Tab("Shortcuts", systemImage: "keyboard") { ShortcutsSettings() }
         }
         .frame(width: 720, height: 480)
     }
@@ -56,10 +57,8 @@ struct LibrarySettings: View {
                                 Button("Locate…") { model.backup.locate(root) }
                                     .controlSize(.small)
                             }
-                        } else if let date = root.lastScanAt {
-                            Text("Last scanned \(date.formatted(.relative(presentation: .named)))")
-                                .font(.caption2)
-                                .foregroundStyle(.tertiary)
+                        } else {
+                            FolderSyncStatus(root: root, isNetwork: model.sync.networkFolders.contains(root.path))
                         }
                     }
                     .tag(root.id)
@@ -78,14 +77,40 @@ struct LibrarySettings: View {
             } header: {
                 Text("Music Folders")
             } footer: {
-                if let summary = model.lastScanSummary {
-                    Text("Last scan: \(summary.added) added, \(summary.updated) updated, \(summary.removed) removed, \(summary.failed.count) unreadable.")
-                        .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Changes are picked up as they happen, including those made while Groovelight was closed, and drives are checked when they are plugged in. Every file is also checked once a day and after waking from sleep.")
+                    if let summary = model.lastScanSummary {
+                        Text("Last full check: \(summary.added) added, \(summary.updated) updated, \(summary.removed) removed, \(summary.failed.count) unreadable.")
+                    }
                 }
+                .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
         .observing(model.database, id: 0, { try LibraryDatabase.roots($0) }) { roots = $0 }
+    }
+}
+
+/// How a library folder is kept up to date, and when it was last checked.
+private struct FolderSyncStatus: View {
+    var root: LibraryRoot
+    var isNetwork: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            if isNetwork {
+                Label("Network folder: checked every \(Int(LibrarySync.networkInterval / 60)) minutes", systemImage: "network")
+            } else {
+                Label("Watching for changes", systemImage: "eye")
+            }
+            if let date = root.lastScanAt {
+                let full = root.lastFullScanAt.map { " · every file checked \($0.formatted(.relative(presentation: .named)))" } ?? ""
+                Text("Last updated \(date.formatted(.relative(presentation: .named)))" + full)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .font(.caption2)
+        .foregroundStyle(.secondary)
     }
 }
 

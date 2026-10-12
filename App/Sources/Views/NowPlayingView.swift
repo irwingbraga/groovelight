@@ -93,14 +93,14 @@ struct NowPlayingView: View {
                         Image(systemName: "waveform").frame(width: 20, height: 20)
                     }
                     .buttonBorderShape(.circle)
-                    .help("Visualizer")
+                    .help("Visualizer" + model.shortcuts.hint(.visualizer))
                     Button {
                         withAnimation(.smooth) { model.isShowingLyrics.toggle() }
                     } label: {
                         Image(systemName: "quote.bubble").frame(width: 20, height: 20)
                     }
                     .buttonBorderShape(.circle)
-                    .help("Lyrics")
+                    .help("Lyrics" + model.shortcuts.hint(.lyrics))
                     Button {
                         withAnimation(.smooth) { model.isShowingNowPlaying = false }
                     } label: {
@@ -113,8 +113,10 @@ struct NowPlayingView: View {
                     .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { DebugHitTargets.nowPlayingClose = $0 }
                     #endif
                 }
-                // Clear glass and white icons, like the rest of Now Playing (not the app's tint).
+                // Clear glass and white icons, like the rest of Now Playing. Glass buttons color the glass with the
+                // tint (the app's navy), so the tint is cleared here.
                 .buttonStyle(.glass(.clear))
+                .tint(.clear)
                 .foregroundStyle(.white)
             }
             // In full screen the top of the screen reveals the menu bar and title bar when the pointer gets close, and
