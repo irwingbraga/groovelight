@@ -10,6 +10,7 @@ let package = Package(
         .library(name: "Visualizers", targets: ["Visualizers"]),
         .library(name: "MetadataKit", targets: ["MetadataKit"]),
         .library(name: "Scrobbler", targets: ["Scrobbler"]),
+        .library(name: "WirelessSync", targets: ["WirelessSync"]),
     ],
     dependencies: [
         .package(url: "https://github.com/sbooth/SFBAudioEngine.git", from: "0.9.1"),
@@ -39,9 +40,13 @@ let package = Package(
             name: "Scrobbler",
             dependencies: ["LibraryKit", "MetadataKit"]
         ),
+        .target(
+            name: "WirelessSync",
+            dependencies: ["LibraryKit"]
+        ),
         .testTarget(
             name: "GroovelightKitTests",
-            dependencies: ["PlayerCore", "LibraryKit", "Visualizers", "MetadataKit", "Scrobbler", .product(name: "SFBAudioEngine", package: "SFBAudioEngine"), .product(name: "GRDB", package: "GRDB.swift")],
+            dependencies: ["PlayerCore", "LibraryKit", "Visualizers", "MetadataKit", "Scrobbler", "WirelessSync", .product(name: "SFBAudioEngine", package: "SFBAudioEngine"), .product(name: "GRDB", package: "GRDB.swift")],
             resources: [.copy("Fixtures")]
         ),
     ]

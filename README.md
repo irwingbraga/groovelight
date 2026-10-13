@@ -12,7 +12,9 @@ Requirements: macOS 26+, Xcode 26+ (developed with Xcode 27), [XcodeGen](https:/
   - `Visualizers`: Metal visualizers (Bars & Waves, Lights, Ambience, Magnetosphere), shaders compiled at runtime
   - `MetadataKit`: MusicBrainz, Cover Art Archive, iTunes Search and LRCLIB clients, release matching, LRC parser
   - `Scrobbler`: Last.fm client (desktop auth, now playing, scrobbles, loves) and the sender of the offline queue
+  - `WirelessSync`: wireless sync with the Android app: protocol (X25519 pairing, signed requests), local HTTP server with Bonjour
 - `App/`: the macOS app (SwiftUI views, app model, Now Playing / media keys)
+- `android/`: Groovelight Sync, the Android 12+ companion app for wireless sync (Kotlin, Compose; see `android/README.md`)
 - `project.yml`: XcodeGen spec (the `.xcodeproj` is generated, not committed)
 
 ## Build and test
@@ -85,8 +87,18 @@ APP=build/DebugUnsandboxed/Build/Products/Debug/Groovelight.app/Contents/MacOS/G
 "$APP" -GLDebugTour /tmp/tour -GLDebugTourPlayback YES   # crossfade, speed, sleep timer (end of song, minutes) and loudness measuring on the library
 "$APP" -GLDebugTour /tmp/tour -GLDebugTourHold playback   # Settings, Playback with crossfade, Sound Check, speed and a sleep timer on (writes WINDOW)
 "$APP" -GLDebugTour /tmp/tour -GLDebugTourHold bitperfect -GLDebugAlbum "Name"   # bit-perfect on, plays the album, writes BITPERFECT (device vs file) and WINDOW; turns it back off
+"$APP" -GLDebugTour /tmp/tour -GLDebugTourHold devices-settings   # Settings, Devices in a window (WINDOW, WINDOWID)
 "$APP" -GLDebugTour /tmp/tour -GLDebugTourHold lastfm   # Settings, Last.fm in a window (writes WINDOW for screencapture -R)
-"$APP" -GLDebugTour /tmp/tour -GLDebugTourHold covers   # Albums at three cover sizes (writes WINDOW and SIZE-n for screencapture -R) and the cover size menu items
+"$APP" -GLDebugTour /tmp/tour -GLDebugTourHold playlist-files   # exports a playlist in every format, imports each back (PLAYLISTS), then leaves an import report open (WINDOW, READY); deletes what it made
+"$APP" -GLDebugTour /tmp/tour -GLDebugTourHold lyrics   # synced lyrics in the side panel and Now Playing, at the start and at 1:00 (WINDOW, WINDOWID for screencapture -l, READY-0 to READY-3); temporary lyrics are put back
+"$APP" -GLDebugTour /tmp/tour -GLDebugTourHold devices -GLDebugDevice GLCARD   # sync, re-sync, removal, send and eject on a mounted drive (make one: hdiutil create -size 200m -fs "MS-DOS FAT32" -volname GLCARD card.dmg; hdiutil attach card.dmg, not -nobrowse); writes DEVICES, WINDOWID, READY-n
+"$APP" -GLDebugTour /tmp/tour -GLDebugTourHold wireless -GLDebugAutoPair YES   # wireless sync on, pairing allowed at once (first 3 albums selected), PORT written; up for -GLDebugSeconds (120) or until a STOP file; then WIRELESS, unpairs, turns it off. Pair with android/ MacIntegrationTest
+"$APP" -GLDebugTour /tmp/tour -GLDebugTourHold empty-playlist-panel   # empty playlists and Loved Songs with the lyrics and Up Next panels at several widths (PANELS; a layout loop crashes); -GLDebugPanelsAllPages YES for every page
+"$APP" -GLDebugTour /tmp/tour -GLDebugTourHold sidebar-covers   # playlists with each kind of cover for the sidebar icons (WINDOWID, READY); deleted after
+"$APP" -GLDebugTour /tmp/tour -GLDebugTourHold min-artists   # minimum window with the lyrics panel open, then Artists, Genres, Albums (WINDOWID, READY-n, LAYOUT with the split view column widths; -GLDebugWindowWidth to try others)
+"$APP" -GLDebugTour /tmp/tour -GLDebugTourHold min-window   # album and artist pages from the minimum window width up, and with Up Next open (MINWINDOW; a layout loop crashes)
+"$APP" -GLDebugTour /tmp/tour -GLDebugTourHold empty-playlist   # a new empty playlist for 8 s (WINDOW, READY), then deleted
+"$APP" -GLDebugTour /tmp/tour -GLDebugTourHold covers   # Albums at three cover sizes and the Shelf at two (writes WINDOW, SIZE-n and SHELF-n for screencapture -R) and the cover size menu items
 "$APP" -GLDebugTour /tmp/tour -GLDebugTourHold now-playing # plays and leaves Now Playing open, for a real screen capture (the tour snapshots do not render Liquid Glass)
 "$APP" -GLDebugTour /tmp/tour -GLDebugTourShortcuts YES    # menu shortcuts (flags duplicates), key presses, remapping in Settings (launch with `open` so ⌘F focus can be checked)
 "$APP" -GLDebugTour /tmp/tour -GLDebugTourSearch YES       # Search page: sidebar link, results by category, toolbar field

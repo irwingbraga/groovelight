@@ -117,8 +117,440 @@ enum DebugTour {
                 try? "done".write(to: output.appendingPathComponent("DONE"), atomically: true, encoding: .utf8)
                 return
             }
-            // `-GLDebugTourHold covers` shows Albums at three cover sizes, writing WINDOW and SIZE-n files so a script
-            // can capture each (screencapture -R), and reports the cover size menu items.
+            // `-GLDebugTourHold covers` shows Albums at three cover sizes and the Shelf at two, writing WINDOW, SIZE-n and
+            // SHELF-n files so a script can capture each (screencapture -R), and reports the cover size menu items.
+            // `-GLDebugTourHold wireless` turns wireless sync on (with `-GLDebugAutoPair YES` pairing is allowed at once),
+            // writes PORT, and stays up for `-GLDebugSeconds` (default 120) for a client test; then writes WIRELESS with
+            // the paired devices and the Mac's last sync result, unpairs them and turns wireless sync back off.
+            if UserDefaults.standard.string(forKey: "GLDebugTourHold") == "wireless" {
+                try? await Task.sleep(for: .seconds(1))
+                model.wireless.isEnabled = true
+                for _ in 0..<40 where model.wireless.port == nil { try? await Task.sleep(for: .milliseconds(250)) }
+                try? "\(model.wireless.port ?? 0)".write(to: output.appendingPathComponent("PORT"), atomically: true, encoding: .utf8)
+                let seconds = UserDefaults.standard.double(forKey: "GLDebugSeconds")
+                for _ in 0..<Int((seconds > 0 ? seconds : 120) * 2) {
+                    try? await Task.sleep(for: .milliseconds(500))
+                    if FileManager.default.fileExists(atPath: output.appendingPathComponent("STOP").path) { break }
+                }
+                let lines = model.wireless.paired.map { "\($0.name) [\($0.model ?? "")] synced \($0.lastSyncAt != nil): \($0.lastResult ?? "-")" }
+                    + model.devices.devices.filter(\.isWireless).map { device in
+                        "device page: capacity \(device.capacity) available \(device.available) volumes "
+                            + device.volumes.map { "\($0.name)\($0.music ? " (music)" : "") \($0.free)/\($0.total)" }.joined(separator: ", ")
+                    }
+                    + ["job: \(String(describing: model.devices.job?.phase))"]
+                try? lines.joined(separator: "\n").write(to: output.appendingPathComponent("WIRELESS"), atomically: true, encoding: .utf8)
+                for device in model.wireless.paired { model.wireless.unpair(device.id) }
+                model.wireless.isEnabled = false
+                try? "done".write(to: output.appendingPathComponent("DONE"), atomically: true, encoding: .utf8)
+                return
+            }
+            // `-GLDebugTourHold devices` uses a mounted drive named `-GLDebugDevice` (a scratch FAT32 disk image): picks
+            // three albums and a playlist, then syncs, syncs again (nothing to do), drops an album and syncs (removal),
+            // sends one more album, and ejects. Writes DEVICES with each step's outcome and the files on the drive, and
+            // WINDOWID with READY-n before and after the first sync for `screencapture -l`.
+            if UserDefaults.standard.string(forKey: "GLDebugTourHold") == "devices" {
+                try? await Task.sleep(for: .seconds(2))
+                NSApp.activate()
+                let name = UserDefaults.standard.string(forKey: "GLDebugDevice") ?? "GLCARD"
+                var lines: [String] = []
+                func report() { try? lines.joined(separator: "\n").write(to: output.appendingPathComponent("DEVICES"), atomically: true, encoding: .utf8) }
+                guard let window = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("main") == true }) else { return }
+                try? "\(window.windowNumber)".write(to: output.appendingPathComponent("WINDOWID"), atomically: true, encoding: .utf8)
+                model.devices.refresh()
+                guard let device = model.devices.devices.first(where: { $0.name == name }) else {
+                    lines.append("no device named \(name); devices: \(model.devices.devices.map(\.name))")
+                    report()
+                    return
+                }
+                lines.append("device \(device.name) \(device.format) fat32 \(device.isFAT32) accessible \(model.devices.accessible.contains(device.id))")
+                let albums = (try? await model.database.writer.read { try LibraryDatabase.albums($0, sort: .artist) }) ?? []
+                var selection = DeviceSelection()
+                selection.albumKeys = Set(albums.prefix(3).map(\.albumKey))
+                // A playlist of songs from the second and fifth albums (deleted at the end).
+                var tourPlaylist: Int64?
+                if albums.count > 4 {
+                    let songs = (try? await model.database.writer.read { db in
+                        try LibraryDatabase.tracks(db, albumKey: albums[1].albumKey).prefix(2) + LibraryDatabase.tracks(db, albumKey: albums[4].albumKey).prefix(1)
+                    }) ?? []
+                    tourPlaylist = (try? model.database.createPlaylist(named: "Device Mix", trackIds: songs.compactMap(\.id)))?.id
+                }
+                if let tourPlaylist { selection.playlistIds = [tourPlaylist] }
+                model.devices.setSelection(selection, for: device.id)
+                // Covers at 300 px for the tour; the layout setting is put back at the end.
+                let savedLayout = model.devices.layout
+                var profile = DeviceProfile()
+                profile.coverSize = 300
+                model.devices.layout = profile
+                model.selection = .device(device.id)
+                try? await Task.sleep(for: .seconds(2.5))
+                try? "before".write(to: output.appendingPathComponent("READY-0"), atomically: true, encoding: .utf8)
+                try? await Task.sleep(for: .seconds(1.5))
+
+                @MainActor func syncAndWait(_ label: String, _ action: () -> Void) async {
+                    action()
+                    for _ in 0..<240 {
+                        try? await Task.sleep(for: .milliseconds(250))
+                        if model.devices.job?.isRunning == false { break }
+                    }
+                    lines.append("\(label): \(String(describing: model.devices.job?.phase))")
+                    report()
+                }
+                func files() -> [String] {
+                    (FileManager.default.enumerator(atPath: device.root.path)?.compactMap { $0 as? String } ?? [])
+                        .filter { !$0.hasPrefix(".Spotlight") && !$0.hasPrefix(".fseventsd") && !$0.hasPrefix(".Trashes") }
+                        .filter { path in var isDir: ObjCBool = false
+                            FileManager.default.fileExists(atPath: device.root.appendingPathComponent(path).path, isDirectory: &isDir)
+                            return !isDir.boolValue }
+                        .sorted()
+                }
+                await syncAndWait("first sync") { model.devices.sync(device) }
+                lines.append("files after first sync:\n  " + files().joined(separator: "\n  "))
+                if let text = try? String(contentsOf: device.root.appendingPathComponent("Playlists/Device Mix.m3u8"), encoding: .utf8) {
+                    lines.append("Device Mix.m3u8:\n" + text)
+                }
+                try? await Task.sleep(for: .seconds(1.5))
+                try? "after".write(to: output.appendingPathComponent("READY-1"), atomically: true, encoding: .utf8)
+                try? await Task.sleep(for: .seconds(1.5))
+                model.devices.dismissJob()
+                await syncAndWait("second sync") { model.devices.sync(device) }
+                model.devices.dismissJob()
+                if let dropped = albums.first {
+                    selection.albumKeys.remove(dropped.albumKey)
+                    model.devices.setSelection(selection, for: device.id)
+                    await syncAndWait("sync without \(dropped.title)") { model.devices.sync(device) }
+                    lines.append("\(dropped.title) files left: \(files().filter { $0.contains(dropped.title) })")
+                    model.devices.dismissJob()
+                }
+                if albums.count > 4 {
+                    await syncAndWait("send \(albums[4].title)") { model.devices.send(.album(albums[4].albumKey), to: device) }
+                    model.devices.dismissJob()
+                    await syncAndWait("sync after send") { model.devices.sync(device) }
+                    lines.append("sent album kept: \(files().contains { $0.contains(albums[4].title) })")
+                    model.devices.dismissJob()
+                }
+                lines.append("final files: \(files().count)")
+                model.devices.layout = savedLayout
+                if let tourPlaylist { try? model.database.deletePlaylist(tourPlaylist) }
+                model.devices.eject(device)
+                try? await Task.sleep(for: .seconds(3))
+                lines.append("after eject, devices: \(model.devices.devices.map(\.name)), selection \(String(describing: model.selection))")
+                report()
+                try? "done".write(to: output.appendingPathComponent("DONE"), atomically: true, encoding: .utf8)
+                return
+            }
+            // `-GLDebugTourHold empty-playlist-panel` opens a new empty playlist (and Loved Songs, and a smart playlist with
+            // no matches) at several window widths and toggles the lyrics and Up Next panels on each, writing PANELS after
+            // every step (a layout loop crashes the app). The playlists it made are deleted after.
+            if UserDefaults.standard.string(forKey: "GLDebugTourHold") == "empty-playlist-panel" {
+                try? await Task.sleep(for: .seconds(2))
+                NSApp.activate()
+                guard let window = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("main") == true }) else { return }
+                var lines: [String] = []
+                var made: [Int64] = []
+                if let id = (try? model.database.createPlaylist(named: "Empty Panel Test"))?.id { made.append(id) }
+                var rules = SmartPlaylistRules()
+                rules.rules = [SmartRule(field: .title, op: .contains, text: "zzqqxx-no-such-song")]
+                if let id = (try? model.database.createSmartPlaylist(named: "Smart Nothing", rules: rules))?.id { made.append(id) }
+                // `-GLDebugPanelsAllPages YES` also goes through every other page.
+                let others: [SidebarItem] = UserDefaults.standard.bool(forKey: "GLDebugPanelsAllPages")
+                    ? [.search, .recentlyAdded, .artists, .albums, .songs, .genres, .shelf, .allPlaylists] : []
+                let pages: [SidebarItem] = made.map { .playlist($0) } + [.lovedSongs] + others
+                for width in [1144.0, 600, 1000, 1100, 1200, 1300, 1500] {
+                    var frame = window.frame
+                    frame.origin.y += frame.height - 652
+                    frame.size = NSSize(width: width, height: 652)
+                    window.setFrame(frame, display: true)
+                    for page in pages {
+                        model.selection = page
+                        try? await Task.sleep(for: .seconds(0.5))
+                        for panel in [AppModel.SidePanel.lyrics, .queue] {
+                            model.sidePanel = panel
+                            try? await Task.sleep(for: .seconds(0.8))
+                            lines.append("\(page) at \(Int(width)) + \(panel): window \(window.frame.size)")
+                            try? lines.joined(separator: "\n").write(to: output.appendingPathComponent("PANELS"), atomically: true, encoding: .utf8)
+                            model.sidePanel = nil
+                            try? await Task.sleep(for: .seconds(0.4))
+                        }
+                    }
+                }
+                model.selection = .allPlaylists
+                for id in made { try? model.database.deletePlaylist(id) }
+                try? "done".write(to: output.appendingPathComponent("DONE"), atomically: true, encoding: .utf8)
+                return
+            }
+            // `-GLDebugTourHold sidebar-covers` adds playlists with each kind of cover (an image, generated colors and a
+            // pattern, songs' covers, none with songs, empty, smart), writes WINDOWID then READY for `screencapture -l`,
+            // and deletes them after.
+            if UserDefaults.standard.string(forKey: "GLDebugTourHold") == "sidebar-covers" {
+                try? await Task.sleep(for: .seconds(2))
+                NSApp.activate()
+                guard let window = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("main") == true }) else { return }
+                let tracks = (try? await model.database.writer.read { try LibraryDatabase.allTracks($0) }) ?? []
+                let ids = tracks.compactMap(\.id)
+                let image = tracks.compactMap(\.artworkHash).last
+                var made: [Int64] = []
+                let lists: [(String, [Int64], PlaylistCover?)] = [
+                    ("Cover Image", Array(ids.prefix(3)), image.map { PlaylistCover(kind: .image(hash: $0)) }),
+                    ("Generated Waves", Array(ids.prefix(2)), PlaylistCover(kind: .generated(palette: CoverPalette.all[2].id, pattern: CoverPattern.waves.rawValue), showsTitle: true)),
+                    ("Song Covers", Array(ids.dropFirst(10).prefix(20)), PlaylistCover(kind: .songCovers)),
+                    ("No Cover Chosen", Array(ids.dropFirst(40).prefix(1)), nil),
+                    ("Empty One", [], nil),
+                ]
+                for (name, songs, cover) in lists {
+                    if let id = (try? model.database.createPlaylist(named: name, trackIds: songs, cover: cover))?.id { made.append(id) }
+                }
+                if let id = (try? model.database.createSmartPlaylist(named: "Smart Loved", rules: SmartPlaylistRules()))?.id { made.append(id) }
+                model.selection = .allPlaylists
+                try? "\(window.windowNumber)".write(to: output.appendingPathComponent("WINDOWID"), atomically: true, encoding: .utf8)
+                try? await Task.sleep(for: .seconds(2.5))
+                try? "ready".write(to: output.appendingPathComponent("READY"), atomically: true, encoding: .utf8)
+                try? await Task.sleep(for: .seconds(4))
+                for id in made { try? model.database.deletePlaylist(id) }
+                try? "done".write(to: output.appendingPathComponent("DONE"), atomically: true, encoding: .utf8)
+                return
+            }
+            // `-GLDebugTourHold min-artists` shrinks the window to its minimum, opens the lyrics side panel, then Artists
+            // (and Genres), writing WINDOWID and READY-n for `screencapture -l` and LAYOUT with the column widths.
+            if UserDefaults.standard.string(forKey: "GLDebugTourHold") == "min-artists" {
+                try? await Task.sleep(for: .seconds(2))
+                NSApp.activate()
+                guard let window = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("main") == true }) else { return }
+                try? "\(window.windowNumber)".write(to: output.appendingPathComponent("WINDOWID"), atomically: true, encoding: .utf8)
+                var lines: [String] = []
+                model.selection = .albums
+                var frame = window.frame
+                frame.origin.y += frame.height - 500
+                let wanted = UserDefaults.standard.double(forKey: "GLDebugWindowWidth")
+                frame.size = NSSize(width: wanted > 0 ? wanted : 600, height: 500)
+                window.setFrame(frame, display: true)
+                model.isShowingLyricsPanel = true
+                try? await Task.sleep(for: .seconds(1.5))
+                for (step, page) in [SidebarItem.artists, .genres, .albums].enumerated() {
+                    model.selection = page
+                    try? await Task.sleep(for: .seconds(2))
+                    @MainActor func columns(_ view: NSView, depth: Int = 0) -> [String] {
+                        guard depth < 12 else { return [] }
+                        var found: [String] = []
+                        if let split = view as? NSSplitView {
+                            found.append("split[\(split.subviews.map { Int($0.frame.width) })]")
+                        }
+                        for child in view.subviews { found += columns(child, depth: depth + 1) }
+                        return found
+                    }
+                    lines.append("\(page) window \(window.frame.size): \(window.contentView.map { columns($0) } ?? [])")
+                    try? lines.joined(separator: "\n").write(to: output.appendingPathComponent("LAYOUT"), atomically: true, encoding: .utf8)
+                    try? "\(page)".write(to: output.appendingPathComponent("READY-\(step)"), atomically: true, encoding: .utf8)
+                    try? await Task.sleep(for: .seconds(1.5))
+                }
+                model.sidePanel = nil
+                try? "done".write(to: output.appendingPathComponent("DONE"), atomically: true, encoding: .utf8)
+                return
+            }
+            // `-GLDebugTourHold lyrics` plays a song with synced lyrics (the debug library's first song gets temporary
+            // ones when none has them; put back after) and writes WINDOW then READY-n for captures: the side panel at
+            // the start and in the middle, then Now Playing at the start and in the middle (WINDOWID for screencapture -l).
+            if UserDefaults.standard.string(forKey: "GLDebugTourHold") == "lyrics" {
+                try? await Task.sleep(for: .seconds(2))
+                NSApp.activate()
+                let tracks = (try? await model.database.writer.read { try LibraryDatabase.allTracks($0) }) ?? []
+                var index = tracks.firstIndex { ($0.displayLyrics ?? "").contains("[00:") }
+                var restore: (Int64, String?)?
+                if index == nil, let first = tracks.firstIndex(where: { $0.duration >= 30 }), let id = tracks[first].id {
+                    let lrc = (0..<24).map { line in
+                        String(format: "[00:%02d.%02d]Line %d of the song, sung right about now", 4 + line, 0, line + 1)
+                    }.joined(separator: "\n")
+                    restore = (id, tracks[first].fetchedLyrics)
+                    try? await model.database.writer.write { db in
+                        try db.execute(sql: "UPDATE track SET fetchedLyrics = ? WHERE id = ?", arguments: [lrc, id])
+                    }
+                    index = first
+                }
+                guard let index else { return }
+                let window = NSApp.windows.first { $0.identifier?.rawValue.hasPrefix("main") == true }
+                if let window, let screen = window.screen {
+                    let frame = window.frame
+                    try? "\(Int(frame.minX)),\(Int(screen.frame.maxY - frame.maxY)),\(Int(frame.width)),\(Int(frame.height))"
+                        .write(to: output.appendingPathComponent("WINDOW"), atomically: true, encoding: .utf8)
+                    // For `screencapture -l`, which captures only this window even when another app is in front.
+                    try? "\(window.windowNumber)".write(to: output.appendingPathComponent("WINDOWID"), atomically: true, encoding: .utf8)
+                }
+                let songs = (try? await model.database.writer.read { try LibraryDatabase.allTracks($0) }) ?? tracks
+                model.play(songs, startAt: index)
+                for (step, nowPlaying) in [false, true].enumerated() {
+                    model.isShowingNowPlaying = nowPlaying
+                    model.isShowingLyrics = nowPlaying
+                    model.isShowingLyricsPanel = !nowPlaying
+                    model.player.seek(to: 0)
+                    try? await Task.sleep(for: .seconds(2))
+                    try? "start".write(to: output.appendingPathComponent("READY-\(step * 2)"), atomically: true, encoding: .utf8)
+                    try? await Task.sleep(for: .seconds(2))
+                    model.player.seek(to: 60)
+                    try? await Task.sleep(for: .seconds(2))
+                    try? "middle".write(to: output.appendingPathComponent("READY-\(step * 2 + 1)"), atomically: true, encoding: .utf8)
+                    try? await Task.sleep(for: .seconds(2))
+                }
+                model.player.pause()
+                model.isShowingNowPlaying = false
+                model.isShowingLyrics = false
+                model.sidePanel = nil
+                if let (id, original) = restore {
+                    try? await model.database.writer.write { db in
+                        try db.execute(sql: "UPDATE track SET fetchedLyrics = ? WHERE id = ?", arguments: [original, id])
+                    }
+                }
+                try? "done".write(to: output.appendingPathComponent("DONE"), atomically: true, encoding: .utf8)
+                return
+            }
+            // `-GLDebugTourHold min-window` shrinks the window to its minimum size and opens each of the first albums
+            // (Albums page) and then an artist's, writing MINWINDOW with the window size after each (a layout loop crashes).
+            if UserDefaults.standard.string(forKey: "GLDebugTourHold") == "min-window" {
+                try? await Task.sleep(for: .seconds(2))
+                NSApp.activate()
+                var lines: [String] = []
+                guard let window = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("main") == true }) else { return }
+                model.selection = .albums
+                let albums = (try? await model.database.writer.read { try LibraryDatabase.albums($0, sort: .artist) }) ?? []
+                // From the minimum width up in small steps, so the switch between stacked and side by side headers is
+                // crossed; then the inspector open at the minimum, and an artist's page.
+                // `-GLDebugMinWindowNowPlayingOnly YES` skips straight to Now Playing.
+                let pages = !UserDefaults.standard.bool(forKey: "GLDebugMinWindowNowPlayingOnly")
+                for (width, panel) in !pages ? [] : [(600.0, false), (980, false), (1000, false), (1020, false), (1040, false), (1060, false),
+                                       (1080, false), (1100, false), (1140, false), (1200, false), (600, true), (1300, true)] {
+                    var frame = window.frame
+                    frame.origin.y += frame.height - 500
+                    frame.size = NSSize(width: width, height: 500)
+                    window.setFrame(frame, display: true)
+                    model.sidePanel = panel ? .queue : nil
+                    try? await Task.sleep(for: .seconds(0.6))
+                    for album in albums.prefix(3) {
+                        model.path = [.album(album)]
+                        try? await Task.sleep(for: .seconds(0.8))
+                        lines.append("\(album.title) at \(Int(width))\(panel ? " + Up Next" : ""): window \(window.frame.size)")
+                        try? lines.joined(separator: "\n").write(to: output.appendingPathComponent("MINWINDOW"), atomically: true, encoding: .utf8)
+                    }
+                    if let artist = albums.first?.artist {
+                        model.path = [.artist(artist)]
+                        try? await Task.sleep(for: .seconds(0.8))
+                        lines.append("artist \(artist) at \(Int(width)): window \(window.frame.size)")
+                    }
+                    model.path = []
+                    try? await Task.sleep(for: .seconds(0.3))
+                }
+                model.sidePanel = nil
+                // Now Playing (with and without lyrics) over the Albums grid and over an album page, while playing.
+                if let album = albums.first {
+                    let tracks = (try? await model.database.writer.read { try LibraryDatabase.tracks($0, albumKey: album.albumKey) }) ?? []
+                    model.play(tracks)
+                    for width in [600.0, 1000, 1060, 1100, 1200, 1400, 600] {
+                        var frame = window.frame
+                        frame.origin.y += frame.height - 500
+                        frame.size = NSSize(width: width, height: 500)
+                        window.setFrame(frame, display: true)
+                        for (pushed, lyrics) in [(false, false), (false, true), (true, false), (true, true)] {
+                            model.path = pushed ? [.album(album)] : []
+                            model.isShowingNowPlaying = true
+                            if model.isShowingLyrics != lyrics { model.toggleLyrics() }
+                            try? await Task.sleep(for: .seconds(0.8))
+                            lines.append("Now Playing at \(Int(width))\(pushed ? " over album" : "")\(lyrics ? " + lyrics" : ""): window \(window.frame.size)")
+                            try? lines.joined(separator: "\n").write(to: output.appendingPathComponent("MINWINDOW"), atomically: true, encoding: .utf8)
+                            model.isShowingNowPlaying = false
+                            try? await Task.sleep(for: .seconds(0.3))
+                        }
+                    }
+                    model.isShowingLyrics = false
+                    model.path = []
+                    model.player.pause()
+                }
+                try? lines.joined(separator: "\n").write(to: output.appendingPathComponent("MINWINDOW"), atomically: true, encoding: .utf8)
+                try? "done".write(to: output.appendingPathComponent("DONE"), atomically: true, encoding: .utf8)
+                return
+            }
+            // `-GLDebugTourHold playlist-files` exports a playlist in every format (absolute and relative paths), imports
+            // each file back, reports the songs found in PLAYLISTS, then imports a list with songs missing from the
+            // library and keeps its report open (WINDOW then READY for a capture). Playlists it made are deleted after.
+            if UserDefaults.standard.string(forKey: "GLDebugTourHold") == "playlist-files" {
+                try? await Task.sleep(for: .seconds(2))
+                NSApp.activate()
+                var lines: [String] = []
+                let tracks: [Track] = (try? await model.database.writer.read { db in
+                    try Track.fetchAll(db, sql: "SELECT * FROM track WHERE audioPath IS NULL ORDER BY dateAdded DESC LIMIT 6")
+                }) ?? []
+                let before = Set(((try? await model.database.writer.read { try Playlist.fetchAll($0) }) ?? []).compactMap(\.id))
+                let folder = output.appendingPathComponent("lists")
+                try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                var files: [URL] = []
+                for format in PlaylistFormat.exportable {
+                    for relative in format == .musicXML ? [false] : [false, true] {
+                        let url = folder.appendingPathComponent("Tour \(format.rawValue)\(relative ? " rel" : "").\(format.fileExtension)")
+                        try? PlaylistTransfer.write(name: "Tour \(format.rawValue)\(relative ? " rel" : "")", tracks: tracks,
+                                                    to: url, format: format, relative: relative)
+                        files.append(url)
+                    }
+                }
+                model.playlistFiles.importFiles(files)
+                try? await Task.sleep(for: .seconds(3))
+                model.playlistFiles.report = nil
+                let made = ((try? await model.database.writer.read { try Playlist.fetchAll($0) }) ?? []).filter { !before.contains($0.id ?? -1) }
+                for playlist in made.sorted(by: { $0.name < $1.name }) {
+                    let (_, songs) = await model.playlistFiles.contents(of: playlist.id)
+                    lines.append("\(playlist.name): \(songs.count) of \(tracks.count), same order \(songs.map(\.id) == tracks.map(\.id))")
+                }
+                // Two known songs by tags only, one unknown, one web stream.
+                let mixed = """
+                    #EXTM3U
+                    #EXTINF:200,\(tracks.first?.artist ?? "") - \(tracks.first?.title ?? "")
+                    /nowhere/a.mp3
+                    #EXTINF:180,Nobody - Not In This Library
+                    /nowhere/b.mp3
+                    #EXTINF:-1,Some Radio
+                    http://radio.example/stream
+                    \(tracks.last.map { $0.audioPath ?? $0.path } ?? "")
+                    """
+                let mixedURL = folder.appendingPathComponent("Mixed Bag.m3u8")
+                try? mixed.write(to: mixedURL, atomically: true, encoding: .utf8)
+                model.playlistFiles.importFiles([mixedURL])
+                try? await Task.sleep(for: .seconds(2))
+                if let report = model.playlistFiles.report {
+                    lines.append("report: " + report.playlists.map { "\($0.name) \($0.found)/\($0.total) missing \($0.missing)" }.joined(separator: "; "))
+                }
+                lines.append("selection \(String(describing: model.selection))")
+                try? lines.joined(separator: "\n").write(to: output.appendingPathComponent("PLAYLISTS"), atomically: true, encoding: .utf8)
+                if let window = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("main") == true }), let screen = window.screen {
+                    let frame = window.frame
+                    try? "\(Int(frame.minX)),\(Int(screen.frame.maxY - frame.maxY)),\(Int(frame.width)),\(Int(frame.height))"
+                        .write(to: output.appendingPathComponent("WINDOW"), atomically: true, encoding: .utf8)
+                }
+                try? "ready".write(to: output.appendingPathComponent("READY"), atomically: true, encoding: .utf8)
+                try? await Task.sleep(for: .seconds(6))
+                model.playlistFiles.report = nil
+                model.selection = .allPlaylists
+                let all = (try? await model.database.writer.read { try Playlist.fetchAll($0) }) ?? []
+                for playlist in all where !before.contains(playlist.id ?? -1) {
+                    try? model.database.deletePlaylist(playlist.id!)
+                }
+                try? "done".write(to: output.appendingPathComponent("DONE"), atomically: true, encoding: .utf8)
+                return
+            }
+            // `-GLDebugTourHold empty-playlist` opens a new empty playlist for 8 s, writing WINDOW then READY for a capture.
+            if UserDefaults.standard.string(forKey: "GLDebugTourHold") == "empty-playlist" {
+                try? await Task.sleep(for: .seconds(2))
+                NSApp.activate()
+                if let playlist = try? model.database.createPlaylist(named: "Empty Tour Playlist"), let id = playlist.id {
+                    model.selection = .playlist(id)
+                    try? await Task.sleep(for: .seconds(2))
+                    if let window = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("main") == true }), let screen = window.screen {
+                        let frame = window.frame
+                        try? "\(Int(frame.minX)),\(Int(screen.frame.maxY - frame.maxY)),\(Int(frame.width)),\(Int(frame.height))"
+                            .write(to: output.appendingPathComponent("WINDOW"), atomically: true, encoding: .utf8)
+                    }
+                    try? "ready".write(to: output.appendingPathComponent("READY"), atomically: true, encoding: .utf8)
+                    try? await Task.sleep(for: .seconds(6))
+                    model.selection = .allPlaylists
+                    try? model.database.deletePlaylist(id)
+                }
+                try? "done".write(to: output.appendingPathComponent("DONE"), atomically: true, encoding: .utf8)
+                return
+            }
             if UserDefaults.standard.string(forKey: "GLDebugTourHold") == "covers" {
                 try? await Task.sleep(for: .seconds(2))
                 NSApp.activate()
@@ -138,15 +570,29 @@ enum DebugTour {
                         .write(to: output.appendingPathComponent("WINDOW"), atomically: true, encoding: .utf8)
                 }
                 for (index, size) in [110.0, 180, 380].enumerated() {
-                    UserDefaults.standard.set(size, forKey: CoverSize.key)
+                    UserDefaults.standard.set(size, forKey: CoverSize.albums.key)
                     try? await Task.sleep(for: .seconds(2.5))
                     try? "\(size)".write(to: output.appendingPathComponent("SIZE-\(index)"), atomically: true, encoding: .utf8)
                     try? await Task.sleep(for: .seconds(2))
                 }
-                CoverSize.change(by: -1)
-                lines.append("Smaller from 380: \(UserDefaults.standard.double(forKey: CoverSize.key))")
-                CoverSize.reset()
-                lines.append("Default: \(UserDefaults.standard.object(forKey: CoverSize.key) == nil ? "standard" : "set")")
+                CoverSize.albums.change(by: -1)
+                lines.append("Smaller from 380: \(UserDefaults.standard.double(forKey: CoverSize.albums.key))")
+                CoverSize.albums.reset()
+                lines.append("Default: \(UserDefaults.standard.object(forKey: CoverSize.albums.key) == nil ? "standard" : "set")")
+                // The Shelf keeps its own size: SHELF-n captures at its smallest and largest.
+                model.selection = .shelf
+                try? await Task.sleep(for: .seconds(1))
+                NSApp.mainMenu?.update()
+                lines.append("on Shelf: \(items())")
+                for (index, size) in [180.0, 460].enumerated() {
+                    UserDefaults.standard.set(size, forKey: CoverSize.shelf.key)
+                    try? await Task.sleep(for: .seconds(2.5))
+                    try? "\(size)".write(to: output.appendingPathComponent("SHELF-\(index)"), atomically: true, encoding: .utf8)
+                    try? await Task.sleep(for: .seconds(2))
+                }
+                CoverSize.shelf.change(by: -1)
+                lines.append("Shelf smaller from 460: \(UserDefaults.standard.double(forKey: CoverSize.shelf.key)), albums \(UserDefaults.standard.object(forKey: CoverSize.albums.key) == nil ? "standard" : "set")")
+                CoverSize.shelf.reset()
                 model.selection = .artists
                 try? await Task.sleep(for: .seconds(1))
                 NSApp.mainMenu?.update()
@@ -228,7 +674,7 @@ enum DebugTour {
                 try? "done".write(to: output.appendingPathComponent("DONE"), atomically: true, encoding: .utf8)
                 return
             }
-            if let hold = UserDefaults.standard.string(forKey: "GLDebugTourHold"), hold == "lastfm" || hold == "playback" {
+            if let hold = UserDefaults.standard.string(forKey: "GLDebugTourHold"), hold == "lastfm" || hold == "playback" || hold == "devices-settings" {
                 try? await Task.sleep(for: .seconds(2))
                 NSApp.activate()
                 let window = NSWindow(contentRect: NSRect(x: 300, y: 200, width: 720, height: 560), styleMask: [.titled], backing: .buffered, defer: false)
@@ -240,10 +686,13 @@ enum DebugTour {
                     model.setRate(1.25)
                     model.sleepTimer.start(.minutes(45))
                     window.contentView = NSHostingView(rootView: PlaybackSettings().environment(model).tint(.brand))
+                } else if hold == "devices-settings" {
+                    window.contentView = NSHostingView(rootView: DevicesSettings().environment(model).tint(.brand))
                 } else {
                     window.contentView = NSHostingView(rootView: LastFMSettings().environment(model).tint(.brand))
                 }
                 window.makeKeyAndOrderFront(nil)
+                try? "\(window.windowNumber)".write(to: output.appendingPathComponent("WINDOWID"), atomically: true, encoding: .utf8)
                 try? await Task.sleep(for: .seconds(1))
                 if let screen = window.screen {
                     try? "\(Int(window.frame.minX)),\(Int(screen.frame.maxY - window.frame.maxY)),\(Int(window.frame.width)),\(Int(window.frame.height))"

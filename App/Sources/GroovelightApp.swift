@@ -70,6 +70,16 @@ struct PlayerCommands: Commands {
     var model: AppModel
     @Environment(\.openWindow) private var openWindow
 
+    /// The playlist on screen for File > Library > Export Playlist: `.some(nil)` is Loved Songs, nil means none.
+    private var exportablePlaylist: Int64?? {
+        guard model.path.isEmpty, !model.isShowingNowPlaying else { return nil }
+        switch model.selection {
+        case .playlist(let id): return .some(id)
+        case .lovedSongs: return .some(nil)
+        default: return nil
+        }
+    }
+
     var body: some Commands {
         // The File menu of Music: New, Import, and the library's housekeeping in a Library submenu.
         CommandGroup(replacing: .newItem) {
@@ -85,6 +95,11 @@ struct PlayerCommands: Commands {
             Button("Add Folder to Library…") { model.chooseLibraryFolder() }
                 .shortcut(.addFolder, shortcuts)
             Menu("Library") {
+                Button("Import Playlist…") { model.playlistFiles.chooseAndImport() }
+                    .disabled(model.playlistFiles.isImporting)
+                Button("Export Playlist…") { model.playlistFiles.export(playlistId: exportablePlaylist ?? nil) }
+                    .disabled(exportablePlaylist == nil)
+                Divider()
                 Button("Organize Library Files…") { model.files.organize() }
                 Button(model.files.undoTitle) { Task { await model.files.undoLast() } }
                     .disabled(model.files.undoable == nil || model.files.isWorking)
@@ -198,17 +213,18 @@ struct PlayerCommands: Commands {
                 .shortcut(.mainWindow, shortcuts)
         }
         CommandGroup(after: .toolbar) {
-            // The Albums page's cover size (also its toolbar slider and pinching).
-            let onAlbums = model.selection == .albums && model.path.isEmpty && !model.isShowingNowPlaying
-            Button("Bigger Covers") { if onAlbums { CoverSize.change(by: 1) } }
+            // The cover size of the Albums page or the Shelf (also their toolbar sliders and pinching).
+            let covers: CoverSize? = model.isShowingNowPlaying || !model.path.isEmpty ? nil
+                : model.selection == .albums ? .albums : model.selection == .shelf ? .shelf : nil
+            Button("Bigger Covers") { covers?.change(by: 1) }
                 .shortcut(.biggerCovers, shortcuts)
-                .disabled(!onAlbums)
-            Button("Smaller Covers") { if onAlbums { CoverSize.change(by: -1) } }
+                .disabled(covers == nil)
+            Button("Smaller Covers") { covers?.change(by: -1) }
                 .shortcut(.smallerCovers, shortcuts)
-                .disabled(!onAlbums)
-            Button("Default Cover Size") { if onAlbums { CoverSize.reset() } }
+                .disabled(covers == nil)
+            Button("Default Cover Size") { covers?.reset() }
                 .shortcut(.defaultCoverSize, shortcuts)
-                .disabled(!onAlbums)
+                .disabled(covers == nil)
             Divider()
             Button(model.isShowingNowPlaying ? "Hide Now Playing" : "Show Now Playing") {
                 withAnimation(.smooth) { model.isShowingNowPlaying.toggle() }

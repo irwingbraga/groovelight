@@ -11,6 +11,7 @@ struct SettingsView: View {
             Tab("Files", systemImage: "doc.text") { FilesSettings() }
             Tab("Backup", systemImage: "externaldrive.badge.timemachine") { BackupSettings() }
             Tab("Last.fm", systemImage: "dot.radiowaves.left.and.right") { LastFMSettings() }
+            Tab("Devices", systemImage: "smartphone") { DevicesSettings() }
             Tab("Shortcuts", systemImage: "keyboard") { ShortcutsSettings() }
         }
         .frame(width: 720, height: 480)

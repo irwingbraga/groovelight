@@ -78,7 +78,10 @@ struct EditPlaylistSheet: View {
             TextField("Name", text: $name)
                 .textFieldStyle(.roundedBorder)
                 .font(.title3)
-            Toggle("Show name on cover", isOn: $showsTitle)
+            // Only a custom image can go without the name: every other cover shows it.
+            if case .image = kind {
+                Toggle("Show name on cover", isOn: $showsTitle)
+            }
 
             VStack(alignment: .leading, spacing: 8) {
                 Text("Colors").font(.subheadline.weight(.semibold))
@@ -107,7 +110,7 @@ struct EditPlaylistSheet: View {
                         Button { kind = .generated(palette: generated.palette, pattern: pattern.rawValue) } label: {
                             VStack(spacing: 4) {
                                 PlaylistCoverView(name: "", cover: PlaylistCover(kind: .generated(palette: generated.palette, pattern: pattern.rawValue)),
-                                                  songHashes: [], seed: 0, cornerRadius: 6)
+                                                  songHashes: [], seed: 0, cornerRadius: 6, hidesTitle: true)
                                     .frame(width: 52, height: 52)
                                     .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(selected ? Color.brand : .clear, lineWidth: 2.5)
                                         .padding(-3))

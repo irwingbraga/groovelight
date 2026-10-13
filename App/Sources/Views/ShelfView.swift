@@ -16,7 +16,10 @@ struct ShelfView: View {
     @State private var scrollAccumulator: Double = 0
     @FocusState private var isFocused: Bool
 
-    private let coverSize: CGFloat = 300
+    /// Chosen cover size (the toolbar slider, View > Bigger / Smaller Covers and pinching change it).
+    @AppStorage(CoverSize.shelf.key) private var chosenSize = CoverSize.shelf.standard
+    @State private var pinchStart: Double?
+    @State private var height: CGFloat = 0
     private let visibleRadius = 9
 
     var body: some View {
@@ -120,6 +123,30 @@ struct ShelfView: View {
             return .handled
         }
         .onAppear { isFocused = true }
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
+        .simultaneousGesture(MagnifyGesture()
+            .onChanged { value in
+                let start = pinchStart ?? chosenSize
+                pinchStart = start
+                chosenSize = CoverSize.shelf.clamped(start * value.magnification)
+            }
+            .onEnded { _ in pinchStart = nil })
+        .toolbar {
+            ToolbarItem(placement: .automatic) {
+                HStack(spacing: 6) {
+                    Image(systemName: "photo")
+                        .font(.system(size: 9))
+                    Slider(value: $chosenSize, in: CoverSize.shelf.range)
+                        .controlSize(.mini)
+                        .frame(width: 100)
+                    Image(systemName: "photo")
+                        .font(.system(size: 13))
+                }
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 6)
+                .help("Cover size")
+            }
+        }
         .navigationTitle("Shelf")
         #if DEBUG
         .onChange(of: position, initial: true) { DebugHitTargets.shelfPosition = position }
@@ -132,6 +159,15 @@ struct ShelfView: View {
             albums = value
             position = min(position, Double(max(value.count - 1, 0)))
         }
+    }
+
+    /// The size drawn: the chosen one, made smaller when the window is too short for it.
+    private var coverSize: CGFloat {
+        guard height > 0 else { return CGFloat(chosenSize) }
+        // The center cover sits at 45% of the height; its title ends 0.62 cover below that plus 50 pt, and the
+        // scrubber needs the last 70 pt.
+        let fitting = (height * 0.55 - 120) / 0.62
+        return CGFloat(min(chosenSize, max(fitting, CoverSize.shelf.range.lowerBound)))
     }
 
     private func visibleIndices(_ center: Int) -> [Int] {

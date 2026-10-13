@@ -12,7 +12,7 @@ struct AlbumsGridView: View {
     @State private var albums: [AlbumSummary]?
     @AppStorage("albums.sort") private var sort: AlbumSort = .artist
     /// Cover size of the Albums page (the slider, View > Bigger / Smaller Covers and pinching change it).
-    @AppStorage(CoverSize.key) private var coverSize = CoverSize.standard
+    @AppStorage(CoverSize.albums.key) private var coverSize = CoverSize.albums.standard
     /// Size when a pinch started.
     @State private var pinchStart: Double?
     /// The album at the top of the page, kept in view when the covers change size.
@@ -36,7 +36,7 @@ struct AlbumsGridView: View {
                     .onChanged { value in
                         let start = pinchStart ?? coverSize
                         pinchStart = start
-                        coverSize = CoverSize.clamped(start * value.magnification)
+                        coverSize = CoverSize.albums.clamped(start * value.magnification)
                     }
                     .onEnded { _ in pinchStart = nil })
                 .onChange(of: coverSize) {
@@ -57,7 +57,7 @@ struct AlbumsGridView: View {
                     HStack(spacing: 6) {
                         Image(systemName: "square.grid.3x3.fill")
                             .font(.system(size: 9))
-                        Slider(value: $coverSize, in: CoverSize.range)
+                        Slider(value: $coverSize, in: CoverSize.albums.range)
                             .controlSize(.mini)
                             .frame(width: 100)
                         Image(systemName: "square.grid.2x2.fill")
@@ -112,22 +112,25 @@ struct AlbumGrid: View {
     }
 }
 
-/// The Albums page's cover size, in points.
-enum CoverSize {
-    static let key = "albums.coverSize"
-    static let standard: Double = 180
-    static let range: ClosedRange<Double> = 110...380
-    static let step: Double = 30
+/// A page's cover size, in points: the Albums grid and the Shelf each keep their own.
+struct CoverSize: Sendable {
+    let key: String
+    let standard: Double
+    let range: ClosedRange<Double>
+    let step: Double
 
-    static func clamped(_ value: Double) -> Double { min(max(value, range.lowerBound), range.upperBound) }
+    static let albums = CoverSize(key: "albums.coverSize", standard: 180, range: 110...380, step: 30)
+    static let shelf = CoverSize(key: "shelf.coverSize", standard: 300, range: 180...460, step: 40)
+
+    func clamped(_ value: Double) -> Double { min(max(value, range.lowerBound), range.upperBound) }
 
     /// Changes the saved size by `steps` (View > Bigger / Smaller Covers).
-    static func change(by steps: Double) {
+    func change(by steps: Double) {
         let current = UserDefaults.standard.object(forKey: key) as? Double ?? standard
         UserDefaults.standard.set(clamped(current + steps * step), forKey: key)
     }
 
-    static func reset() { UserDefaults.standard.removeObject(forKey: key) }
+    func reset() { UserDefaults.standard.removeObject(forKey: key) }
 }
 
 struct AlbumCard: View {
@@ -200,18 +203,24 @@ struct AlbumDetailView: View {
             VStack(alignment: .leading, spacing: 28) {
                 // Side by side when there is room, stacked in narrow windows. From the page width rather than
                 // ViewThatFits, which rebuilt the large cover on every layout pass (hovering a song) and made the
-                // toolbar's glass flicker.
-                if pageWidth >= 640 {
-                    HStack(alignment: .bottom, spacing: 28) {
-                        artwork
-                        headerInfo
-                    }
-                } else {
-                    VStack(alignment: .leading, spacing: 20) {
-                        artwork
-                        headerInfo
+                // toolbar's glass flicker. The threshold leaves room for the cover, the title and the button row (about
+                // 800 pt with the padding), and the header never asks for more width than the page has: otherwise its
+                // minimum width resized the page, which switched the layout back and forth until AppKit gave up
+                // ("more Update Constraints in Window passes than there are views") in a window at its minimum size.
+                Group {
+                    if pageWidth >= 860 {
+                        HStack(alignment: .bottom, spacing: 28) {
+                            artwork
+                            headerInfo
+                        }
+                    } else {
+                        VStack(alignment: .leading, spacing: 20) {
+                            artwork
+                            headerInfo
+                        }
                     }
                 }
+                .frame(minWidth: 0, alignment: .leading)
                 // Per-row specs only when the album mixes formats; otherwise the header already says it all.
                 TrackList(tracks: tracks, style: .album, showsQuality: AudioSpec.uniform(tracks.map(\.audioSpec)) == nil,
                           albumKey: album.albumKey)

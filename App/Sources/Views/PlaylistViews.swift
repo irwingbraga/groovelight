@@ -214,25 +214,28 @@ struct PlaylistView: View {
                             Divider()
                             Button("Edit Playlist…", systemImage: "pencil") { model.editPlaylist(playlist) }
                         }
+                        Button("Export Playlist…", systemImage: "square.and.arrow.up") { model.playlistFiles.export(playlistId: playlistId) }
                     }
                 }
                 if tracks.isEmpty, playlist?.isSmart == true {
-                    ContentUnavailableView("No Matching Songs", systemImage: "gearshape",
-                                           description: Text("Songs that match the rules show up here as your library changes."))
+                    PlaylistEmptyNote(title: "No Matching Songs", systemImage: "gearshape",
+                                      message: "Songs that match the rules show up here as your library changes.")
                 } else if tracks.isEmpty {
-                    ContentUnavailableView("Empty Playlist", systemImage: "music.note.list",
-                                           description: Text("Drag songs here or use Add to Playlist from a song's menu."))
+                    PlaylistEmptyNote(title: "No Songs Yet", systemImage: "music.note.list",
+                                      message: "Drag songs here or use Add to Playlist from a song's menu.")
                 } else {
                     TrackList(tracks: tracks, style: .playlist)
                 }
             }
+            // Full width and leading even without songs, so an empty playlist keeps the page's layout.
+            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
             .padding(28)
         }
         .coverWash {
             if let playlist {
                 // Without the title: letters would only smear the color.
-                PlaylistCoverView(name: playlist.name, cover: playlist.coverStyle.map { PlaylistCover(kind: $0.kind) },
-                                  songHashes: songHashes, seed: playlist.id ?? 0, cornerRadius: 0)
+                PlaylistCoverView(name: playlist.name, cover: playlist.coverStyle, songHashes: songHashes,
+                                  seed: playlist.id ?? 0, cornerRadius: 0, hidesTitle: true)
             }
         }
         .dropDestination(for: TrackTransfer.self) { items, _ in
@@ -261,15 +264,20 @@ struct LovedSongsView: View {
                 PlaylistHeader(title: "Loved Songs", tracks: tracks) {
                     LovedSongsCover()
                 } extra: {
-                    PageMoreMenu { QueueMenuItems(source: .lovedSongs) }
+                    PageMoreMenu {
+                        QueueMenuItems(source: .lovedSongs)
+                        Divider()
+                        Button("Export Playlist…", systemImage: "square.and.arrow.up") { model.playlistFiles.export(playlistId: nil) }
+                    }
                 }
                 if tracks.isEmpty {
-                    ContentUnavailableView("No Loved Songs", systemImage: "heart",
-                                           description: Text("Songs you love (the heart in the player or Love in a song's menu) show up here."))
+                    PlaylistEmptyNote(title: "No Loved Songs", systemImage: "heart",
+                                      message: "Songs you love (the heart in the player or Love in a song's menu) show up here.")
                 } else {
                     TrackList(tracks: tracks, style: .playlist)
                 }
             }
+            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
             .padding(28)
         }
         .coverWash { LovedSongsCover() }
@@ -279,6 +287,36 @@ struct LovedSongsView: View {
         }
         .navigationTitle("Loved Songs")
         .observing(model.database, id: 0, { try LibraryDatabase.lovedTracks($0) }) { tracks = $0 }
+    }
+}
+
+/// Where the songs of an empty playlist would be: a dashed drop area under the header, in place of the song list.
+private struct PlaylistEmptyNote: View {
+    var title: String
+    var systemImage: String
+    var message: String
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Image(systemName: systemImage)
+                .font(.system(size: 22))
+                .foregroundStyle(.tertiary)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.headline)
+                Text(message)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 22)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            RoundedRectangle(cornerRadius: 12)
+                .strokeBorder(.secondary.opacity(0.35), style: StrokeStyle(lineWidth: 1.5, dash: [6, 5]))
+        }
+        .padding(.top, 8)
     }
 }
 

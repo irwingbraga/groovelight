@@ -126,8 +126,33 @@ private struct SyncedLyricsView: View {
 
     var body: some View {
         let player = model.player
-        // Lines lead the audio slightly so a line lights up as it starts being sung.
-        let active = lyrics.lineIndex(at: player.currentTime + 0.25)
+        // Between the player's position updates (every 250 ms) the time is moved on at the playing speed, so a line
+        // lights up when it starts rather than up to a quarter second later. Only a change of line redraws the lines.
+        TimelineView(.animation(minimumInterval: 0.05, paused: player.state != .playing)) { context in
+            // Lines lead the audio slightly so a line lights up as it starts being sung.
+            SyncedLyricsLines(lyrics: lyrics, fontSize: fontSize,
+                              active: lyrics.lineIndex(at: player.estimatedTime(at: context.date) + 0.15))
+                .equatable()
+        }
+    }
+}
+
+private struct SyncedLyricsLines: View, Equatable {
+    var lyrics: SyncedLyrics
+    var fontSize: CGFloat
+    var active: Int?
+    @Environment(AppModel.self) private var model
+    @State private var height: CGFloat = 0
+
+    /// Where the current line is held, from the top of the panel.
+    private static let anchor: CGFloat = 0.35
+
+    nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.active == rhs.active && lhs.fontSize == rhs.fontSize && lhs.lyrics == rhs.lyrics
+    }
+
+    var body: some View {
+        let player = model.player
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: fontSize * 0.75) {
@@ -143,14 +168,25 @@ private struct SyncedLyricsView: View {
                             .id(index)
                     }
                 }
-                .padding(.vertical, fontSize * 6)
+                // The first line starts near the top, just clear of the fade (as in Music), and the early lines are read
+                // there until the current one passes the anchor. Room below lets the last line still reach the anchor.
+                .padding(.top, max(fontSize * 1.5, height * 0.08))
+                .padding(.bottom, max(fontSize * 6, height * (1 - Self.anchor)))
                 .animation(.easeOut(duration: 0.3), value: active)
+                .id("lines")
             }
             .scrollIndicators(.never)
             .mask(LyricsPanel.fade)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
             .onChange(of: active, initial: true) { _, index in
-                guard let index else { return }
-                withAnimation(.smooth(duration: 0.6)) { proxy.scrollTo(index, anchor: UnitPoint(x: 0, y: 0.35)) }
+                withAnimation(.smooth(duration: 0.6)) {
+                    if let index {
+                        proxy.scrollTo(index, anchor: UnitPoint(x: 0, y: Self.anchor))
+                    } else {
+                        // Before the first line (an intro, or a new song): back to the top.
+                        proxy.scrollTo("lines", anchor: .top)
+                    }
+                }
             }
         }
     }

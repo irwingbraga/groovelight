@@ -152,6 +152,35 @@ struct PlaybackTests {
         #expect(OutputDevice.systemDefault?.hogOwner != ProcessInfo.processInfo.processIdentifier)
     }
 
+    /// The position follows what is heard: it trails the rendered audio by the chain's delay (the speed node holds back
+    /// about 90 ms), and the estimate between updates moves with the clock instead of in 250 ms steps.
+    @Test(.timeLimit(.minutes(1))) func positionFollowsTheHeardAudio() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("groovelight-time-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let items = try Self.tones(6, albums: ["A"], in: directory)
+        let player = PlaybackController()
+        player.volume = 0
+        player.play(items)
+        try await Task.sleep(for: .seconds(1.5))
+
+        let deck = player.deck
+        #expect(deck.latency > 0.05)
+        let rendered = try #require(deck.player.currentTime)
+        #expect(rendered - player.currentTime > deck.latency - 0.3)
+
+        var samples: [(Date, TimeInterval)] = []
+        for _ in 0..<20 {
+            samples.append((.now, player.estimatedTime(at: .now)))
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        let steps = zip(samples, samples.dropFirst()).map { $1.1 - $0.1 }
+        // Never backwards by more than a hair, never a quarter-second jump, and in step with the wall clock overall.
+        #expect(steps.allSatisfy { $0 > -0.03 && $0 < 0.2 }, "\(steps)")
+        let clock = samples.last!.0.timeIntervalSince(samples.first!.0)
+        #expect(abs((samples.last!.1 - samples.first!.1) - clock) < 0.2)
+        player.stop()
+    }
+
     @Test(.timeLimit(.minutes(1))) func playsFaster() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("groovelight-rate-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: directory) }

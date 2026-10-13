@@ -108,15 +108,19 @@ final class FilesStore {
         panel.canChooseDirectories = true
         panel.canChooseFiles = true
         panel.allowsMultipleSelection = true
-        panel.allowedContentTypes = [.audio] + [UTType(filenameExtension: "cue")].compactMap { $0 }
+        panel.allowedContentTypes = [.audio] + [UTType(filenameExtension: "cue")].compactMap { $0 } + PlaylistTransfer.readableTypes
         panel.prompt = "Import"
-        panel.message = "Choose songs or folders of music to import into your library."
+        panel.message = "Choose songs, folders of music or playlists to import into your library."
         guard panel.runModal() == .OK, !panel.urls.isEmpty else { return }
         importItems(panel.urls)
     }
 
-    /// Imports songs, folders or cue sheets (chosen in the panel, or dropped on the window).
+    /// Imports songs, folders or cue sheets (chosen in the panel, or dropped on the window). Playlist files among them
+    /// become playlists.
     func importItems(_ urls: [URL]) {
+        let playlists = urls.filter(PlaylistTransfer.isPlaylistFile)
+        if !playlists.isEmpty { model.playlistFiles.importFiles(playlists) }
+        let urls = urls.filter { !PlaylistTransfer.isPlaylistFile($0) }
         guard !urls.isEmpty, importSession == nil else { return }
         guard !((try? model.database.writer.read { try LibraryDatabase.roots($0) }) ?? []).isEmpty else {
             model.errorMessage = "Add a library folder first (Settings, Library): imported songs are moved there."

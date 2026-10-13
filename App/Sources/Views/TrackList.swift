@@ -267,6 +267,7 @@ struct TrackContextMenu: View {
         }
         Button("Fix Metadata…") { model.metadata.review(tracks) }
         Button("Show in Finder") { model.showInFinder(tracks) }
+        SendToMenu(source: .tracks(tracks))
     }
 }
 
@@ -295,5 +296,6 @@ struct QueueMenuItems: View {
     var body: some View {
         Button("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward") { model.enqueue(source, next: true) }
         Button("Add to Up Next", systemImage: "text.line.last.and.arrowtriangle.forward") { model.enqueue(source, next: false) }
+        SendToMenu(source: source.sendSource)
     }
 }

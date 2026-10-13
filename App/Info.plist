@@ -22,8 +22,14 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.music</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_groovelight._tcp</string>
+	</array>
 	<key>NSHumanReadableCopyright</key>
 	<string></string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Groovelight syncs music with the Groovelight Sync app on your Android players and phones over the local network.</string>
 	<key>UTExportedTypeDeclarations</key>
 	<array>
 		<dict>

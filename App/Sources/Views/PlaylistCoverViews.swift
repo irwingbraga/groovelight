@@ -125,9 +125,18 @@ struct PlaylistCoverView: View {
     var seed: Int64
     var isSmart = false
     var cornerRadius: CGFloat = 10
+    /// Leaves the name out whatever the cover says (the blurred wash behind the page, swatches).
+    var hidesTitle = false
+
+    /// The name is on every cover, except a custom image whose owner turned it off.
+    static func showsTitle(_ cover: PlaylistCover?) -> Bool {
+        guard let cover, case .image = cover.kind else { return true }
+        return cover.showsTitle
+    }
 
     var body: some View {
         let kind = cover?.kind ?? (songHashes.isEmpty ? .generated(palette: CoverPalette.forSeed(seed).id, pattern: "none") : .songCovers)
+        let showsTitle = !hidesTitle && Self.showsTitle(cover)
         GeometryReader { geometry in
             let side = min(geometry.size.width, geometry.size.height)
             ZStack(alignment: .topLeading) {
@@ -136,17 +145,17 @@ struct PlaylistCoverView: View {
                     let palette = CoverPalette.named(paletteId)
                     Rectangle().fill(palette.gradient)
                     CoverPatternView(pattern: CoverPattern(rawValue: patternId) ?? .none)
-                    if cover?.showsTitle == true {
+                    if showsTitle {
                         CoverTitle(name: name, side: side, isDark: palette.titleCornerLuminance > 0.55)
                     }
                 case let .image(hash):
                     ArtworkImage(hash: hash, size: .large, cornerRadius: 0)
-                    if cover?.showsTitle == true {
+                    if showsTitle {
                         ImageCoverTitle(name: name, side: side, hash: hash)
                     }
                 case .songCovers:
                     SongCoversMosaic(hashes: songHashes)
-                    if cover?.showsTitle == true {
+                    if showsTitle {
                         ImageCoverTitle(name: name, side: side, hash: songHashes.first)
                     }
                 }
@@ -157,7 +166,7 @@ struct PlaylistCoverView: View {
         .clipShape(.rect(cornerRadius: cornerRadius))
         .overlay(alignment: .topTrailing) {
             // The gear badge would sit on the title; with a title, smart playlists are recognizable by their subtitle.
-            if isSmart, cover?.showsTitle != true {
+            if isSmart, hidesTitle || !Self.showsTitle(cover) {
                 SmartBadge()
             }
         }

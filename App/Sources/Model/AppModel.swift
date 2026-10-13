@@ -17,6 +17,8 @@ enum SidebarItem: Hashable {
     case allPlaylists
     case lovedSongs
     case playlist(Int64)
+    /// A portable player or memory card, by volume id.
+    case device(String)
 }
 
 /// App-wide state: library database, scanner, player and UI flags shared across windows.
@@ -31,6 +33,9 @@ final class AppModel {
     /// Set at the end of `init` (they need the model).
     private(set) var backup: BackupManager!
     private(set) var files: FilesStore!
+    private(set) var playlistFiles: PlaylistTransfer!
+    private(set) var devices: DeviceStore!
+    private(set) var wireless: WirelessSyncService!
     /// Library folders that could not be opened at the last scan (an unplugged drive, a moved folder).
     var unavailableFolders: Set<String> = []
 
@@ -170,6 +175,9 @@ final class AppModel {
         loudness.setEnabled(player.normalization != .off)
         backup = BackupManager(model: self)
         files = FilesStore(model: self)
+        playlistFiles = PlaylistTransfer(model: self)
+        wireless = WirelessSyncService(model: self)
+        devices = DeviceStore(model: self)
         AppTheme.current.apply()
         restoreQueue()
         startSavingQueue()

@@ -11,6 +11,13 @@ struct ContentView: View {
     @FocusState private var isSearchFocused: Bool
     /// Files are being dragged over the window (to import them).
     @State private var isDropTargeted = false
+    @State private var columns = NavigationSplitViewVisibility.all
+    /// The sidebar was hidden to make room (see `makeRoom`), so it comes back by itself.
+    @State private var sidebarAutoHidden = false
+    @State private var windowWidth: CGFloat = 0
+
+    /// Sidebar, list and side panel at their usual widths plus a usable page (420 pt).
+    private static let roomForFourColumns: CGFloat = 230 + 250 + 420 + 320
 
     /// The whole window goes dark on the Shelf, like the Cover Flow screens it is modeled on.
     private var isShowingShelf: Bool { model.selection == .shelf }
@@ -21,7 +28,7 @@ struct ContentView: View {
         @Bindable var model = model
         switch model.selection {
         case .artists, .genres:
-            NavigationSplitView {
+            NavigationSplitView(columnVisibility: $columns) {
                 sidebar
             } content: {
                 Group {
@@ -32,11 +39,28 @@ struct ContentView: View {
                 pages
             }
         default:
-            NavigationSplitView {
+            NavigationSplitView(columnVisibility: $columns) {
                 sidebar
             } detail: {
                 pages
             }
+        }
+    }
+
+    /// Artists and Genres with a side panel open in a window too narrow for all four columns: the page would be
+    /// squeezed to a sliver (its header cut, the panel over it), so the sidebar steps aside, as it does in Music.
+    private var needsRoom: Bool {
+        (model.selection == .artists || model.selection == .genres) && model.sidePanel != nil && !model.isShowingNowPlaying
+            && windowWidth > 0 && windowWidth < Self.roomForFourColumns
+    }
+
+    private func makeRoom(_ needed: Bool) {
+        if needed, columns == .all {
+            sidebarAutoHidden = true
+            withAnimation(.smooth) { columns = .doubleColumn }
+        } else if !needed, sidebarAutoHidden {
+            sidebarAutoHidden = false
+            withAnimation(.smooth) { columns = .all }
         }
     }
 
@@ -65,6 +89,12 @@ struct ContentView: View {
             }
             .onChange(of: model.searchFocusRequest) { isSearchFocused = true }
             .toolbar(model.isShowingNowPlaying ? .hidden : .automatic, for: .windowToolbar)
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { windowWidth = $0 }
+            .onChange(of: needsRoom, initial: true) { _, needed in makeRoom(needed) }
+            .onChange(of: columns) { _, visibility in
+                // Shown or hidden by hand: no longer ours to bring back.
+                if visibility == .all { sidebarAutoHidden = false }
+            }
 
             if isDropTargeted {
                 DropToImportOverlay()
@@ -78,7 +108,7 @@ struct ContentView: View {
                     .zIndex(1)
             }
         }
-        // Songs, folders or cue sheets dragged from Finder open Import.
+        // Songs, folders or cue sheets dragged from Finder open Import; playlist files become playlists.
         .onDrop(of: [.fileURL], isTargeted: $isDropTargeted.animation(.easeOut(duration: 0.15))) { providers in
             Task {
                 var urls: [URL] = []
@@ -127,6 +157,7 @@ struct DetailView: View {
             case .allPlaylists: AllPlaylistsView()
             case .lovedSongs: LovedSongsView()
             case .playlist(let id): PlaylistView(playlistId: id)
+            case .device(let id): DeviceView(deviceId: id)
             }
         }
         // Fresh identity per destination: avoids SwiftUI reusing a Table/List subtree mid-update when switching.
@@ -252,17 +283,22 @@ final class SystemAppearance {
 /// inspector attached to the NavigationStack is covered by pushed album pages.
 private struct SidePanelModifier: ViewModifier {
     @Environment(AppModel.self) private var model
+    /// The panel last shown: kept while the inspector animates closed, so lyrics don't turn into Up Next on the way out.
+    @State private var shown: AppModel.SidePanel?
 
     func body(content: Content) -> some View {
         content
             .inspector(isPresented: Binding(get: { model.sidePanel != nil }, set: { if !$0 { model.sidePanel = nil } })) {
                 Group {
-                    switch model.sidePanel {
+                    switch model.sidePanel ?? shown {
                     case .lyrics: LyricsSidePanel()
                     default: QueueView()
                     }
                 }
                 .inspectorColumnWidth(min: 280, ideal: 320, max: 420)
+            }
+            .onChange(of: model.sidePanel, initial: true) { _, panel in
+                if let panel { shown = panel }
             }
     }
 }
@@ -321,6 +357,12 @@ private struct LibrarySheets: ViewModifier {
     private var organize: Binding<FilesStore.OrganizeRequest?> {
         Binding(get: { model.files?.organizeRequest }, set: { model.files.organizeRequest = $0 })
     }
+    private var pairing: Binding<WirelessSyncService.PairingPrompt?> {
+        Binding(get: { model.wireless?.pairingPrompt }, set: { model.wireless.pairingPrompt = $0 })
+    }
+    private var playlistReport: Binding<PlaylistTransfer.Report?> {
+        Binding(get: { model.playlistFiles?.report }, set: { model.playlistFiles.report = $0 })
+    }
     private var importSession: Binding<ImportSession?> {
         Binding(get: { model.files?.importSession }, set: { model.files.importSession = $0 })
     }
@@ -330,6 +372,8 @@ private struct LibrarySheets: ViewModifier {
             .sheet(isPresented: locate) { LocateFoldersSheet() }
             .sheet(item: organize) { OrganizeSheet(tracks: $0.tracks) }
             .sheet(item: importSession) { ImportSheet(session: $0) }
+            .sheet(item: playlistReport) { PlaylistImportReport(report: $0) }
+            .sheet(item: pairing) { PairingSheet(prompt: $0) }
     }
 }
 

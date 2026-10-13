@@ -90,17 +90,22 @@ struct ArtistDetailView: View {
                 // Side by side when there is room, stacked in narrow windows. Decided from the page width, not with
                 // ViewThatFits: that re-measured (and rebuilt) the large photo on every layout pass, such as hovering a
                 // song, and the toolbar's glass flickered as it re-sampled the page.
-                if pageWidth >= 640 {
-                    HStack(alignment: .bottom, spacing: 28) {
-                        photo
-                        title
-                    }
-                } else {
-                    VStack(alignment: .leading, spacing: 20) {
-                        photo
-                        title
+                // The header never asks for more width than the page has: its minimum width resized the page, which
+                // switched the layout back and forth until AppKit gave up, in a window at its minimum size.
+                Group {
+                    if pageWidth >= 760 {
+                        HStack(alignment: .bottom, spacing: 28) {
+                            photo
+                            title
+                        }
+                    } else {
+                        VStack(alignment: .leading, spacing: 20) {
+                            photo
+                            title
+                        }
                     }
                 }
+                .frame(minWidth: 0, alignment: .leading)
                 // Each album like Music's artist pages: cover on the left, its songs on the right.
                 LazyVStack(alignment: .leading, spacing: 44) {
                     ForEach(albums) { entry in
@@ -193,7 +198,8 @@ private struct ArtistAlbumSection: View {
                 }
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        // Like the page header: the layout must not widen what it is measured from.
+        .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
     }
 

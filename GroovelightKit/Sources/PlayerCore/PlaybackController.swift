@@ -41,7 +41,13 @@ public enum VolumeNormalization: String, Codable, CaseIterable, Sendable {
 public final class PlaybackController {
     public private(set) var state: PlaybackState = .stopped
     public private(set) var queue = PlayQueue()
-    public private(set) var currentTime: TimeInterval = 0
+    /// Position in the song as heard: what the engine has rendered, less the delay of the processing chain and the
+    /// output device (the speed node alone holds back about 90 ms, even at normal speed).
+    public private(set) var currentTime: TimeInterval = 0 {
+        didSet { currentTimeUpdatedAt = .now }
+    }
+    /// When `currentTime` was last set, for `estimatedTime(at:)`.
+    @ObservationIgnored private var currentTimeUpdatedAt = Date.now
     public private(set) var duration: TimeInterval = 0
     public private(set) var lastError: String?
 
@@ -169,7 +175,7 @@ public final class PlaybackController {
     /// The two players; `deck` is the one playing the current song.
     @ObservationIgnored private let decks: [Deck]
     @ObservationIgnored private var activeIndex = 0
-    private var deck: Deck { decks[activeIndex] }
+    var deck: Deck { decks[activeIndex] }
     private var player: AudioPlayer { deck.player }
     /// The crossfade in progress: the deck fading out and the task moving the volumes.
     @ObservationIgnored private var fade: (outgoing: Deck, task: Task<Void, Never>)?
@@ -394,6 +400,14 @@ public final class PlaybackController {
         enqueueNextForGapless()
     }
 
+    /// The position at `date`, moved on from the last update (every 250 ms) at the playing speed: for views that
+    /// follow the song closely, such as synced lyrics.
+    public func estimatedTime(at date: Date) -> TimeInterval {
+        guard state == .playing, pendingStartTime == nil else { return currentTime }
+        let elapsed = min(max(date.timeIntervalSince(currentTimeUpdatedAt), 0), 0.5)
+        return min(currentTime + elapsed * Double(rate), max(duration, currentTime))
+    }
+
     private func startTicker() {
         ticker?.cancel()
         ticker = Task { [weak self] in
@@ -421,7 +435,9 @@ public final class PlaybackController {
             applyPendingStart()
             return
         }
-        if let time = player.currentTime {
+        if let rendered = player.currentTime {
+            // The chain delay is in output time; at another speed it covers more (or less) of the song.
+            let time = max(rendered - deck.latency * Double(deck.timePitch.bypass ? 1 : deck.timePitch.rate), 0)
             let delta = time - lastTickTime
             // Only count forward progress at roughly real-time speed (ignores seeks).
             if delta > 0, delta < 1 { listenedSeconds += delta }
@@ -735,6 +751,12 @@ final class Deck: @unchecked Sendable {
     }
 
     var chain: [AVAudioNode] { [timePitch, gainNode, equalizer.node] }
+
+    /// Seconds between the engine rendering a frame and it being heard: the processing nodes (bypassed or not, they
+    /// keep their delay) and the output device with its buffers.
+    var latency: TimeInterval {
+        chain.reduce(0) { $0 + (($1 as? AVAudioUnit)?.latency ?? 0) } + player.outputNode.presentationLatency
+    }
 }
 
 /// A flag read on the audio thread: whether a deck's tap feeds the analyzer.

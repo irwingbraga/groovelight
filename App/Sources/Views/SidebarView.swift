@@ -3,7 +3,8 @@ import SwiftUI
 
 struct SidebarView: View {
     @Environment(AppModel.self) private var model
-    @State private var playlists: [Playlist] = []
+    /// Playlists with their songs' covers, for the cover icons.
+    @State private var playlists: [PlaylistSummary] = []
     @State private var renaming: Int64?
     @State private var draftName = ""
 
@@ -22,6 +23,37 @@ struct SidebarView: View {
             Section("Explore") {
                 Label("Shelf", systemImage: "rectangle.stack.badge.play").tag(SidebarItem.shelf)
             }
+            // Players and memory cards, while they are connected.
+            if !model.devices.devices.isEmpty {
+                Section("Devices") {
+                    ForEach(model.devices.devices) { device in
+                        HStack {
+                            Label(device.name, systemImage: device.isWireless ? "smartphone" : "sdcard")
+                            Spacer()
+                            if model.devices.job?.deviceId == device.id, model.devices.job?.isRunning == true {
+                                ProgressView().controlSize(.mini)
+                            } else if device.isWireless {
+                                Circle()
+                                    .fill(device.isOnline ? Color.green : Color.secondary.opacity(0.4))
+                                    .frame(width: 7, height: 7)
+                                    .help(device.isOnline ? "Online" : "Offline: it syncs when its app next checks in")
+                            } else {
+                                Button { model.devices.eject(device) } label: { Image(systemName: "eject.fill") }
+                                    .buttonStyle(.borderless)
+                                    .help("Eject \(device.name)")
+                            }
+                        }
+                        .tag(SidebarItem.device(device.id))
+                        .contextMenu {
+                            Button("Sync Now") { model.devices.sync(device) }
+                                .disabled(model.devices.job?.isRunning == true)
+                            if !device.isWireless {
+                                Button("Eject") { model.devices.eject(device) }
+                            }
+                        }
+                    }
+                }
+            }
             Section("Playlists") {
                 Label("All Playlists", systemImage: "square.grid.2x2").tag(SidebarItem.allPlaylists)
                 Label {
@@ -30,19 +62,28 @@ struct SidebarView: View {
                     Image(systemName: "heart.fill").foregroundStyle(.pink)
                 }
                 .tag(SidebarItem.lovedSongs)
-                .contextMenu { QueueMenuItems(source: .lovedSongs) }
+                .contextMenu {
+                    QueueMenuItems(source: .lovedSongs)
+                    Divider()
+                    Button("Export Playlist…") { model.playlistFiles.export(playlistId: nil) }
+                }
                 .dropDestination(for: TrackTransfer.self) { items, _ in
                     model.love(trackIds: items.map(\.id))
                     return true
                 }
-                ForEach(playlists) { playlist in
+                ForEach(playlists) { summary in
+                    let playlist = summary.playlist
                     if let id = playlist.id {
                         Group {
                             if renaming == id {
                                 TextField("Name", text: $draftName)
                                     .onSubmit { commitRename(id) }
                             } else {
-                                Label(playlist.name, systemImage: playlist.isSmart ? "gearshape" : "music.note.list")
+                                Label {
+                                    Text(playlist.name)
+                                } icon: {
+                                    SidebarCover(summary: summary)
+                                }
                             }
                         }
                         .tag(SidebarItem.playlist(id))
@@ -57,6 +98,7 @@ struct SidebarView: View {
                                 draftName = playlist.name
                                 renaming = id
                             }
+                            Button("Export Playlist…") { model.playlistFiles.export(playlistId: id) }
                             Button("Delete Playlist", role: .destructive) { model.deletePlaylist(id) }
                         }
                         .dropDestination(for: TrackTransfer.self) { items, _ in
@@ -77,7 +119,7 @@ struct SidebarView: View {
                 newPlaylistButton
             }
         }
-        .observing(model.database, id: 0, { try LibraryDatabase.playlists($0) }) { playlists = $0 }
+        .observing(model.database, id: 0, { try LibraryDatabase.playlistOverview($0).playlists }) { playlists = $0 }
     }
 
     private var newPlaylistButton: some View {
@@ -147,5 +189,27 @@ private struct LibraryJobRow: View {
         .padding(.horizontal, 12)
         .padding(.top, 8)
         .help("Fetching missing library info in the background, one request at a time")
+    }
+}
+
+/// A playlist's cover as its sidebar icon, name included, exactly as in All Playlists (the chosen cover, else its
+/// songs' covers or its generated colors).
+private struct SidebarCover: View {
+    var summary: PlaylistSummary
+
+    static let side: CGFloat = 20
+    /// The size of a cover in All Playlists.
+    static let cardSide: CGFloat = 200
+    static let cornerRadius: CGFloat = 4
+
+    var body: some View {
+        let playlist = summary.playlist
+        // Drawn at the size of an All Playlists card, then shrunk: the name wraps and sits as on the card (at 20 pt
+        // the title's minimum font size would wrap it differently).
+        PlaylistCoverView(name: playlist.name, cover: playlist.coverStyle, songHashes: summary.artworkHashes,
+                          seed: playlist.id ?? 0, cornerRadius: Self.cornerRadius * Self.cardSide / Self.side)
+            .frame(width: Self.cardSide, height: Self.cardSide)
+            .scaleEffect(Self.side / Self.cardSide)
+            .frame(width: Self.side, height: Self.side)
     }
 }
