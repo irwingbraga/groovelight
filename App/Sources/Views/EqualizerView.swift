@@ -15,6 +15,12 @@ struct EqualizerView: View {
         let store = model.equalizer
         @Bindable var bindable = store
         VStack(spacing: 14) {
+            if model.player.bitPerfect {
+                Label("Paused while Bit-perfect playback is on (Controls, Bit-Perfect Playback).", systemImage: "checkmark.seal")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
             HStack(spacing: 12) {
                 Toggle("Equalizer", isOn: $bindable.isEnabled)
                     .toggleStyle(.switch)

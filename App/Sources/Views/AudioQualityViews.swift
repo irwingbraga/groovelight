@@ -121,7 +121,11 @@ struct AudioDetailsView: View {
             }
             .font(.callout)
 
-            if isCurrent, outputRate > 0 {
+            if isCurrent, player.bitPerfect {
+                Divider()
+                OutputStatusRow()
+                    .font(.callout)
+            } else if isCurrent, outputRate > 0 {
                 Divider()
                 VStack(alignment: .leading, spacing: 4) {
                     Label(player.outputDeviceName ?? "Output", systemImage: "hifispeaker")
@@ -152,7 +156,7 @@ struct AudioDetailsView: View {
         if isDSD { return "Converted from DSD to PCM, playing at \(output)." }
         guard let fileRate else { return "Playing at \(output)." }
         if abs(fileRate - outputRate) < 1 { return "Playing at the file's native rate (\(output))." }
-        return String(format: "Resampled from %g kHz to %@. Set the device to %g kHz in Audio MIDI Setup for native playback.",
+        return String(format: "Resampled from %g kHz to %@. Turn on Bit-perfect playback (Settings, Playback) to play at the file's rate.",
                       fileRate / 1_000, output, fileRate / 1_000)
     }
 }

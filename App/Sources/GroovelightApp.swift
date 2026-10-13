@@ -148,6 +148,27 @@ struct PlayerCommands: Commands {
                 }
             }
             .shortcut(.cycleRepeat, shortcuts)
+            Picker("Playback Speed", selection: Binding(get: { model.player.rate }, set: { model.setRate($0) })) {
+                ForEach(PlaybackPrefs.speeds, id: \.self) { speed in
+                    Text(PlaybackPrefs.speedLabel(speed)).tag(speed)
+                }
+            }
+            .disabled(model.player.bitPerfect)
+            Toggle("Bit-Perfect Playback", isOn: Binding(get: { model.player.bitPerfect }, set: { on in
+                model.player.bitPerfect = on
+                UserDefaults.standard.set(on, forKey: PlaybackPrefs.bitPerfect)
+            }))
+            Picker("Sleep Timer", selection: Binding(get: { model.sleepTimer.mode }, set: { mode in
+                if let mode { model.sleepTimer.start(mode) } else { model.sleepTimer.cancel() }
+            })) {
+                Text("Off").tag(SleepTimer.Mode?.none)
+                Divider()
+                ForEach(SleepTimer.choices, id: \.self) { minutes in
+                    Text(minutes < 60 || minutes % 60 != 0 ? "\(minutes) Minutes" : "\(minutes / 60) Hour\(minutes == 60 ? "" : "s")")
+                        .tag(SleepTimer.Mode?.some(.minutes(minutes)))
+                }
+                Text("End of Current Song").tag(SleepTimer.Mode?.some(.endOfSong))
+            }
             Divider()
             Button("Love or Undo Love") { model.toggleLovedCurrent() }
                 .shortcut(.love, shortcuts)

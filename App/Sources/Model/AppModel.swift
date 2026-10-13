@@ -109,6 +109,12 @@ final class AppModel {
     @ObservationIgnored private let scanner: LibraryScanner
     /// Keeps the library in step with its folders (watching, catching up at launch, drives, timers).
     private(set) var sync: LibrarySync!
+    /// Last.fm: now playing, scrobbles and loves.
+    private(set) var lastfm: LastFMStore!
+    /// Pauses playback after a while or at the end of the song.
+    private(set) var sleepTimer: SleepTimer!
+    /// Measures songs without ReplayGain tags for volume normalization.
+    private(set) var loudness: LoudnessStore!
     @ObservationIgnored private let nowPlaying = NowPlayingCenter()
 
     static let volumeKey = "player.volume"
@@ -140,9 +146,15 @@ final class AppModel {
             guard let self else { return }
             self.nowPlaying.update(item: item, artworkURL: item.artworkURL, player: self.player)
             self.prefetchLyrics(trackId: item.id)
+            self.lastfm.started(item)
+            // Unmeasured songs about to play are measured first, so their level is right next time.
+            if self.player.normalization != .off, item.trackGain == nil {
+                self.loudness.prioritize([item.id] + (self.player.queue.nextForAutoAdvance.map { [$0.id] } ?? []))
+            }
         }
         player.onItemFinished = { [weak self] item, listened in
             self?.recordListen(item: item, seconds: listened)
+            self?.lastfm.finished(item, listened: listened)
         }
         // A song whose file is gone: its folder is checked, so the library catches up with what moved or was deleted.
         player.onItemFailed = { [weak self] item in self?.sync.checkFolder(of: item.url) }
@@ -150,6 +162,12 @@ final class AppModel {
         ArtworkLoader.shared.cache = artwork
 
         sync = LibrarySync(model: self, scanner: scanner)
+        lastfm = LastFMStore(database: database)
+        sleepTimer = SleepTimer(player: player)
+        loudness = LoudnessStore(database: database)
+        PlaybackPrefs.register()
+        PlaybackPrefs.apply(to: player)
+        loudness.setEnabled(player.normalization != .off)
         backup = BackupManager(model: self)
         files = FilesStore(model: self)
         AppTheme.current.apply()
@@ -282,7 +300,11 @@ final class AppModel {
             }
         }
         NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.saveQueue() }
+            MainActor.assumeIsolated {
+                self?.saveQueue()
+                // Exclusive access and the device's original rate go back to the system.
+                self?.player.releaseOutputDevice()
+            }
         }
     }
 
@@ -314,7 +336,11 @@ final class AppModel {
                      album: track.displayAlbum, duration: track.duration,
                      artworkURL: track.artworkHash.map { artwork.url(for: $0, size: .large) },
                      // A cue track plays only its range of the shared audio file.
-                     startTime: track.startTime, endTime: track.endTime, sampleRate: track.sampleRate)
+                     startTime: track.startTime, endTime: track.endTime, sampleRate: track.sampleRate,
+                     albumKey: track.albumKey,
+                     // ReplayGain tags first, otherwise the measured loudness.
+                     trackGain: track.replayGainTrackGain ?? track.loudness.map(LoudnessMeter.gain(forLoudness:)),
+                     albumGain: track.replayGainAlbumGain, bitDepth: track.bitDepth)
     }
 
     func play(_ tracks: [Track], startAt index: Int = 0, shuffle: Bool = false) {
@@ -454,6 +480,12 @@ final class AppModel {
         }
     }
 
+    /// Playback speed from the menu (saved like the setting).
+    func setRate(_ rate: Float) {
+        player.rate = rate
+        UserDefaults.standard.set(Double(player.rate), forKey: PlaybackPrefs.rate)
+    }
+
     /// Volume to go back to when unmuting.
     @ObservationIgnored private var volumeBeforeMute: Float = 0.8
 
@@ -497,6 +529,7 @@ final class AppModel {
     func toggleLoved(_ track: Track) {
         guard let id = track.id else { return }
         try? database.setLoved(!track.isLoved, trackId: id)
+        lastfm.lovedChanged(trackIds: [id], loved: !track.isLoved)
     }
 
     // MARK: - Playlists
@@ -566,6 +599,7 @@ final class AppModel {
     /// Loves songs (dropping them on Loved Songs).
     func love(trackIds: [Int64]) {
         try? database.setLoved(true, trackIds: trackIds)
+        lastfm.lovedChanged(trackIds: trackIds, loved: true)
     }
 
     func add(_ tracks: [Track], to playlist: Playlist) {

@@ -6,9 +6,11 @@ struct SettingsView: View {
         TabView {
             Tab("General", systemImage: "gearshape") { GeneralSettings() }
             Tab("Library", systemImage: "folder") { LibrarySettings() }
+            Tab("Playback", systemImage: "play.circle") { PlaybackSettings() }
             Tab("Metadata", systemImage: "wand.and.sparkles") { MetadataSettings() }
             Tab("Files", systemImage: "doc.text") { FilesSettings() }
             Tab("Backup", systemImage: "externaldrive.badge.timemachine") { BackupSettings() }
+            Tab("Last.fm", systemImage: "dot.radiowaves.left.and.right") { LastFMSettings() }
             Tab("Shortcuts", systemImage: "keyboard") { ShortcutsSettings() }
         }
         .frame(width: 720, height: 480)

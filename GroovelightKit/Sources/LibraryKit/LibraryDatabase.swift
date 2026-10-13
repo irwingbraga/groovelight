@@ -174,6 +174,28 @@ public final class LibraryDatabase: Sendable {
                 t.add(column: "lastFullScanAt", .datetime)
             }
         }
+        migrator.registerMigration("v10-lastfmQueue") { db in
+            // Scrobbles, loves and unloves waiting to be sent to Last.fm.
+            try db.create(table: LastFMQueueItem.databaseTableName) { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("kind", .text).notNull()
+                t.column("artist", .text).notNull()
+                t.column("track", .text).notNull()
+                t.column("album", .text)
+                t.column("albumArtist", .text)
+                t.column("duration", .double)
+                t.column("trackNumber", .integer)
+                t.column("timestamp", .datetime).notNull().indexed()
+                t.column("attempts", .integer).notNull().defaults(to: 0)
+            }
+        }
+        migrator.registerMigration("v11-loudness") { db in
+            // Measured loudness for volume normalization of songs without ReplayGain tags.
+            try db.alter(table: Track.databaseTableName) { t in
+                t.add(column: "loudness", .double)
+                t.add(column: "loudnessCheckedAt", .datetime)
+            }
+        }
         return migrator
     }
 

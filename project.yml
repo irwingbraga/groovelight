@@ -35,6 +35,8 @@ targets:
         product: Visualizers
       - package: GroovelightKit
         product: MetadataKit
+      - package: GroovelightKit
+        product: Scrobbler
     entitlements:
       path: App/Groovelight.entitlements
       properties:

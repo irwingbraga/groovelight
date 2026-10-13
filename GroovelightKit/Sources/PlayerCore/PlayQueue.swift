@@ -14,9 +14,17 @@ public struct PlayableItem: Hashable, Sendable, Identifiable {
     public var startTime: TimeInterval?
     public var endTime: TimeInterval?
     public var sampleRate: Double?
+    /// Identifies the album (crossfade can skip songs that follow each other on one album).
+    public var albumKey: String?
+    /// Loudness gains in dB (ReplayGain tags, or measured), applied when volume normalization is on.
+    public var trackGain: Double?
+    public var albumGain: Double?
+    /// Bits per sample of the file (nil for lossy formats), to tell whether the device takes them whole.
+    public var bitDepth: Int?
 
     public init(id: Int64, url: URL, title: String, artist: String, album: String, duration: TimeInterval, artworkURL: URL? = nil,
-                startTime: TimeInterval? = nil, endTime: TimeInterval? = nil, sampleRate: Double? = nil) {
+                startTime: TimeInterval? = nil, endTime: TimeInterval? = nil, sampleRate: Double? = nil, albumKey: String? = nil,
+                trackGain: Double? = nil, albumGain: Double? = nil, bitDepth: Int? = nil) {
         self.id = id
         self.url = url
         self.title = title
@@ -27,6 +35,10 @@ public struct PlayableItem: Hashable, Sendable, Identifiable {
         self.startTime = startTime
         self.endTime = endTime
         self.sampleRate = sampleRate
+        self.albumKey = albumKey
+        self.trackGain = trackGain
+        self.albumGain = albumGain
+        self.bitDepth = bitDepth
     }
 }
 

@@ -112,12 +112,18 @@ final class FilesStore {
         panel.prompt = "Import"
         panel.message = "Choose songs or folders of music to import into your library."
         guard panel.runModal() == .OK, !panel.urls.isEmpty else { return }
+        importItems(panel.urls)
+    }
+
+    /// Imports songs, folders or cue sheets (chosen in the panel, or dropped on the window).
+    func importItems(_ urls: [URL]) {
+        guard !urls.isEmpty, importSession == nil else { return }
         guard !((try? model.database.writer.read { try LibraryDatabase.roots($0) }) ?? []).isEmpty else {
             model.errorMessage = "Add a library folder first (Settings, Library): imported songs are moved there."
             return
         }
-        for url in panel.urls { _ = url.startAccessingSecurityScopedResource() }
-        let session = ImportSession(urls: panel.urls, model: model, store: self)
+        for url in urls { _ = url.startAccessingSecurityScopedResource() }
+        let session = ImportSession(urls: urls, model: model, store: self)
         importSession = session
         Task { await session.analyze() }
     }

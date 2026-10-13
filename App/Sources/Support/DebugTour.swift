@@ -193,6 +193,80 @@ enum DebugTour {
                 try? "done".write(to: output.appendingPathComponent("DONE"), atomically: true, encoding: .utf8)
                 return
             }
+            // `-GLDebugTourHold lastfm` shows Settings, Last.fm in a window and writes its frame to WINDOW (for screencapture -R).
+            // `-GLDebugTourHold playback` does the same for Settings, Playback, with crossfade, speed and a sleep timer on.
+            // `-GLDebugTourHold bitperfect [-GLDebugAlbum Name]` turns bit-perfect playback on, plays the album, and shows
+            // Settings, Playback (WINDOW); everything goes back off at the end.
+            if UserDefaults.standard.string(forKey: "GLDebugTourHold") == "bitperfect" {
+                try? await Task.sleep(for: .seconds(2))
+                NSApp.activate()
+                let name = UserDefaults.standard.string(forKey: "GLDebugAlbum") ?? ""
+                let albums = (try? await model.database.writer.read { try LibraryDatabase.albums($0) }) ?? []
+                if let album = albums.first(where: { $0.title == name }) ?? albums.first {
+                    let tracks = (try? await model.database.writer.read { try LibraryDatabase.tracks($0, albumKey: album.albumKey) }) ?? []
+                    let volume = model.player.volume
+                    model.player.bitPerfect = true
+                    model.play(tracks)
+                    try? await Task.sleep(for: .seconds(1.5))
+                    let window = NSWindow(contentRect: NSRect(x: 300, y: 200, width: 720, height: 300), styleMask: [.titled], backing: .buffered, defer: false)
+                    window.title = "bitperfect"
+                    window.contentView = NSHostingView(rootView: Form { OutputStatusRow() }.formStyle(.grouped).environment(model).tint(.brand))
+                    window.makeKeyAndOrderFront(nil)
+                    try? await Task.sleep(for: .seconds(1))
+                    if let screen = window.screen {
+                        try? "\(Int(window.frame.minX)),\(Int(screen.frame.maxY - window.frame.maxY)),\(Int(window.frame.width)),\(Int(window.frame.height))"
+                            .write(to: output.appendingPathComponent("WINDOW"), atomically: true, encoding: .utf8)
+                    }
+                    let status = model.player.output
+                    try? "\(album.title): device \(status.deviceRate) Hz \(status.deviceBitDepth ?? 0)-bit, file \(status.fileRate ?? 0) Hz \(status.fileBitDepth ?? 0)-bit, bit-perfect \(status.isBitPerfect), notes \(status.notes)"
+                        .write(to: output.appendingPathComponent("BITPERFECT"), atomically: true, encoding: .utf8)
+                    try? await Task.sleep(for: .seconds(3))
+                    model.player.stop()
+                    model.player.bitPerfect = false
+                    model.player.volume = volume
+                }
+                try? "done".write(to: output.appendingPathComponent("DONE"), atomically: true, encoding: .utf8)
+                return
+            }
+            if let hold = UserDefaults.standard.string(forKey: "GLDebugTourHold"), hold == "lastfm" || hold == "playback" {
+                try? await Task.sleep(for: .seconds(2))
+                NSApp.activate()
+                let window = NSWindow(contentRect: NSRect(x: 300, y: 200, width: 720, height: 560), styleMask: [.titled], backing: .buffered, defer: false)
+                window.title = hold
+                if hold == "playback" {
+                    UserDefaults.standard.set(6.0, forKey: PlaybackPrefs.crossfade)
+                    UserDefaults.standard.set(VolumeNormalization.track.rawValue, forKey: PlaybackPrefs.normalization)
+                    PlaybackPrefs.apply(to: model.player)
+                    model.setRate(1.25)
+                    model.sleepTimer.start(.minutes(45))
+                    window.contentView = NSHostingView(rootView: PlaybackSettings().environment(model).tint(.brand))
+                } else {
+                    window.contentView = NSHostingView(rootView: LastFMSettings().environment(model).tint(.brand))
+                }
+                window.makeKeyAndOrderFront(nil)
+                try? await Task.sleep(for: .seconds(1))
+                if let screen = window.screen {
+                    try? "\(Int(window.frame.minX)),\(Int(screen.frame.maxY - window.frame.maxY)),\(Int(window.frame.width)),\(Int(window.frame.height))"
+                        .write(to: output.appendingPathComponent("WINDOW"), atomically: true, encoding: .utf8)
+                }
+                try? await Task.sleep(for: .seconds(4))
+                if hold == "playback" {
+                    // Back to the defaults.
+                    UserDefaults.standard.set(0.0, forKey: PlaybackPrefs.crossfade)
+                    UserDefaults.standard.set(VolumeNormalization.off.rawValue, forKey: PlaybackPrefs.normalization)
+                    PlaybackPrefs.apply(to: model.player)
+                    model.setRate(1)
+                    model.sleepTimer.cancel()
+                }
+                try? "done".write(to: output.appendingPathComponent("DONE"), atomically: true, encoding: .utf8)
+                return
+            }
+            // `-GLDebugTourPlayback YES` tests crossfade, speed, the sleep timer and loudness measuring on the library.
+            if UserDefaults.standard.bool(forKey: "GLDebugTourPlayback") {
+                await playbackTest(model: model, output: output)
+                try? "done".write(to: output.appendingPathComponent("DONE"), atomically: true, encoding: .utf8)
+                return
+            }
             // `-GLDebugTourSearch YES` only tests the Search page: the sidebar link, results by category and the toolbar field.
             if UserDefaults.standard.bool(forKey: "GLDebugTourSearch") {
                 await searchTest(model: model, output: output)
@@ -737,6 +811,75 @@ enum DebugTour {
         let inboxBack = (try? FileManager.default.contentsOfDirectory(atPath: inbox).filter { !$0.hasPrefix(".") }) ?? []
         lines.append("undo import: songs \(songsAfterImport) to \(songsAfterUndo), inbox has \(inboxBack.count) files again")
         save()
+    }
+
+    private static func playbackTest(model: AppModel, output: URL) async {
+        try? await Task.sleep(for: .seconds(3))
+        var lines: [String] = []
+        let player = model.player
+        player.volume = 0.05
+        let albums = (try? await model.database.writer.read { try LibraryDatabase.albums($0) }) ?? []
+        func tracks(_ album: AlbumSummary) async -> [Track] {
+            (try? await model.database.writer.read { try LibraryDatabase.tracks($0, albumKey: album.albumKey) }) ?? []
+        }
+        // Two songs of different albums, a few seconds each.
+        let shortAlbums = albums.filter { $0.duration / Double(max($0.trackCount, 1)) < 60 }
+        guard shortAlbums.count >= 2 else { lines.append("not enough short albums"); return }
+        let first = await tracks(shortAlbums[0]), second = await tracks(shortAlbums[1])
+        let pair = [first[0], second[0]]
+
+        // Crossfade 2 s: the second song starts about 2 s before the first ends.
+        UserDefaults.standard.set(2.0, forKey: PlaybackPrefs.crossfade)
+        PlaybackPrefs.apply(to: player)
+        var starts: [String: Date] = [:]
+        let begin = Date.now
+        let previous = player.onItemStarted
+        player.onItemStarted = { item in starts[item.title] = .now; previous?(item) }
+        model.play(pair)
+        for _ in 0..<200 where player.state != .stopped { try? await Task.sleep(for: .milliseconds(100)) }
+        player.onItemStarted = previous
+        let secondStart = starts[pair[1].title].map { $0.timeIntervalSince(begin) } ?? -1
+        lines.append("crossfade 2 s: first lasts \(String(format: "%.1f", pair[0].duration)) s, second started at \(String(format: "%.1f", secondStart)) s, state \(player.state)")
+        UserDefaults.standard.set(0.0, forKey: PlaybackPrefs.crossfade)
+        PlaybackPrefs.apply(to: player)
+
+        // Speed from the menu: applied and saved.
+        model.setRate(1.5)
+        lines.append("speed 1.5: player \(player.rate), saved \(UserDefaults.standard.double(forKey: PlaybackPrefs.rate))")
+        model.setRate(1)
+
+        // Sleep timer at the end of the song: the next song is selected but does not start.
+        model.play(first)
+        try? await Task.sleep(for: .seconds(1))
+        model.sleepTimer.start(.endOfSong)
+        for _ in 0..<150 where player.state == .playing { try? await Task.sleep(for: .milliseconds(100)) }
+        lines.append("sleep at end of song: state \(player.state), current '\(player.current?.title ?? "-")', timer \(model.sleepTimer.isActive ? "on" : "off")")
+        model.sleepTimer.start(.minutes(30))
+        lines.append("30 min timer: \(model.sleepTimer.summary ?? "-")")
+        model.sleepTimer.cancel()
+
+        // Loudness: measured in the background once normalization is on.
+        UserDefaults.standard.set(VolumeNormalization.track.rawValue, forKey: PlaybackPrefs.normalization)
+        PlaybackPrefs.apply(to: player)
+        model.loudness.setEnabled(true)
+        for _ in 0..<300 where model.loudness.measured < min(model.loudness.total, 10) { try? await Task.sleep(for: .milliseconds(100)) }
+        let measured = (try? await model.database.writer.read { db in
+            try Track.fetchAll(db).filter { $0.loudness != nil }.prefix(3).map { "\($0.title) \(String(format: "%.1f", $0.loudness ?? 0)) LUFS" }
+        }) ?? []
+        if let sample = first.first {
+            do {
+                let value = try LoudnessMeter.measure(url: sample.url, start: sample.startTime, end: sample.endTime)
+                lines.append("direct measure of '\(sample.title)' (\(sample.format ?? "?"), \(sample.url.lastPathComponent)): \(value.map { String(format: "%.2f", $0) } ?? "nil")")
+            } catch {
+                lines.append("direct measure of '\(sample.title)' failed: \(error)")
+            }
+        }
+        lines.append("loudness: \(model.loudness.measured) of \(model.loudness.total) measured, e.g. \(measured)")
+        UserDefaults.standard.set(VolumeNormalization.off.rawValue, forKey: PlaybackPrefs.normalization)
+        PlaybackPrefs.apply(to: player)
+        model.loudness.setEnabled(false)
+        player.stop()
+        try? lines.joined(separator: "\n").write(to: output.appendingPathComponent("PLAYBACK"), atomically: true, encoding: .utf8)
     }
 
     private static func syncTest(model: AppModel, phase: String, output: URL) async {

@@ -11,6 +11,7 @@ Requirements: macOS 26+, Xcode 26+ (developed with Xcode 27), [XcodeGen](https:/
   - `LibraryKit`: GRDB (SQLite + FTS5) library, tag reader, artwork cache, folder scanner and watcher
   - `Visualizers`: Metal visualizers (Bars & Waves, Lights, Ambience, Magnetosphere), shaders compiled at runtime
   - `MetadataKit`: MusicBrainz, Cover Art Archive, iTunes Search and LRCLIB clients, release matching, LRC parser
+  - `Scrobbler`: Last.fm client (desktop auth, now playing, scrobbles, loves) and the sender of the offline queue
 - `App/`: the macOS app (SwiftUI views, app model, Now Playing / media keys)
 - `project.yml`: XcodeGen spec (the `.xcodeproj` is generated, not committed)
 
@@ -81,6 +82,10 @@ APP=build/DebugUnsandboxed/Build/Products/Debug/Groovelight.app/Contents/MacOS/G
 "$APP" -GLDebugTour /tmp/tour -GLDebugSyncFolder "$L" -GLDebugSyncImage vol.dmg -GLDebugTourSync volume   # drive unplugged and plugged back (image of a volume "GLSyncTest" with Music/Source/*.flac)
 "$APP" -GLDebugTour /tmp/tour -GLDebugTourHold artist [-GLDebugArtist Name]   # opens an artist page and writes the window frame to WINDOW (then: screencapture -R$(cat /tmp/tour/WINDOW) out.png)
 "$APP" -GLDebugTour /tmp/tour -GLDebugTourHold hover [-GLDebugArtist Name]   # artist page held up 12 s; writes TOOLBAR and POINTS (song rows) for a pointer-moving script (needs Accessibility for the terminal)
+"$APP" -GLDebugTour /tmp/tour -GLDebugTourPlayback YES   # crossfade, speed, sleep timer (end of song, minutes) and loudness measuring on the library
+"$APP" -GLDebugTour /tmp/tour -GLDebugTourHold playback   # Settings, Playback with crossfade, Sound Check, speed and a sleep timer on (writes WINDOW)
+"$APP" -GLDebugTour /tmp/tour -GLDebugTourHold bitperfect -GLDebugAlbum "Name"   # bit-perfect on, plays the album, writes BITPERFECT (device vs file) and WINDOW; turns it back off
+"$APP" -GLDebugTour /tmp/tour -GLDebugTourHold lastfm   # Settings, Last.fm in a window (writes WINDOW for screencapture -R)
 "$APP" -GLDebugTour /tmp/tour -GLDebugTourHold covers   # Albums at three cover sizes (writes WINDOW and SIZE-n for screencapture -R) and the cover size menu items
 "$APP" -GLDebugTour /tmp/tour -GLDebugTourHold now-playing # plays and leaves Now Playing open, for a real screen capture (the tour snapshots do not render Liquid Glass)
 "$APP" -GLDebugTour /tmp/tour -GLDebugTourShortcuts YES    # menu shortcuts (flags duplicates), key presses, remapping in Settings (launch with `open` so ⌘F focus can be checked)

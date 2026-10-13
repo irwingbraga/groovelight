@@ -29,7 +29,7 @@ final class BackupManager {
     }
 
     /// Preferences that travel with a backup (machine specific ones, like the backup folder, stay behind).
-    static let preferencePrefixes = ["eq.", "metadata.", "visualizer.", "albums.", "player.", "appearance.", "shortcuts."]
+    static let preferencePrefixes = ["eq.", "metadata.", "visualizer.", "albums.", "player.", "appearance.", "shortcuts.", "lastfm."]
 
     private(set) var isWorking = false
     private(set) var lastBackup: Date?

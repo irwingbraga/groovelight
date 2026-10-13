@@ -93,6 +93,10 @@ public struct Track: Codable, Hashable, Sendable, Identifiable, FetchableRecord,
     public var audioPath: String? = nil
     public var startTime: Double? = nil
     public var endTime: Double? = nil
+    /// Measured integrated loudness (LUFS) for songs without ReplayGain tags, and when it was measured (also set when
+    /// it could not be, so it is not retried). Cleared when the file changes.
+    public var loudness: Double? = nil
+    public var loudnessCheckedAt: Date? = nil
 
     /// The audio file (for a CUE track, the file holding the whole album).
     public var url: URL { URL(fileURLWithPath: audioPath ?? path) }

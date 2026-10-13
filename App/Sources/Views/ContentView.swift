@@ -2,12 +2,15 @@ import AppKit
 import LibraryKit
 import PlayerCore
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ContentView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openWindow) private var openWindow
     @State private var systemAppearance = SystemAppearance()
     @FocusState private var isSearchFocused: Bool
+    /// Files are being dragged over the window (to import them).
+    @State private var isDropTargeted = false
 
     /// The whole window goes dark on the Shelf, like the Cover Flow screens it is modeled on.
     private var isShowingShelf: Bool { model.selection == .shelf }
@@ -63,11 +66,31 @@ struct ContentView: View {
             .onChange(of: model.searchFocusRequest) { isSearchFocused = true }
             .toolbar(model.isShowingNowPlaying ? .hidden : .automatic, for: .windowToolbar)
 
+            if isDropTargeted {
+                DropToImportOverlay()
+                    .transition(.opacity)
+                    .zIndex(2)
+            }
+
             if model.isShowingNowPlaying {
                 NowPlayingView()
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                     .zIndex(1)
             }
+        }
+        // Songs, folders or cue sheets dragged from Finder open Import.
+        .onDrop(of: [.fileURL], isTargeted: $isDropTargeted.animation(.easeOut(duration: 0.15))) { providers in
+            Task {
+                var urls: [URL] = []
+                for provider in providers {
+                    if let url = try? await provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier) as? Data,
+                       let fileURL = URL(dataRepresentation: url, relativeTo: nil) {
+                        urls.append(fileURL)
+                    }
+                }
+                await MainActor.run { model.files.importItems(urls) }
+            }
+            return true
         }
         .modifier(AppSheets())
         .alert("Groovelight", isPresented: Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })) {
@@ -307,6 +330,28 @@ private struct LibrarySheets: ViewModifier {
             .sheet(isPresented: locate) { LocateFoldersSheet() }
             .sheet(item: organize) { OrganizeSheet(tracks: $0.tracks) }
             .sheet(item: importSession) { ImportSheet(session: $0) }
+    }
+}
+
+/// Shown while files are dragged over the window.
+private struct DropToImportOverlay: View {
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.25)
+            VStack(spacing: 12) {
+                Image(systemName: "square.and.arrow.down.on.square")
+                    .font(.system(size: 44, weight: .light))
+                Text("Drop to Import")
+                    .font(.system(size: 20, weight: .semibold))
+                Text("Songs and folders are moved into your library, tagged and named.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(36)
+            .glassEffect(.regular, in: .rect(cornerRadius: 24))
+        }
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
     }
 }
 

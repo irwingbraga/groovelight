@@ -190,6 +190,7 @@ private struct PlayerTools: View {
                 }
                 BarButton(systemImage: "forward.fill", help: "Next" + model.shortcuts.hint(.next), size: 15) { player.next() }
             }
+            PlaybackExtras()
             if density != .compact {
                 // Lyrics open in the side panel, like Up Next (Now Playing keeps its own lyrics button).
                 BarButton(systemImage: "quote.bubble", help: "Lyrics" + model.shortcuts.hint(.lyrics), isOn: model.isShowingLyricsPanel) {
@@ -199,6 +200,46 @@ private struct PlayerTools: View {
             BarButton(systemImage: "list.bullet", help: "Up Next" + model.shortcuts.hint(.upNext), isOn: model.isShowingQueue) {
                 model.isShowingQueue.toggle()
             }
+        }
+    }
+}
+
+/// Shown in the bar only while active: the playback speed when it is not normal, and the sleep timer. Each opens a menu.
+private struct PlaybackExtras: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        let player = model.player
+        if player.rate != 1, !player.bitPerfect {
+            Menu {
+                ForEach(PlaybackPrefs.speeds, id: \.self) { speed in
+                    Button(PlaybackPrefs.speedLabel(speed)) { model.setRate(speed) }
+                }
+            } label: {
+                Text(PlaybackPrefs.speedLabel(player.rate))
+                    .font(.system(size: 12, weight: .semibold).monospacedDigit())
+                    .foregroundStyle(Color.brand)
+            }
+            .menuStyle(.button)
+            .buttonStyle(.borderless)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help("Playback speed")
+        }
+        if let timer = model.sleepTimer, timer.isActive {
+            Menu {
+                Text(timer.summary ?? "")
+                Button("Turn Off Sleep Timer") { timer.cancel() }
+            } label: {
+                Image(systemName: "moon.zzz.fill")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Color.brand)
+            }
+            .menuStyle(.button)
+            .buttonStyle(.borderless)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help("Sleep timer: " + (timer.summary ?? ""))
         }
     }
 }
