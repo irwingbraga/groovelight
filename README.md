@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="docs/icon.png" alt="Groovelight icon" width="128" height="128">
+
 # Groovelight
 
 **A music player for people who own their music.**
