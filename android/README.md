@@ -34,6 +34,8 @@ GL_MAC_PORT=52300 ./gradlew testDebugUnitTest --tests '*MacIntegrationTest*'
 
 ## Install
 
+Each Groovelight release on GitHub has the APK attached (`GroovelightSync-<version>.apk`, signed with the release key, so new versions install over old ones). Apps installed from a local build are signed with the debug key: uninstall them once before installing a release.
+
 Enable USB debugging on the device (Settings, About, tap Build number seven times; then Developer options, USB debugging), connect it and run `adb install -r app/build/outputs/apk/release/app-release.apk`. Or copy the APK to the device and open it (allow installing unknown apps for the file manager).
 
 Then: open the app, pick the Mac, compare the code and click Allow on the Mac, choose the music folder ("Choose on SD card" opens the picker on the card; pick a folder such as Music, as Android does not let apps pick a drive's root; switching folders offers to remove Groovelight's songs from the old one), and choose what to sync on the Mac's device page.

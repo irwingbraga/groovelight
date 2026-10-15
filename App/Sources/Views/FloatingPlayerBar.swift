@@ -191,14 +191,17 @@ private struct PlayerTools: View {
                 BarButton(systemImage: "forward.fill", help: "Next" + model.shortcuts.hint(.next), size: 15) { player.next() }
             }
             PlaybackExtras()
-            if density != .compact {
-                // Lyrics open in the side panel, like Up Next (Now Playing keeps its own lyrics button).
+            // Lyrics open in the side panel, like Up Next (Now Playing keeps its own lyrics button). The compact bar has
+            // room for one of the two: the button of the panel that is open, so it can still be closed from here.
+            if density != .compact || model.isShowingLyricsPanel {
                 BarButton(systemImage: "quote.bubble", help: "Lyrics" + model.shortcuts.hint(.lyrics), isOn: model.isShowingLyricsPanel) {
                     model.isShowingLyricsPanel.toggle()
                 }
             }
-            BarButton(systemImage: "list.bullet", help: "Up Next" + model.shortcuts.hint(.upNext), isOn: model.isShowingQueue) {
-                model.isShowingQueue.toggle()
+            if density != .compact || !model.isShowingLyricsPanel {
+                BarButton(systemImage: "list.bullet", help: "Up Next" + model.shortcuts.hint(.upNext), isOn: model.isShowingQueue) {
+                    model.isShowingQueue.toggle()
+                }
             }
         }
     }

@@ -98,8 +98,9 @@ public struct Track: Codable, Hashable, Sendable, Identifiable, FetchableRecord,
     public var loudness: Double? = nil
     public var loudnessCheckedAt: Date? = nil
 
-    /// The audio file (for a CUE track, the file holding the whole album).
-    public var url: URL { URL(fileURLWithPath: audioPath ?? path) }
+    /// The audio file (for a CUE track, the file holding the whole album). Not a folder: saying so spares a disk
+    /// lookup per call, which adds up over a whole library.
+    public var url: URL { URL(fileURLWithPath: audioPath ?? path, isDirectory: false) }
 
     /// A track of a CUE sheet (one of several songs in one audio file).
     public var isCueTrack: Bool { audioPath != nil }

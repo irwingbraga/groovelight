@@ -81,6 +81,17 @@ struct PlayerCommands: Commands {
     }
 
     var body: some Commands {
+        CommandGroup(after: .appInfo) {
+            if Updates.shared.isAvailable {
+                Button("Check for Updates…") { Updates.shared.checkForUpdates() }
+            }
+        }
+        CommandGroup(replacing: .help) {
+            Button("Groovelight on GitHub") { NSWorkspace.shared.open(Updates.repository) }
+            Button("Report an Issue…") { NSWorkspace.shared.open(Updates.repository.appendingPathComponent("issues")) }
+            Divider()
+            Button("Acknowledgements") { Updates.showAcknowledgements() }
+        }
         // The File menu of Music: New, Import, and the library's housekeeping in a Library submenu.
         CommandGroup(replacing: .newItem) {
             Menu("New") {

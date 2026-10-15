@@ -7,12 +7,15 @@ options:
 settings:
   base:
     SWIFT_VERSION: "6.0"
-    MARKETING_VERSION: "0.1.0"
+    MARKETING_VERSION: "0.2.0"
     CURRENT_PROJECT_VERSION: "1"
     ENABLE_USER_SCRIPT_SANDBOXING: YES
 packages:
   GroovelightKit:
     path: GroovelightKit
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: 2.6.0
 targets:
   Groovelight:
     type: application
@@ -25,6 +28,9 @@ targets:
       # An Icon Composer document is one file for Xcode (compiled into the asset catalog), not a folder of resources.
       - path: App/Resources/Groovelight.icon
         type: file
+        buildPhase: resources
+      # Licenses of the included software (Help, Acknowledgements).
+      - path: THIRD_PARTY_NOTICES.md
         buildPhase: resources
     dependencies:
       - package: GroovelightKit
@@ -39,6 +45,7 @@ targets:
         product: Scrobbler
       - package: GroovelightKit
         product: WirelessSync
+      - package: Sparkle
     entitlements:
       path: App/Groovelight.entitlements
       properties:
@@ -48,6 +55,10 @@ targets:
         com.apple.security.network.client: true
         # Wireless sync: the Android app connects to Groovelight on the local network.
         com.apple.security.network.server: true
+        # Sparkle installs updates through its XPC services (sandboxed apps must be allowed to reach them).
+        com.apple.security.temporary-exception.mach-lookup.global-name:
+          - $(PRODUCT_BUNDLE_IDENTIFIER)-spks
+          - $(PRODUCT_BUNDLE_IDENTIFIER)-spki
     info:
       path: App/Info.plist
       properties:
@@ -57,6 +68,10 @@ targets:
         LSApplicationCategoryType: public.app-category.music
         NSLocalNetworkUsageDescription: Groovelight syncs music with the Groovelight Sync app on your Android players and phones over the local network.
         NSBonjourServices: [_groovelight._tcp]
+        # Updates (Sparkle): the appcast published with each GitHub release, signed with the EdDSA key below.
+        SUFeedURL: https://github.com/irwingbraga/groovelight/releases/latest/download/appcast.xml
+        SUPublicEDKey: twg01yBaUF9k29yow7s+wAGu5Iucbw7btMg2Panx7D0=
+        SUEnableInstallerLauncherService: true
         UTExportedTypeDeclarations:
           - UTTypeIdentifier: dev.irwingbraga.groovelight.backup
             UTTypeDescription: Groovelight Backup

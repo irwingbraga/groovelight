@@ -11,6 +11,10 @@ name: Release
 #   DEVELOPER_ID_IDENTITY        e.g. "Developer ID Application: Name (TEAMID)"
 #   NOTARY_KEY_P8                base64 of the App Store Connect API key (.p8)
 #   NOTARY_KEY_ID, NOTARY_ISSUER_ID
+# Updates (Sparkle) and the Android app:
+#   SPARKLE_PRIVATE_KEY          EdDSA key that signs the update feed (appcast.xml); its public half is in project.yml
+#   ANDROID_KEYSTORE             base64 of the release keystore of Groovelight Sync (Android)
+#   ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS
 
 on:
   push:
@@ -40,6 +44,9 @@ jobs:
       # Secrets cannot be tested in a step's `if`, so their presence is exposed here.
       HAS_DEVELOPER_ID: ${{ secrets.DEVELOPER_ID_P12 != '' }}
       HAS_NOTARY_KEY: ${{ secrets.NOTARY_KEY_P8 != '' }}
+      HAS_SPARKLE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY != '' }}
+    outputs:
+      version: ${{ steps.dmg.outputs.version }}
     steps:
       - uses: actions/checkout@v4
 
@@ -97,11 +104,33 @@ jobs:
           if [ -f "$RUNNER_TEMP/notary.p8" ]; then export NOTARY_KEY_PATH="$RUNNER_TEMP/notary.p8"; fi
           scripts/make-dmg.sh
 
+      - name: Write the update feed
+        # appcast.xml lists this version with the DMG's EdDSA signature; the app reads it from the latest release.
+        if: ${{ env.HAS_SPARKLE_KEY == 'true' }}
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+          VERSION: ${{ steps.dmg.outputs.version }}
+          DMG: ${{ steps.dmg.outputs.dmg }}
+        run: |
+          SPARKLE=build/Release/SourcePackages/artifacts/sparkle/Sparkle/bin
+          printf %s "$SPARKLE_PRIVATE_KEY" > "$RUNNER_TEMP/sparkle.key"
+          mkdir -p build/appcast
+          cp "$DMG" build/appcast/
+          "$SPARKLE/generate_appcast" --ed-key-file "$RUNNER_TEMP/sparkle.key" \
+            --download-url-prefix "https://github.com/${{ github.repository }}/releases/download/v$VERSION/" \
+            --full-release-notes-url "https://github.com/${{ github.repository }}/releases/tag/v$VERSION" \
+            --link "https://github.com/${{ github.repository }}" \
+            -o build/appcast.xml build/appcast
+          rm "$RUNNER_TEMP/sparkle.key"
+          cat build/appcast.xml
+
       - name: Keep the DMG
         uses: actions/upload-artifact@v4
         with:
           name: Groovelight-${{ steps.dmg.outputs.version }}
-          path: ${{ steps.dmg.outputs.dmg }}
+          path: |
+            ${{ steps.dmg.outputs.dmg }}
+            build/appcast.xml
 
       - name: Publish release
         if: ${{ github.ref_type == 'tag' || inputs.publish }}
@@ -110,8 +139,54 @@ jobs:
           TAG: v${{ steps.dmg.outputs.version }}
           DMG: ${{ steps.dmg.outputs.dmg }}
         run: |
+          FILES=("$DMG")
+          if [ -f build/appcast.xml ]; then FILES+=(build/appcast.xml); fi
           if gh release view "$TAG" > /dev/null 2>&1; then
-            gh release upload "$TAG" "$DMG" --clobber
+            gh release upload "$TAG" "${FILES[@]}" --clobber
           else
-            gh release create "$TAG" "$DMG" --title "Groovelight ${TAG#v}" --generate-notes --target "$GITHUB_SHA"
+            gh release create "$TAG" "${FILES[@]}" --title "Groovelight ${TAG#v}" --generate-notes --target "$GITHUB_SHA"
           fi
+
+  android:
+    # Groovelight Sync, the Android companion app, attached to the same release.
+    needs: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      HAS_ANDROID_KEY: ${{ secrets.ANDROID_KEYSTORE != '' }}
+      VERSION: ${{ needs.release.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Write the release keystore
+        if: ${{ env.HAS_ANDROID_KEY == 'true' }}
+        env:
+          ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
+        run: echo "$ANDROID_KEYSTORE" | base64 --decode > "$RUNNER_TEMP/release.jks"
+
+      - name: Test and build the APK
+        working-directory: android
+        env:
+          GROOVELIGHT_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          GROOVELIGHT_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          if [ -f "$RUNNER_TEMP/release.jks" ]; then export GROOVELIGHT_KEYSTORE="$RUNNER_TEMP/release.jks"; fi
+          ./gradlew --no-daemon testDebugUnitTest assembleRelease -PversionName="$VERSION" -PversionCode="${{ github.run_number }}"
+          cp app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/GroovelightSync-$VERSION.apk"
+
+      - name: Keep the APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: GroovelightSync-${{ env.VERSION }}
+          path: ${{ runner.temp }}/GroovelightSync-${{ env.VERSION }}.apk
+
+      - name: Attach to the release
+        if: ${{ github.ref_type == 'tag' || inputs.publish }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "v$VERSION" "$RUNNER_TEMP/GroovelightSync-$VERSION.apk" --clobber

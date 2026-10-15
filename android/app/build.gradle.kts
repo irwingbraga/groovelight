@@ -12,15 +12,31 @@ android {
         applicationId = "dev.irwingbraga.groovelight.sync"
         minSdk = 31
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        // Releases pass the tag and the run number (-PversionName=0.2.0 -PversionCode=42).
+        versionCode = (project.findProperty("versionCode") as String?)?.toInt() ?: 1
+        versionName = project.findProperty("versionName") as String? ?: "0.1.0"
+    }
+
+    signingConfigs {
+        // The release key (CI sets these from repository secrets): every release must be signed with the same key,
+        // or Android refuses to install it over the previous one.
+        create("release") {
+            val keystore = System.getenv("GROOVELIGHT_KEYSTORE")
+            if (keystore != null) {
+                storeFile = file(keystore)
+                storePassword = System.getenv("GROOVELIGHT_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("GROOVELIGHT_KEY_ALIAS")
+                keyPassword = System.getenv("GROOVELIGHT_KEYSTORE_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
-            // Signed with the debug key so the APK installs without a keystore (personal sideloading).
-            signingConfig = signingConfigs.getByName("debug")
+            // Local builds without the release key are signed with the debug key (installable for testing).
+            signingConfig = if (System.getenv("GROOVELIGHT_KEYSTORE") != null) signingConfigs.getByName("release")
+                else signingConfigs.getByName("debug")
         }
     }
     compileOptions {

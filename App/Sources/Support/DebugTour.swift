@@ -255,7 +255,7 @@ enum DebugTour {
                 let others: [SidebarItem] = UserDefaults.standard.bool(forKey: "GLDebugPanelsAllPages")
                     ? [.search, .recentlyAdded, .artists, .albums, .songs, .genres, .shelf, .allPlaylists] : []
                 let pages: [SidebarItem] = made.map { .playlist($0) } + [.lovedSongs] + others
-                for width in [1144.0, 600, 1000, 1100, 1200, 1300, 1500] {
+                for width: CGFloat in [1144, 600, 1000, 1100, 1200, 1300, 1500] {
                     var frame = window.frame
                     frame.origin.y += frame.height - 652
                     frame.size = NSSize(width: width, height: 652)
@@ -275,6 +275,166 @@ enum DebugTour {
                 }
                 model.selection = .allPlaylists
                 for id in made { try? model.database.deletePlaylist(id) }
+                try? "done".write(to: output.appendingPathComponent("DONE"), atomically: true, encoding: .utf8)
+                return
+            }
+            // `-GLDebugTourHold readme` stages the README screenshots: for each scene it writes SHOT-n (the file name)
+            // and WINDOWID-n (the window to capture with `screencapture -l`), then waits for the capture. Dark, at
+            // 1440 x 900; playback paused at a lyric line; temporary playlists, the EQ curve, the volume and the
+            // appearance are put back at the end. `-GLDebugDevice NAME` adds the device page for a mounted drive.
+            if UserDefaults.standard.string(forKey: "GLDebugTourHold") == "readme" {
+                try? await Task.sleep(for: .seconds(2))
+                NSApp.activate()
+                NSApp.appearance = NSAppearance(named: .darkAqua)
+                guard let main = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("main") == true }) else { return }
+                var frame = main.frame
+                frame.origin.y += frame.height - 900
+                frame.size = NSSize(width: 1440, height: 900)
+                main.setFrame(frame, display: true)
+                let savedVolume = model.player.volume
+                let savedPreset = model.equalizer.preset, savedEQ = model.equalizer.isEnabled
+                let albums = (try? await model.database.writer.read { try LibraryDatabase.albums($0, sort: .artist) }) ?? []
+                let okComputer = albums.first { $0.title == "OK Computer" } ?? albums[0]
+                let tracks = (try? await model.database.writer.read { try LibraryDatabase.tracks($0, albumKey: okComputer.albumKey) }) ?? []
+                // Karma Police, paused on a lyric line.
+                model.player.volume = 0
+                model.play(tracks, startAt: tracks.firstIndex { $0.title.localizedCaseInsensitiveContains("karma") } ?? 0)
+                try? await Task.sleep(for: .seconds(1.5))
+                model.player.seek(to: 62)
+                try? await Task.sleep(for: .seconds(1.5))
+                model.player.pause()
+                model.player.volume = 0.6
+
+                // Playlists with covers for the sidebar and All Playlists (deleted at the end).
+                let ids = (try? await model.database.writer.read { try LibraryDatabase.allTracks($0) })?.compactMap(\.id) ?? []
+                var made: [Int64] = []
+                for (name, songs, cover) in [
+                    ("Late Night Drive", Array(ids.shuffled().prefix(14)), PlaylistCover(kind: .generated(palette: CoverPalette.all[2].id, pattern: CoverPattern.waves.rawValue))),
+                    ("Sunday Morning", Array(ids.shuffled().prefix(9)), PlaylistCover(kind: .generated(palette: CoverPalette.all[5].id, pattern: CoverPattern.vinyl.rawValue))),
+                    ("Hi-Res Picks", Array(ids.prefix(12)), PlaylistCover(kind: .songCovers)),
+                    ("Road Trip", Array(ids.shuffled().prefix(20)), PlaylistCover(kind: .generated(palette: CoverPalette.all[8 % CoverPalette.all.count].id, pattern: CoverPattern.spectrum.rawValue))),
+                ] as [(String, [Int64], PlaylistCover)] {
+                    if let id = (try? model.database.createPlaylist(named: name, trackIds: songs, cover: cover))?.id { made.append(id) }
+                }
+
+                var step = 0
+                @MainActor func shot(_ name: String, window: NSWindow? = nil, wait: Double = 2.5) async {
+                    try? await Task.sleep(for: .seconds(wait))
+                    let target = window ?? main
+                    try? "\(target.windowNumber)".write(to: output.appendingPathComponent("WINDOWID-\(step)"), atomically: true, encoding: .utf8)
+                    try? name.write(to: output.appendingPathComponent("SHOT-\(step)"), atomically: true, encoding: .utf8)
+                    step += 1
+                    try? await Task.sleep(for: .seconds(2))
+                }
+
+                model.selection = .albums
+                await shot("albums")
+                model.path = [.album(okComputer)]
+                await shot("album")
+                model.path = []
+                model.selection = .artists
+                model.selectedArtist = okComputer.artist
+                await shot("artist")
+                model.selection = .songs
+                await shot("songs")
+                model.selection = .search
+                model.searchText = "radio"
+                await shot("search")
+                model.searchText = ""
+                model.selection = .allPlaylists
+                await shot("playlists")
+                model.selection = .shelf
+                await shot("shelf", wait: 3)
+                model.selection = .albums
+                model.path = [.album(okComputer)]
+                model.isShowingLyricsPanel = true
+                await shot("lyrics-panel")
+                model.sidePanel = nil
+                model.path = []
+                model.isShowingNowPlaying = true
+                model.isShowingLyrics = true
+                await shot("now-playing", wait: 3)
+                model.isShowingLyrics = false
+                model.isShowingNowPlaying = false
+                if let name = UserDefaults.standard.string(forKey: "GLDebugDevice"),
+                   let device = model.devices.devices.first(where: { $0.name == name }) {
+                    var selection = DeviceSelection()
+                    selection.albumKeys = Set(albums.prefix(6).map(\.albumKey))
+                    selection.lovedSongs = true
+                    model.devices.setSelection(selection, for: device.id)
+                    model.selection = .device(device.id)
+                    await shot("device", wait: 3)
+                }
+                model.equalizer.select(EQPreset.builtIns.first { $0.name == "Rock" } ?? EQPreset.builtIns[1])
+                model.equalizer.isEnabled = true
+                openWindow(id: WindowID.equalizer)
+                try? await Task.sleep(for: .seconds(1.5))
+                if let window = NSApp.windows.first(where: { $0.title == "Equalizer" && $0.isVisible }) { await shot("equalizer", window: window) }
+                // The visualizers, fed by a song with a beat, quietly (the analyzer listens after the volume).
+                let savedStyle = UserDefaults.standard.string(forKey: "visualizer.style")
+                UserDefaults.standard.set("barsAndWaves", forKey: "visualizer.style")
+                if let afterglow = albums.first(where: { $0.title == "Afterglow" }),
+                   let songs = try? await model.database.writer.read({ try LibraryDatabase.tracks($0, albumKey: afterglow.albumKey) }) {
+                    model.player.volume = 0.12
+                    model.play(songs)
+                } else {
+                    model.player.volume = 0.12
+                    model.player.resume()
+                }
+                openWindow.visualizer()
+                try? await Task.sleep(for: .seconds(2))
+                if let window = NSApp.windows.first(where: { $0.title == "Visualizer" && $0.isVisible }) {
+                    window.setFrame(NSRect(x: 200, y: 200, width: 1280, height: 760), display: true)
+                    await shot("visualizer", window: window, wait: 4)
+                    UserDefaults.standard.set("lights", forKey: "visualizer.style")
+                    await shot("visualizer-lights", window: window, wait: 4)
+                    window.close()
+                }
+                model.player.pause()
+                UserDefaults.standard.set(savedStyle, forKey: "visualizer.style")
+                if let window = NSApp.windows.first(where: { $0.title == "Equalizer" }) { window.close() }
+
+                model.player.volume = savedVolume
+                model.equalizer.select(savedPreset)
+                model.equalizer.isEnabled = savedEQ
+                model.selection = .albums
+                for id in made { try? model.database.deletePlaylist(id) }
+                NSApp.appearance = nil
+                try? "done".write(to: output.appendingPathComponent("DONE"), atomically: true, encoding: .utf8)
+                return
+            }
+            // `-GLDebugTourHold perf` (with `-GLDebugDataDir` on a large library) opens each page and measures how long
+            // the main thread is blocked (a 10 ms ticker that cannot run while it is), writing PERF. WINDOWID and
+            // READY-n mark the Albums and Songs pages for captures.
+            if UserDefaults.standard.string(forKey: "GLDebugTourHold") == "perf" {
+                try? await Task.sleep(for: .seconds(3))
+                NSApp.activate()
+                if let window = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("main") == true }) {
+                    try? "\(window.windowNumber)".write(to: output.appendingPathComponent("WINDOWID"), atomically: true, encoding: .utf8)
+                }
+                var lines: [String] = []
+                let tracks = (try? await model.database.writer.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM track") ?? 0 }) ?? 0
+                lines.append("library: \(tracks) songs")
+                let pages: [SidebarItem] = [.recentlyAdded, .albums, .artists, .songs, .genres, .shelf, .allPlaylists, .lovedSongs, .search, .albums, .songs]
+                for (index, page) in pages.enumerated() {
+                    let start = Date.now
+                    var longest = 0.0
+                    var last = Date.now
+                    model.selection = page
+                    if page == .search { model.searchText = "song 4" }
+                    // The longest gap between ticks over two seconds is the longest freeze.
+                    while Date.now.timeIntervalSince(start) < 2 {
+                        try? await Task.sleep(for: .milliseconds(10))
+                        longest = max(longest, Date.now.timeIntervalSince(last))
+                        last = .now
+                    }
+                    lines.append(String(format: "%@: longest main thread block %.0f ms", "\(page)", longest * 1000))
+                    if page == .albums || page == .songs {
+                        try? "\(page)".write(to: output.appendingPathComponent("READY-\(index)"), atomically: true, encoding: .utf8)
+                        try? await Task.sleep(for: .seconds(1))
+                    }
+                }
+                try? lines.joined(separator: "\n").write(to: output.appendingPathComponent("PERF"), atomically: true, encoding: .utf8)
                 try? "done".write(to: output.appendingPathComponent("DONE"), atomically: true, encoding: .utf8)
                 return
             }

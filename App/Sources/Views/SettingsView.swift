@@ -20,6 +20,7 @@ struct SettingsView: View {
 
 struct GeneralSettings: View {
     @AppStorage(AppTheme.key) private var theme = AppTheme.system
+    @State private var checksForUpdates = Updates.shared.automaticallyChecks
 
     var body: some View {
         Form {
@@ -31,6 +32,18 @@ struct GeneralSettings: View {
             } footer: {
                 Text("System follows the macOS setting. The Shelf is always dark.")
                     .foregroundStyle(.secondary)
+            }
+            if Updates.shared.isAvailable {
+                Section {
+                    Toggle("Check for updates automatically", isOn: $checksForUpdates)
+                        .onChange(of: checksForUpdates) { Updates.shared.automaticallyChecks = checksForUpdates }
+                    Button("Check Now") { Updates.shared.checkForUpdates() }
+                } header: {
+                    Text("Updates")
+                } footer: {
+                    Text("New versions come from Groovelight's releases on GitHub and are verified before they are installed.")
+                        .foregroundStyle(.secondary)
+                }
             }
         }
         .formStyle(.grouped)

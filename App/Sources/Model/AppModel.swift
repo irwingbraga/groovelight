@@ -133,7 +133,11 @@ final class AppModel {
             UserDefaults.standard.removePersistentDomain(forName: domain)
         }
         #endif
-        let support = URL.applicationSupportDirectory.appendingPathComponent("Groovelight", isDirectory: true)
+        var support = URL.applicationSupportDirectory.appendingPathComponent("Groovelight", isDirectory: true)
+        #if DEBUG
+        // `-GLDebugDataDir <folder>`: another library (the 50,000-song performance library, for example).
+        if let folder = UserDefaults.standard.string(forKey: "GLDebugDataDir") { support = URL(fileURLWithPath: folder, isDirectory: true) }
+        #endif
         do {
             database = try LibraryDatabase(url: support.appendingPathComponent("Library.sqlite"))
             artwork = try ArtworkCache(directory: support.appendingPathComponent("Artwork", isDirectory: true))

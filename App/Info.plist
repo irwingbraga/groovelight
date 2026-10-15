@@ -30,6 +30,12 @@
 	<string></string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Groovelight syncs music with the Groovelight Sync app on your Android players and phones over the local network.</string>
+	<key>SUEnableInstallerLauncherService</key>
+	<true/>
+	<key>SUFeedURL</key>
+	<string>https://github.com/irwingbraga/groovelight/releases/latest/download/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>twg01yBaUF9k29yow7s+wAGu5Iucbw7btMg2Panx7D0=</string>
 	<key>UTExportedTypeDeclarations</key>
 	<array>
 		<dict>

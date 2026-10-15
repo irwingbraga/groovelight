@@ -227,9 +227,14 @@ public enum DeviceSync {
                                                            synced: mode == .sync))
         }
         func songFingerprint(_ track: Track) -> String {
-            "\(track.url.path)|\(track.fileSize)|\(Int(track.modifiedAt.timeIntervalSince1970))"
+            "\(track.audioPath ?? track.path)|\(track.fileSize)|\(Int(track.modifiedAt.timeIntervalSince1970))"
         }
 
+        // Where each song was put last time (looked up once per song: a full device holds tens of thousands).
+        var previousPaths: [Int64: String] = [:]
+        for (path, entry) in manifest.entries where entry.kind == .song {
+            if let id = entry.trackId { previousPaths[id] = path }
+        }
         // Songs, each in its template path. The planned order is stable so names numbered for collisions stay put.
         var covers: [String: String] = [:]
         for track in tracks.filter({ !$0.isCueTrack }).sorted(by: { $0.path < $1.path }) {
@@ -242,8 +247,8 @@ public enum DeviceSync {
                                                            options: naming))
             // A song keeps the name it already has on the device (a numbered one too) while its intended name is the same.
             let final: String
-            if let previous = manifest.entries.first(where: { $0.value.kind == .song && $0.value.trackId == id })?.key,
-               stripCounter(previous).lowercased() == relative.lowercased(), !taken.contains(previous.lowercased()) {
+            if let previous = previousPaths[id], previous.lowercased() == relative.lowercased() || stripCounter(previous).lowercased() == relative.lowercased(),
+               !taken.contains(previous.lowercased()) {
                 taken.insert(previous.lowercased())
                 final = previous
             } else {
@@ -438,8 +443,11 @@ public enum DeviceSync {
 
     /// "Music/A/01 x (2).flac" -> "Music/A/01 x.flac".
     static func stripCounter(_ path: String) -> String {
-        path.replacingOccurrences(of: #" \(\d+\)(\.[^./]+)?$"#, with: "$1", options: .regularExpression)
+        guard path.contains(" (") else { return path }
+        return counterPattern.stringByReplacingMatches(in: path, range: NSRange(path.startIndex..., in: path), withTemplate: "$1")
     }
+
+    private static let counterPattern = try! NSRegularExpression(pattern: #" \(\d+\)(\.[^./]+)?$"#)
 
     /// A folder setting as a clean relative path ("/Music/" -> "Music").
     static func clean(_ folder: String) -> String {

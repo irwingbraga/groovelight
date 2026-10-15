@@ -154,11 +154,15 @@ public enum FileNaming {
         }
     }
 
+    /// Compiled once: names are built for every song of a library or a device.
+    private static let featuringPattern = try! NSRegularExpression(pattern: #"(?i)\s+(feat\.?|ft\.?|featuring)\s+"#)
+    private static let spacesPattern = try! NSRegularExpression(pattern: #"\s+"#)
+
     /// Makes a tag value safe as part of a file name.
     public static func sanitize(_ value: String, options: OrganizeOptions) -> String {
         var text = value.precomposedStringWithCanonicalMapping
-        if options.normalizeFeaturing {
-            text = text.replacingOccurrences(of: #"(?i)\s+(feat\.?|ft\.?|featuring)\s+"#, with: " feat. ", options: .regularExpression)
+        if options.normalizeFeaturing, text.range(of: "f", options: .caseInsensitive) != nil {
+            text = featuringPattern.stringByReplacingMatches(in: text, range: NSRange(text.startIndex..., in: text), withTemplate: " feat. ")
         }
         if options.titleCase { text = titleCased(text) }
         // ":" is shown as "/" by the Finder and "/" separates folders.
@@ -172,7 +176,10 @@ public enum FileNaming {
 
     /// Trims and collapses spaces, and removes leading dots (hidden files) and trailing dots (rejected on some systems).
     static func cleanComponent(_ component: String, options: OrganizeOptions) -> String {
-        var text = component.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression).trimmingCharacters(in: .whitespaces)
+        var text = component.contains(where: { $0.isWhitespace && $0 != " " }) || component.contains("  ")
+            ? spacesPattern.stringByReplacingMatches(in: component, range: NSRange(component.startIndex..., in: component), withTemplate: " ")
+            : component
+        text = text.trimmingCharacters(in: .whitespaces)
         while text.hasPrefix(".") { text.removeFirst() }
         while text.hasSuffix(".") || text.hasSuffix(" ") { text.removeLast() }
         return text.trimmingCharacters(in: .whitespaces)

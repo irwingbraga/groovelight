@@ -308,11 +308,12 @@ struct SongsView: View {
                 model.play(tracks, startAt: index)
             }
         }
-        .onChange(of: sortOrder) { tracks.sort(using: sortOrder) }
         .navigationTitle("Songs")
         .navigationSubtitle("\(tracks.count) songs")
-        .observing(model.database, id: 0, { try LibraryDatabase.allTracks($0) }) { value in
-            tracks = value.sorted(using: sortOrder)
+        // Fetched and sorted on the database's thread (and again there when a column header changes the order):
+        // sorting tens of thousands of titles with localized comparison would freeze the window.
+        .observing(model.database, id: sortOrder, { [sortOrder] db in try LibraryDatabase.allTracks(db).sorted(using: sortOrder) }) { value in
+            tracks = value
         }
     }
 
