@@ -28,10 +28,13 @@ DMG="build/Groovelight-$VERSION.dmg"
 echo "==> Groovelight $VERSION ($BUILD_NUMBER) with $(xcodebuild -version | head -1)"
 xcodegen generate --quiet
 
-SIGNING=(CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual)
+# Ad-hoc builds leave the hardened runtime off: with it, macOS only loads frameworks signed by the app's own team, and
+# ad-hoc code has no team, so the app was killed at launch ("different Team IDs" loading wavpack.framework). The
+# hardened runtime is only needed for notarization, which needs a Developer ID anyway.
+SIGNING=(CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual ENABLE_HARDENED_RUNTIME=NO)
 if [ -n "${DEVELOPER_ID_IDENTITY:-}" ]; then
     echo "==> Signing with $DEVELOPER_ID_IDENTITY"
-    SIGNING=(CODE_SIGN_IDENTITY="$DEVELOPER_ID_IDENTITY" CODE_SIGN_STYLE=Manual OTHER_CODE_SIGN_FLAGS=--timestamp)
+    SIGNING=(CODE_SIGN_IDENTITY="$DEVELOPER_ID_IDENTITY" CODE_SIGN_STYLE=Manual ENABLE_HARDENED_RUNTIME=YES OTHER_CODE_SIGN_FLAGS=--timestamp)
 fi
 
 xcodebuild -project Groovelight.xcodeproj -scheme Groovelight -configuration Release \
@@ -41,6 +44,10 @@ xcodebuild -project Groovelight.xcodeproj -scheme Groovelight -configuration Rel
     clean build | grep -E "error:|warning: .*deprecated|\*\* BUILD" || true
 [ -d "$APP" ] || { echo "Build failed: $APP not found" >&2; exit 1; }
 codesign --verify --deep --strict "$APP"
+# The frameworks must load: a broken signature only shows at launch, so check what dyld will check.
+for framework in "$APP"/Contents/Frameworks/*.framework; do
+    codesign --verify --strict "$framework" || { echo "Invalid signature: $framework" >&2; exit 1; }
+done
 
 echo "==> Packaging $DMG"
 rm -rf "$STAGING" "$DMG"
