@@ -8,6 +8,7 @@
 
 A native macOS player and library manager with the look of Apple Music and the soul of iTunes: bit-perfect hi-res playback, every format you have, a 15-band parametric EQ, synced lyrics, credits, Cover Flow, visualizers, and your library on your DAP, SD card or Android phone.
 
+![Status: preview](https://img.shields.io/badge/status-preview-orange.svg)
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
 ![macOS 26+](https://img.shields.io/badge/macOS-26%2B-black.svg)
 ![Swift 6](https://img.shields.io/badge/Swift-6-orange.svg)
@@ -116,6 +117,9 @@ Streaming apps treat local files as an afterthought, and audiophile players ofte
 ## Install
 
 Download the latest DMG from [Releases](https://github.com/irwingbraga/groovelight/releases/latest), open it and drag Groovelight to Applications. Requires macOS 26 or later.
+
+> [!NOTE]
+> Groovelight is a **preview**: the 0.x releases are not a final 1.0. Everything described here works, but expect rough edges and changes between versions, and keep a backup of your music before using Fix Metadata or Organize. Bug reports are very welcome in [Issues](https://github.com/irwingbraga/groovelight/issues).
 
 The Android companion app, Groovelight Sync, is attached to each release as an APK (Android 12 or later): see [`android/README.md`](android/README.md) for installing it.
 
