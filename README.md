@@ -10,7 +10,7 @@ A native macOS player and library manager with the look of Apple Music and the s
 
 ![Status: preview](https://img.shields.io/badge/status-preview-orange.svg)
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
-![macOS 26+](https://img.shields.io/badge/macOS-26%2B-black.svg)
+![macOS 15+](https://img.shields.io/badge/macOS-15%2B-black.svg)
 ![Swift 6](https://img.shields.io/badge/Swift-6-orange.svg)
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-support-FFDD00?logo=buymeacoffee&logoColor=black)](https://www.buymeacoffee.com/irwing)
 
@@ -70,7 +70,7 @@ Streaming apps treat local files as an afterthought, and audiophile players ofte
 - Bit-perfect output: the device follows each song's sample rate and the deepest integer format, exclusive access on request, device volume used instead of digital volume.
 - Sound Check: ReplayGain (track or album) and EBU R128 measurement for songs without tags.
 - Up Next queue with Play Next and Add to Up Next everywhere, shuffle, repeat one or all.
-- Media keys and Control Center, a menu bar mini player, and a floating player bar with Liquid Glass.
+- Media keys and Control Center, a menu bar mini player, and a floating player bar (Liquid Glass on macOS 26).
 
 ### Sound
 - 15-band parametric equalizer: peak, shelf, pass and notch filters per band, frequency 20 Hz to 20 kHz, gain ±24 dB, Q 0.1 to 18.
@@ -110,13 +110,13 @@ Streaming apps treat local files as an afterthought, and audiophile players ofte
 - Scrobbles made offline are kept and sent later.
 
 ### Mac
-- Liquid Glass throughout, light and dark (the Shelf is always dark), one library window like Music.
+- Liquid Glass throughout on macOS 26, and the classic translucent look on macOS 15; light and dark (the Shelf is always dark), one library window like Music.
 - Every action in the menus; keyboard shortcuts you can remap (Settings, Shortcuts).
 - Updates from GitHub releases, verified before installing (Sparkle).
 
 ## Install
 
-Download the latest DMG from [Releases](https://github.com/irwingbraga/groovelight/releases/latest), open it and drag Groovelight to Applications. Requires macOS 26 or later.
+Download the latest DMG from [Releases](https://github.com/irwingbraga/groovelight/releases/latest), open it and drag Groovelight to Applications. Requires macOS 15 (Sequoia) or later; on macOS 26 it uses Liquid Glass.
 
 > [!NOTE]
 > Groovelight is a **preview**: the 0.x releases are not a final 1.0. Everything described here works, but expect rough edges and changes between versions, and keep a backup of your music before using Fix Metadata or Organize. Bug reports are very welcome in [Issues](https://github.com/irwingbraga/groovelight/issues).
@@ -157,7 +157,7 @@ open Groovelight.xcodeproj        # or: xcodebuild -scheme Groovelight -configur
 (cd GroovelightKit && swift test) # the package's tests
 ```
 
-Requirements: macOS 26+ and Xcode 26+. The code layout, the release pipeline, the demo library, performance tests and the debug tours are described in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+Requirements: Xcode 26+ (the app runs on macOS 15+). The code layout, the release pipeline, the demo library, performance tests and the debug tours are described in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
 ## Built with
 

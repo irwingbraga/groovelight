@@ -1,6 +1,6 @@
 # Developing Groovelight
 
-Requirements: macOS 26+, Xcode 26+ (developed with Xcode 27), [XcodeGen](https://github.com/yonaskolb/XcodeGen). The Android companion app has its own guide in [`android/README.md`](../android/README.md).
+Requirements: Xcode 26+ (developed with Xcode 27), [XcodeGen](https://github.com/yonaskolb/XcodeGen). The app runs on macOS 15 and later: Liquid Glass is used on macOS 26, and `App/Sources/Support/Glass.swift` falls back to blur materials and bordered buttons before that. Use its wrappers (`glassBackground(in:)`, `glassButtonStyle()`, `glassProminentButtonStyle()`, `clearGlassButtonStyle()`, `GlassGroup`) instead of the glass APIs directly, and guard other macOS 26 APIs with `#available`. The Android companion app has its own guide in [`android/README.md`](../android/README.md).
 
 ## Layout
 
@@ -26,6 +26,17 @@ export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 xcodegen generate
 xcodebuild -project Groovelight.xcodeproj -scheme Groovelight -configuration Debug build
 ```
+
+### Testing on macOS 15
+
+A macOS 15 virtual machine with [Tart](https://tart.run) (Apple Silicon; the image is about 30 GB):
+
+```sh
+tart clone ghcr.io/cirruslabs/macos-sequoia-base:latest sequoia
+tart run sequoia --dir="share:$PWD/build"      # user and password: admin; the folder is in /Volumes/My Shared Files/share
+```
+
+Copy a Debug build into the shared folder and open it in the VM; the debug tours below work there too (`tart exec sequoia <command>` runs a command in the VM, and `screencapture -l` works inside it).
 
 ## Releases
 
