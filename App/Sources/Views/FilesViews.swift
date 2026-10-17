@@ -138,6 +138,8 @@ struct ImportSheet: View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Import Music").font(.headline)
             switch session.phase {
+            case .extracting(let name, let done, let total):
+                progress(total > 1 ? "Extracting “\(name)” (\(done + 1) of \(total))…" : "Extracting “\(name)”…", done, total)
             case .reading(let done, let total):
                 progress("Reading \(done) of \(total) files…", done, total)
             case .identifying(let done, let total):
@@ -166,12 +168,15 @@ struct ImportSheet: View {
     private var review: some View {
         let destinations = session.destinations()
         HStack(spacing: 16) {
-            Picker("", selection: $session.moveFiles) {
-                Text("Move into library").tag(true)
-                Text("Copy into library").tag(false)
+            // Songs from archives are always moved out of the temporary folder they were extracted to.
+            if !session.onlyArchives {
+                Picker("", selection: $session.moveFiles) {
+                    Text("Move into library").tag(true)
+                    Text("Copy into library").tag(false)
+                }
+                .pickerStyle(.segmented)
+                .fixedSize()
             }
-            .pickerStyle(.segmented)
-            .fixedSize()
             if session.roots.count > 1 {
                 Picker("Library folder", selection: $session.rootId) {
                     ForEach(session.roots, id: \.id) { Text(URL(fileURLWithPath: $0.path).lastPathComponent).tag(Optional($0.id)) }
@@ -183,6 +188,11 @@ struct ImportSheet: View {
         HStack(spacing: 18) {
             Toggle("Use metadata found online", isOn: $session.useOnlineMetadata)
             Toggle("Write tags and cover into the files", isOn: $session.writeTags)
+            if !session.archives.isEmpty {
+                Toggle(session.archives.count == 1 ? "Move the archive to the Trash after importing" : "Move the archives to the Trash after importing",
+                       isOn: $session.deleteArchives)
+                    .help("Only when every selected song from it was imported. Undo Import puts it back.")
+            }
         }
         .toggleStyle(.checkbox)
         .font(.callout)
@@ -264,6 +274,10 @@ struct ImportSheet: View {
             Text("\(imported) songs imported").font(.title3.weight(.semibold))
             if skipped > 0 { Text("\(skipped) left out").foregroundStyle(.secondary) }
             if failed > 0 { Text("\(failed) could not be imported").foregroundStyle(.orange) }
+            if session.trashedArchives > 0 {
+                Text(session.trashedArchives == 1 ? "The archive was moved to the Trash" : "\(session.trashedArchives) archives were moved to the Trash")
+                    .foregroundStyle(.secondary)
+            }
             Button("Done") {
                 model.files.importSession = nil
                 dismiss()

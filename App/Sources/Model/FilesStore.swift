@@ -11,6 +11,8 @@ import UniformTypeIdentifiers
 @Observable
 final class FilesStore {
     static let optionsKey = "files.organizeOptions"
+    /// The library folder imports go to (its path), set in Settings, Library.
+    static let importRootKey = "files.importRoot"
 
     var options: OrganizeOptions {
         didSet { if let data = try? JSONEncoder().encode(options) { UserDefaults.standard.set(data, forKey: Self.optionsKey) } }
@@ -109,14 +111,15 @@ final class FilesStore {
         panel.canChooseFiles = true
         panel.allowsMultipleSelection = true
         panel.allowedContentTypes = [.audio] + [UTType(filenameExtension: "cue")].compactMap { $0 } + PlaylistTransfer.readableTypes
+            + ArchiveExtractor.extensions.sorted().compactMap { UTType(filenameExtension: $0) }
         panel.prompt = "Import"
-        panel.message = "Choose songs, folders of music or playlists to import into your library."
+        panel.message = "Choose songs, folders of music, archives (zip, 7z, rar) or playlists to import into your library."
         guard panel.runModal() == .OK, !panel.urls.isEmpty else { return }
         importItems(panel.urls)
     }
 
-    /// Imports songs, folders or cue sheets (chosen in the panel, or dropped on the window). Playlist files among them
-    /// become playlists.
+    /// Imports songs, folders, cue sheets or archives of them (chosen in the panel, or dropped on the window). Playlist
+    /// files among them become playlists.
     func importItems(_ urls: [URL]) {
         let playlists = urls.filter(PlaylistTransfer.isPlaylistFile)
         if !playlists.isEmpty { model.playlistFiles.importFiles(playlists) }
@@ -143,12 +146,15 @@ final class FilesStore {
 @Observable
 final class ImportSession: Identifiable {
     enum Phase: Equatable {
+        case extracting(name: String, done: Int, total: Int)
         case reading(done: Int, total: Int)
         case identifying(done: Int, total: Int)
         case review
         case importing(done: Int, total: Int)
         case finished(imported: Int, skipped: Int, failed: Int)
     }
+
+    static let deleteArchivesKey = "files.import.trashArchives"
 
     struct Item: Identifiable {
         let id: Int64
@@ -188,16 +194,45 @@ final class ImportSession: Identifiable {
     var writeTags = true
     var rootId: Int64?
     var roots: [LibraryRoot] = []
+    /// Moves each archive to the Trash once everything from it is imported (remembered for the next import).
+    var deleteArchives = UserDefaults.standard.bool(forKey: ImportSession.deleteArchivesKey) {
+        didSet { UserDefaults.standard.set(deleteArchives, forKey: Self.deleteArchivesKey) }
+    }
+    /// Archives moved to the Trash by this import.
+    private(set) var trashedArchives = 0
 
-    private let urls: [URL]
+    private var urls: [URL]
+    /// Archives among the chosen items, extracted into `staging` before reading.
+    let archives: [URL]
+    /// Whether only archives were chosen (their songs are always moved out of the temporary folder).
+    let onlyArchives: Bool
+    /// Each extracted archive and its folder in `staging` (failed ones are left out).
+    @ObservationIgnored private var extracted: [(archive: URL, folder: URL)] = []
+    /// Where archives are extracted, removed when the import ends. Songs are moved out of it into the library.
+    private let staging: URL
     @ObservationIgnored private unowned let model: AppModel
     @ObservationIgnored private unowned let store: FilesStore
 
     init(urls: [URL], model: AppModel, store: FilesStore) {
-        self.urls = urls
+        self.urls = urls.filter { !ArchiveExtractor.isArchive($0) }
+        archives = urls.filter(ArchiveExtractor.isArchive)
+        onlyArchives = archives.count == urls.count
+        staging = FileManager.default.temporaryDirectory.resolvingSymlinksInPath()
+            .appendingPathComponent("Import \(UUID().uuidString)", isDirectory: true)
         self.model = model
         self.store = store
     }
+
+    deinit {
+        try? FileManager.default.removeItem(at: staging)
+    }
+
+    /// The extracted archive a file came from.
+    private func archive(of url: URL) -> URL? {
+        let path = url.resolvingSymlinksInPath().path
+        return extracted.first { path.hasPrefix($0.folder.path + "/") }?.archive
+    }
+
 
     var includedCount: Int { groups.reduce(0) { $0 + $1.items.filter(\.include).count } }
     var duplicateCount: Int { groups.reduce(0) { $0 + $1.items.filter(\.isDuplicate).count } }
@@ -253,7 +288,23 @@ final class ImportSession: Identifiable {
     func analyze() async {
         let database = model.database
         roots = (try? await database.writer.read { try LibraryDatabase.roots($0) }) ?? []
-        rootId = roots.first?.id
+        let preferred = UserDefaults.standard.string(forKey: FilesStore.importRootKey)
+        rootId = (roots.first { $0.path == preferred } ?? roots.first)?.id
+        var problems: [String] = []
+        for (index, archive) in archives.enumerated() {
+            phase = .extracting(name: archive.lastPathComponent, done: index, total: archives.count)
+            let folder = staging.appendingPathComponent("\(index + 1)", isDirectory: true)
+            do {
+                try await Task.detached(priority: .userInitiated) { try ArchiveExtractor.extract(archive, into: folder) }.value
+                extracted.append((archive, folder))
+                urls.append(folder)
+            } catch {
+                // What did come out is still offered, but the archive is never moved to the Trash.
+                problems.append(error.localizedDescription)
+                urls.append(folder)
+            }
+        }
+        if !problems.isEmpty { model.errorMessage = problems.joined(separator: "\n") }
         let urls = urls
         let (files, cueFiles) = await Task.detached { Self.audioFiles(in: urls) }.value
         phase = .reading(done: 0, total: files.count)
@@ -431,9 +482,15 @@ final class ImportSession: Identifiable {
         var entries: [FileOperationJournal.Entry] = []
         var created: [String] = []
         var failed = 0
-        let move = moveFiles
+        // Archives with a song that could not be imported stay where they are; so do those nothing was imported from.
+        var incomplete = Set<URL>()
+        var importedFrom = Set<URL>()
         for (index, (group, item)) in selected.enumerated() {
             guard let destination = destinations[item.id] else { continue }
+            // Songs from an archive are moved out of the temporary folder; undo removes them (the archive has them).
+            let fromArchive = archive(of: item.source)
+            let move = moveFiles || fromArchive != nil
+            let copied = !moveFiles || fromArchive != nil
             let metadata = metadata(of: item)
             let cover = item.hasArtwork ? nil : group.cover
             // A cue album's file holds every song: its tags are left alone.
@@ -476,11 +533,13 @@ final class ImportSession: Identifiable {
             created += result.1
             if result.0 {
                 if let sheet, let sheetDestination {
-                    entries.append(.init(trackId: nil, from: sheet.path, to: sheetDestination.path, copied: !move))
+                    entries.append(.init(trackId: nil, from: sheet.path, to: sheetDestination.path, copied: copied))
                 }
-                entries.append(.init(trackId: nil, from: item.source.path, to: destination.path, copied: !move))
+                entries.append(.init(trackId: nil, from: item.source.path, to: destination.path, copied: copied))
+                if let fromArchive { importedFrom.insert(fromArchive) }
             } else {
                 failed += 1
+                if let fromArchive { incomplete.insert(fromArchive) }
             }
             phase = .importing(done: index + 1, total: selected.count)
         }
@@ -501,7 +560,20 @@ final class ImportSession: Identifiable {
         }) ?? []
         let importedIds = Set(entries.compactMap(\.trackId) + cueIds)
         if !importedIds.isEmpty { model.metadata.fetchMissingInfo(scope: .tracks(importedIds)) }
-        store.finishImport(FileOperationJournal(id: UUID(), kind: .import, date: .now, entries: entries, createdFolders: created))
+        // Archives last, once their songs are in: to the Trash (not deleted), so they can come back.
+        var trashed: [FileOperationJournal.Entry] = []
+        if deleteArchives {
+            for (archive, _) in extracted where importedFrom.contains(archive) && !incomplete.contains(archive) {
+                var result: NSURL?
+                if (try? FileManager.default.trashItem(at: archive, resultingItemURL: &result)) != nil, let result = result as URL? {
+                    trashed.append(.init(trackId: nil, from: archive.path, to: result.path, copied: false))
+                }
+            }
+        }
+        trashedArchives = trashed.count
+        try? FileManager.default.removeItem(at: staging)
+        store.finishImport(FileOperationJournal(id: UUID(), kind: .import, date: .now, entries: entries, createdFolders: created,
+                                                trashed: trashed.isEmpty ? nil : trashed))
         phase = .finished(imported: entries.filter { !$0.to.lowercased().hasSuffix(".cue") }.count, skipped: groups.reduce(0) { $0 + $1.items.filter { !$0.include }.count }, failed: failed)
     }
 }

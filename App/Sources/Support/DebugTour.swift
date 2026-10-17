@@ -1428,7 +1428,8 @@ enum DebugTour {
     }
 
     /// Organizes the whole library (preview, apply, rescan, undo), then imports an inbox folder (`-GLDebugImportInbox`)
-    /// with identification, tagging and naming, then undoes the import.
+    /// with identification, tagging and naming, then undoes the import. An archive as the inbox is extracted, moved to
+    /// the Trash after the import and put back by the undo.
     private static func filesTest(model: AppModel, output: URL) async {
         var lines: [String] = []
         func save() { try? lines.joined(separator: "\n").write(to: output.appendingPathComponent("FILES"), atomically: true, encoding: .utf8) }
@@ -1460,6 +1461,7 @@ enum DebugTour {
         guard let inbox = UserDefaults.standard.string(forKey: "GLDebugImportInbox") else { return save() }
         let session = ImportSession(urls: [URL(fileURLWithPath: inbox)], model: model, store: model.files)
         model.files.importSession = session
+        session.deleteArchives = true
         await session.analyze()
         try? await Task.sleep(for: .seconds(1))
         lines.append("import review: \(session.groups.map { "\($0.title) by \($0.artist) [\($0.matchedRelease ?? "file tags")]: \($0.items.count) files" }), duplicates \(session.duplicateCount)")
@@ -1491,6 +1493,9 @@ enum DebugTour {
         lines.append("credit index rows \(credited); lyrics on \(importedTracks.filter { $0.fetchedLyrics?.isEmpty == false || $0.lyrics?.isEmpty == false }.count) of \(importedTracks.count) songs")
         let inboxLeft = (try? FileManager.default.contentsOfDirectory(atPath: inbox).filter { !$0.hasPrefix(".") }) ?? []
         lines.append("inbox after import (moved out): \(inboxLeft)")
+        if !session.archives.isEmpty {
+            lines.append("archive: \(session.trashedArchives) moved to the Trash, still in place \(FileManager.default.fileExists(atPath: inbox)), temporary folder left \(imported.contains { $0.from.contains("/Import ") && FileManager.default.fileExists(atPath: $0.from) })")
+        }
         await snapshot("142-import-finished", output)
         model.files.importSession = nil
         let songsAfterImport = (try? await model.database.writer.read { try Track.fetchCount($0) }) ?? 0
@@ -1498,6 +1503,7 @@ enum DebugTour {
         let songsAfterUndo = (try? await model.database.writer.read { try Track.fetchCount($0) }) ?? 0
         let inboxBack = (try? FileManager.default.contentsOfDirectory(atPath: inbox).filter { !$0.hasPrefix(".") }) ?? []
         lines.append("undo import: songs \(songsAfterImport) to \(songsAfterUndo), inbox has \(inboxBack.count) files again")
+        if !session.archives.isEmpty { lines.append("after undo, archive back in place \(FileManager.default.fileExists(atPath: inbox))") }
         save()
     }
 

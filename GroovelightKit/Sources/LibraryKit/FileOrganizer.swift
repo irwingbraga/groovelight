@@ -324,13 +324,17 @@ public struct FileOperationJournal: Codable, Hashable, Sendable, Identifiable {
     public var entries: [Entry]
     /// Folders the operation created (removed on undo when empty).
     public var createdFolders: [String]
+    /// Archives an import came from that were moved to the Trash (from: where it was, to: in the Trash). Undo puts them
+    /// back, and moves the imported songs to the Trash instead of deleting them, so nothing is lost if that fails.
+    public var trashed: [Entry]?
 
-    public init(id: UUID, kind: Kind, date: Date, entries: [Entry], createdFolders: [String]) {
+    public init(id: UUID, kind: Kind, date: Date, entries: [Entry], createdFolders: [String], trashed: [Entry]? = nil) {
         self.id = id
         self.kind = kind
         self.date = date
         self.entries = entries
         self.createdFolders = createdFolders
+        self.trashed = trashed
     }
 }
 
@@ -427,7 +431,11 @@ public enum FileOrganizer {
             guard fileManager.fileExists(atPath: entry.to) else { continue }
             if entry.trackId == nil { untracked.append(entry.to) }
             if entry.copied {
-                try fileManager.removeItem(atPath: entry.to)
+                if journal.trashed?.isEmpty == false {
+                    try fileManager.trashItem(at: URL(fileURLWithPath: entry.to), resultingItemURL: nil)
+                } else {
+                    try fileManager.removeItem(atPath: entry.to)
+                }
                 if let id = entry.trackId { removedTracks.append(id) }
                 continue
             }
@@ -435,6 +443,9 @@ public enum FileOrganizer {
             try fileManager.createDirectory(at: source.deletingLastPathComponent(), withIntermediateDirectories: true)
             try fileManager.moveItem(atPath: entry.to, toPath: entry.from)
             if let id = entry.trackId { restored.append((id, entry.from)) } else { restoredFiles.append((entry.to, entry.from)) }
+        }
+        for archive in journal.trashed ?? [] where !fileManager.fileExists(atPath: archive.from) {
+            try? fileManager.moveItem(atPath: archive.to, toPath: archive.from)
         }
         if journal.kind == .import {
             // Imported songs leave the library entirely (moved back out, or their copies deleted), cue albums included.

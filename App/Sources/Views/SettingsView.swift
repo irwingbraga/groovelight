@@ -57,6 +57,7 @@ struct LibrarySettings: View {
     @State private var songCounts: [Int64: Int] = [:]
     /// The folder waiting for the remove confirmation.
     @State private var removing: LibraryRoot?
+    @AppStorage(FilesStore.importRootKey) private var importRoot = ""
 
     var body: some View {
         Form {
@@ -99,6 +100,23 @@ struct LibrarySettings: View {
                     }
                 }
                 .foregroundStyle(.secondary)
+            }
+            if !roots.isEmpty {
+                Section {
+                    // The first folder until one is chosen (or when the chosen one was removed).
+                    Picker("Import into", selection: Binding(get: { roots.contains { $0.path == importRoot } ? importRoot : roots[0].path },
+                                                             set: { importRoot = $0 })) {
+                        ForEach(roots) { root in
+                            Text(URL(fileURLWithPath: root.path).lastPathComponent).tag(root.path)
+                        }
+                    }
+                    .disabled(roots.count < 2)
+                } header: {
+                    Text("Import")
+                } footer: {
+                    Text("Songs, folders and archives (zip, 7z, rar) imported with File, Import or dropped on the window go to this folder, named as Organize Library Files names them. Each import can still choose another folder.")
+                        .foregroundStyle(.secondary)
+                }
             }
         }
         .formStyle(.grouped)

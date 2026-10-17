@@ -115,7 +115,7 @@ APP=build/DebugUnsandboxed/Build/Products/Debug/Groovelight.app/Contents/MacOS/G
 "$APP" -GLDebugTour /tmp/tour -GLDebugTourSearch YES       # Search page: sidebar link, results by category, toolbar field
 "$APP" -GLDebugTour /tmp/tour -GLDebugTourMiniPlayer YES   # menu bar panel (in a test window) and the menu bar note
 "$APP" -GLDebugTour /tmp/tour -GLDebugTourCue YES          # cue album songs, playback ranges and the move to the next song
-"$APP" -GLDebugTour /tmp/tour -GLDebugTourFiles YES -GLDebugImportInbox /path/to/inbox   # organize, import, undo (use a scratch library copy)
+"$APP" -GLDebugTour /tmp/tour -GLDebugTourFiles YES -GLDebugImportInbox /path/to/inbox   # organize, import, undo (use a scratch library copy; the inbox can be an archive)
 ```
 
 Do not clear debug preferences with `defaults delete dev.irwingbraga.groovelight`: the `defaults` tool resolves the

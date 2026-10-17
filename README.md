@@ -61,7 +61,7 @@ Streaming apps treat local files as an afterthought, and audiophile players ofte
 - Album artists and compilations, multi-disc albums, CUE sheets (external or embedded) shown as individual songs.
 - Search with categories (artists, albums, songs, credited people), recent searches, and a toolbar field reachable everywhere (⌘F).
 - Get Info with a tag editor for one song or many at once; ratings, loves with dates, play and skip counts.
-- Import songs or folders (drag them onto the window, or ⌘O), identified on MusicBrainz and moved or copied into your layout.
+- Import songs, folders or archives (zip, 7z, rar, tar) by dragging them onto the window or with ⌘O: identified on MusicBrainz and moved or copied into your layout, in the library folder chosen in Settings. Archives are extracted first and can go to the Trash afterwards (Undo Import puts them back).
 - Organize files into a folder and name template you choose, previewed before anything moves, with undo.
 - Backups of the whole library (history, playlists, metadata fixes, settings) and restore, including relinking moved folders.
 
@@ -143,7 +143,7 @@ The defaults are below. Every shortcut is also in the menus, and each one can be
 | Bigger / Smaller covers (Albums page; also its toolbar slider and pinching) | ⌘+ / ⌘− |
 | Library window (a single window; reopens it after closing) | ⌘0 |
 | New Playlist, New Smart Playlist | ⌘N, ⌥⌘N |
-| Import (songs or folders), Add Folder to Library | ⌘O, ⇧⌘O |
+| Import (songs, folders or archives), Add Folder to Library | ⌘O, ⇧⌘O |
 | Fetch Missing Info in Background, Back Up Library | ⇧⌘U, ⌥⌘B |
 | Settings | ⌘, |
 
