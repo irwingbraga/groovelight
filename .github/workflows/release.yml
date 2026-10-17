@@ -69,6 +69,29 @@ jobs:
         # Playback tests need an audio output device, which the runners do not have.
         run: swift test --package-path GroovelightKit --skip PlaybackTests
 
+      - name: Check the signing secrets
+        # A half-configured set (a name without its certificate, say) would fail later with Xcode's
+        # "No certificate matching" error: say plainly which secret is missing instead.
+        env:
+          HAS_IDENTITY: ${{ secrets.DEVELOPER_ID_IDENTITY != '' }}
+          HAS_P12_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD != '' }}
+          HAS_NOTARY_ID: ${{ secrets.NOTARY_KEY_ID != '' && secrets.NOTARY_ISSUER_ID != '' }}
+        run: |
+          missing=()
+          if [ "$HAS_IDENTITY" = true ] || [ "$HAS_DEVELOPER_ID" = true ]; then
+            [ "$HAS_IDENTITY" = true ] || missing+=(DEVELOPER_ID_IDENTITY)
+            [ "$HAS_DEVELOPER_ID" = true ] || missing+=("DEVELOPER_ID_P12 (base64 of the .p12)")
+            [ "$HAS_P12_PASSWORD" = true ] || missing+=(DEVELOPER_ID_P12_PASSWORD)
+          fi
+          if [ "$HAS_NOTARY_ID" = true ] || [ "$HAS_NOTARY_KEY" = true ]; then
+            [ "$HAS_NOTARY_KEY" = true ] || missing+=("NOTARY_KEY_P8 (base64 of the .p8)")
+            [ "$HAS_NOTARY_ID" = true ] || missing+=("NOTARY_KEY_ID and NOTARY_ISSUER_ID")
+          fi
+          if [ ${#missing[@]} -gt 0 ]; then
+            printf '::error::Missing or empty signing secrets: %s\n' "${missing[*]}"
+            exit 1
+          fi
+
       - name: Import Developer ID certificate
         if: ${{ env.HAS_DEVELOPER_ID == 'true' }}
         env:
