@@ -43,6 +43,23 @@ xcodebuild -project Groovelight.xcodeproj -scheme Groovelight -configuration Rel
     "${SIGNING[@]}" \
     clean build | grep -E "error:|warning: .*deprecated|\*\* BUILD" || true
 [ -d "$APP" ] || { echo "Build failed: $APP not found" >&2; exit 1; }
+if [ -n "${DEVELOPER_ID_IDENTITY:-}" ]; then
+    # Notarization needs every piece of code signed with the Developer ID, a secure timestamp and the hardened runtime.
+    # Xcode re-signs embedded frameworks but not the helpers inside Sparkle (they keep Sparkle's own signature), so
+    # everything is signed again from the inside out, as Sparkle's documentation describes; the app keeps its
+    # entitlements.
+    echo "==> Signing nested code for notarization"
+    sign() { codesign --force --sign "$DEVELOPER_ID_IDENTITY" --timestamp --options runtime "$@"; }
+    SPARKLE="$APP/Contents/Frameworks/Sparkle.framework/Versions/B"
+    if [ -d "$SPARKLE" ]; then
+        sign "$SPARKLE/XPCServices/Installer.xpc"
+        sign --preserve-metadata=entitlements "$SPARKLE/XPCServices/Downloader.xpc"
+        sign "$SPARKLE/Autoupdate"
+        sign "$SPARKLE/Updater.app"
+    fi
+    for framework in "$APP"/Contents/Frameworks/*.framework; do sign "$framework"; done
+    sign --preserve-metadata=entitlements,requirements "$APP"
+fi
 codesign --verify --deep --strict "$APP"
 # The frameworks must load: a broken signature only shows at launch, so check what dyld will check.
 for framework in "$APP"/Contents/Frameworks/*.framework; do
@@ -61,7 +78,16 @@ if [ -n "${DEVELOPER_ID_IDENTITY:-}" ]; then
     codesign --sign "$DEVELOPER_ID_IDENTITY" --timestamp "$DMG"
     if [ -n "${NOTARY_KEY_PATH:-}" ] && [ -n "${NOTARY_KEY_ID:-}" ] && [ -n "${NOTARY_ISSUER_ID:-}" ]; then
         echo "==> Notarizing"
-        xcrun notarytool submit "$DMG" --key "$NOTARY_KEY_PATH" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID" --wait
+        NOTARY=(--key "$NOTARY_KEY_PATH" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID")
+        RESULT=$(xcrun notarytool submit "$DMG" "${NOTARY[@]}" --wait 2>&1) || true
+        echo "$RESULT"
+        if ! grep -q "status: Accepted" <<< "$RESULT"; then
+            # Apple's log names each file it rejected and why.
+            SUBMISSION=$(sed -n 's/^ *id: //p' <<< "$RESULT" | head -1)
+            [ -n "$SUBMISSION" ] && xcrun notarytool log "$SUBMISSION" "${NOTARY[@]}" || true
+            echo "Notarization failed" >&2
+            exit 1
+        fi
         xcrun stapler staple "$DMG"
     fi
 fi
