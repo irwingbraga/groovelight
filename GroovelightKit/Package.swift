@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "GroovelightKit",
-    platforms: [.macOS(.v26)],
+    platforms: [.macOS(.v15)],
     products: [
         .library(name: "PlayerCore", targets: ["PlayerCore"]),
         .library(name: "LibraryKit", targets: ["LibraryKit"]),

@@ -97,11 +97,11 @@ private struct PlaylistCard<Cover: View, Menu: View>: View {
                     if isHovering {
                         HStack {
                             Button { play(false) } label: { Image(systemName: "play.fill").frame(width: 18, height: 18) }
-                                .buttonStyle(.glass)
+                                .glassButtonStyle()
                                 .buttonBorderShape(.circle)
                             Spacer()
                             Button { play(true) } label: { Image(systemName: "shuffle").frame(width: 18, height: 18) }
-                                .buttonStyle(.glass)
+                                .glassButtonStyle()
                                 .buttonBorderShape(.circle)
                         }
                         .padding(8)
@@ -171,10 +171,10 @@ private struct PlaylistHeader<Cover: View, Extra: View>: View {
                 }
                 HStack {
                     Button { model.play(tracks) } label: { Label("Play", systemImage: "play.fill") }
-                        .buttonStyle(.glassProminent)
+                        .glassProminentButtonStyle()
                         .disabled(tracks.isEmpty)
                     Button { model.play(tracks, shuffle: true) } label: { Label("Shuffle", systemImage: "shuffle") }
-                        .buttonStyle(.glass)
+                        .glassButtonStyle()
                         .disabled(tracks.isEmpty)
                     extra()
                 }
@@ -206,7 +206,7 @@ struct PlaylistView: View {
                 } extra: {
                     if let playlist, playlist.isSmart {
                         Button { model.editSmartPlaylist(playlist) } label: { Label("Edit Rules", systemImage: "slider.horizontal.3") }
-                            .buttonStyle(.glass)
+                            .glassButtonStyle()
                     }
                     PageMoreMenu {
                         QueueMenuItems(source: .playlist(playlistId))
@@ -338,7 +338,7 @@ private struct EditableCover: View {
                         Image(systemName: "pencil")
                             .font(.system(size: 13, weight: .semibold))
                             .padding(8)
-                            .glassEffect(.regular, in: .circle)
+                            .glassBackground(in: .circle)
                             .padding(10)
                             .transition(.opacity)
                     }
@@ -373,8 +373,9 @@ struct PageMoreMenu<Items: View>: View {
             Image(systemName: "ellipsis")
         }
         .menuIndicator(.hidden)
-        .buttonStyle(.glass)
+        .glassButtonStyle()
         .buttonBorderShape(.circle)
+        .fixedSize()
         .help("More")
     }
 }

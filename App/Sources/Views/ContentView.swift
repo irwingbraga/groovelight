@@ -173,7 +173,7 @@ struct DetailView: View {
                     .font(.callout)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 10)
-                    .glassEffect(.regular, in: .capsule)
+                    .glassBackground(in: .capsule)
                     .padding(.bottom, 16)
                     .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
@@ -211,7 +211,7 @@ struct ScanProgressBadge: View {
         .font(.callout)
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .glassEffect(.regular, in: .capsule)
+        .glassBackground(in: .capsule)
     }
 }
 
@@ -226,7 +226,7 @@ struct EmptyLibraryView: View {
             Text("Add the folder where you keep your music. Groovelight reads tags and artwork and keeps the library in sync as files change.")
         } actions: {
             Button("Add Music Folder…") { model.chooseLibraryFolder() }
-                .buttonStyle(.glassProminent)
+                .glassProminentButtonStyle()
                 .controlSize(.large)
         }
     }
@@ -392,7 +392,7 @@ private struct DropToImportOverlay: View {
                     .foregroundStyle(.secondary)
             }
             .padding(36)
-            .glassEffect(.regular, in: .rect(cornerRadius: 24))
+            .glassBackground(in: .rect(cornerRadius: 24))
         }
         .ignoresSafeArea()
         .allowsHitTesting(false)

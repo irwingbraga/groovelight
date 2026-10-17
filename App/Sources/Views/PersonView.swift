@@ -84,20 +84,20 @@ struct PersonView: View {
                 Text(summary)
                     .font(.system(size: 12))
                     .foregroundStyle(.tertiary)
-                GlassEffectContainer(spacing: 12) {
+                GlassGroup(spacing: 12) {
                     HStack(spacing: 12) {
                         Button { model.play(tracks) } label: { Label("Play", systemImage: "play.fill").frame(width: 90) }
-                            .buttonStyle(.glassProminent)
+                            .glassProminentButtonStyle()
                         Button { model.play(tracks, shuffle: true) } label: { Label("Shuffle", systemImage: "shuffle").frame(width: 90) }
-                            .buttonStyle(.glass)
+                            .glassButtonStyle()
                         Button { model.createPlaylist(named: "With \(person.name)", tracks: tracks) } label: {
                             Label("Create Playlist", systemImage: "text.badge.plus")
                         }
-                        .buttonStyle(.glass)
+                        .glassButtonStyle()
                         .help("A playlist of every song \(person.name) is credited on")
                         if isLibraryArtist {
                             Button { model.showArtist(person.name) } label: { Label("Artist Page", systemImage: "music.microphone") }
-                                .buttonStyle(.glass)
+                                .glassButtonStyle()
                         }
                     }
                     .controlSize(.large)

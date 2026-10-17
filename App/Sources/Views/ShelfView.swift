@@ -95,7 +95,7 @@ struct ShelfView: View {
                     .frame(width: min(geometry.size.width * 0.5, 520))
                     .padding(.horizontal, 14)
                     .padding(.vertical, 8)
-                    .glassEffect(.regular, in: .capsule)
+                    .glassBackground(in: .capsule)
                     .position(x: geometry.size.width / 2, y: geometry.size.height - 40)
                 }
             }
@@ -353,11 +353,11 @@ struct AlbumBackside: View {
                 }
                 Spacer()
                 Button { model.play(tracks) } label: { Image(systemName: "play.fill") }
-                    .buttonStyle(.glass)
+                    .glassButtonStyle()
                     .buttonBorderShape(.circle)
                     .help("Play Album")
                 Button(action: onFlipBack) { Image(systemName: "arrow.uturn.backward") }
-                    .buttonStyle(.glass)
+                    .glassButtonStyle()
                     .buttonBorderShape(.circle)
                     .help("Show Cover (Esc)")
             }

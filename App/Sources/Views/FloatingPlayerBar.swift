@@ -277,10 +277,13 @@ extension View {
     /// Floats the player bar over the bottom of a page; scroll views run underneath the glass.
     /// Applied per page (root and every pushed destination): on macOS a pushed `NavigationStack` page is drawn over
     /// an inset attached to the stack itself, which hid the bar on album pages.
+    /// The page fills the column first, so the bar stays at the bottom of the window even when the page is smaller
+    /// (before macOS 26 a `ContentUnavailableView` is only as tall as its text).
     func playerBarInset() -> some View {
-        safeAreaInset(edge: .bottom, spacing: 0) {
-            FloatingPlayerBar()
-        }
+        frame(maxWidth: .infinity, maxHeight: .infinity)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                FloatingPlayerBar()
+            }
     }
 
     /// Liquid Glass capsule that follows the system appearance; falls back to an opaque, outlined capsule when
@@ -310,7 +313,7 @@ private struct PlayerBarBackground: ViewModifier {
                     .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
             } else {
                 content
-                    .glassEffect(.regular, in: .capsule)
+                    .glassBackground(in: .capsule)
             }
         }
         .overlay {

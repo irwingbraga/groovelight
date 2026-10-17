@@ -325,7 +325,7 @@ struct HorizontalShelf<Item: Identifiable, Content: View>: View {
                 .font(.system(size: 15, weight: .semibold))
                 .frame(width: 22, height: 44)
         }
-        .buttonStyle(.glass)
+        .glassButtonStyle()
         .padding(.horizontal, -12)
         .transition(.opacity)
     }

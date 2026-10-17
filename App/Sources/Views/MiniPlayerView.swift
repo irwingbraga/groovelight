@@ -127,7 +127,7 @@ extension View {
     /// material is removed, so the desktop shows through the glass.
     func menuBarGlass() -> some View {
         background(TransparentWindow())
-            .glassEffect(.regular, in: .rect(cornerRadius: 16))
+            .glassBackground(in: .rect(cornerRadius: 16))
     }
 }
 

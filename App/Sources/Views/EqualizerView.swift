@@ -249,12 +249,21 @@ struct BandStrip: View {
                     Text(String(format: "%+.1f", band.gain))
                         .font(.system(size: 9).monospacedDigit())
                         .foregroundStyle(.secondary)
-                    Slider(value: Binding(get: { band.gain }, set: { value in
+                    let gain = Binding(get: { band.gain }, set: { value in
                         selectedBand = index
                         store.updateBand(index) { $0.gain = (value * 2).rounded() / 2 }
-                    }), in: EQMath.gainRange)
-                    .rotationEffect(.degrees(-90))
-                    .frame(width: 90, height: 24)
+                    })
+                    Group {
+                        if #available(macOS 26, *) {
+                            Slider(value: gain, in: EQMath.gainRange)
+                                .rotationEffect(.degrees(-90))
+                                .frame(width: 90, height: 24)
+                        } else {
+                            // A rotated system slider is not drawn before macOS 26.
+                            VerticalSlider(value: gain, range: EQMath.gainRange)
+                                .frame(width: 24, height: 90)
+                        }
+                    }
                     .frame(width: 30, height: 90)
                     .disabled(!band.type.usesGain)
                     Text(Self.label(band.frequency))
@@ -358,5 +367,38 @@ struct ParametricEQDocument: FileDocument {
 
     func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
         FileWrapper(regularFileWithContents: Data(text.utf8))
+    }
+}
+
+/// A vertical slider drawn like the system one: a track filled from the bottom and a round knob to drag.
+struct VerticalSlider: View {
+    @Binding var value: Double
+    var range: ClosedRange<Double>
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        GeometryReader { proxy in
+            let knob: CGFloat = 18
+            let travel = proxy.size.height - knob
+            let fraction = (value - range.lowerBound) / (range.upperBound - range.lowerBound)
+            let y = travel * (1 - fraction)
+            ZStack(alignment: .top) {
+                Capsule().fill(.quaternary).frame(width: 4)
+                Capsule().fill(isEnabled ? Color.accentColor : .secondary)
+                    .frame(width: 4, height: max(0, proxy.size.height - y - knob / 2))
+                    .frame(maxHeight: .infinity, alignment: .bottom)
+                Circle().fill(.white)
+                    .shadow(color: .black.opacity(0.3), radius: 1, y: 0.5)
+                    .frame(width: knob, height: knob)
+                    .offset(y: y)
+            }
+            .frame(maxWidth: .infinity)
+            .contentShape(.rect)
+            .gesture(DragGesture(minimumDistance: 0).onChanged { drag in
+                let position = min(max(drag.location.y - knob / 2, 0), travel)
+                value = range.lowerBound + (1 - position / travel) * (range.upperBound - range.lowerBound)
+            })
+        }
+        .opacity(isEnabled ? 1 : 0.5)
     }
 }

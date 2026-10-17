@@ -78,7 +78,7 @@ struct NowPlayingView: View {
             }
         }
         .overlay(alignment: .topTrailing) {
-            GlassEffectContainer(spacing: 10) {
+            GlassGroup(spacing: 10) {
                 HStack(spacing: 10) {
                     if showVisualizer {
                         Picker("Style", selection: $visualizerStyle) {
@@ -115,7 +115,7 @@ struct NowPlayingView: View {
                 }
                 // Clear glass and white icons, like the rest of Now Playing. Glass buttons color the glass with the
                 // tint (the app's navy), so the tint is cleared here.
-                .buttonStyle(.glass(.clear))
+                .clearGlassButtonStyle()
                 .tint(.clear)
                 .foregroundStyle(.white)
             }

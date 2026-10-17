@@ -162,9 +162,9 @@ struct ArtistDetailView: View {
             }
             HStack(spacing: 10) {
                 Button { model.play(allTracks) } label: { Label("Play", systemImage: "play.fill") }
-                    .buttonStyle(.glassProminent)
+                    .glassProminentButtonStyle()
                 Button { model.play(allTracks, shuffle: true) } label: { Label("Shuffle", systemImage: "shuffle") }
-                    .buttonStyle(.glass)
+                    .glassButtonStyle()
             }
             .controlSize(.large)
             .disabled(albums.isEmpty)
@@ -249,7 +249,7 @@ private struct ArtistAlbumSection: View {
                     .menuIndicator(.hidden)
                     .help("More")
                 }
-                .buttonStyle(.glass)
+                .glassButtonStyle()
                 .buttonBorderShape(.circle)
             }
             Divider()
@@ -379,7 +379,7 @@ struct GenresView: View {
                         Text(selected).font(.system(size: 28, weight: .bold))
                         Spacer()
                         Button { model.play(tracks, shuffle: true) } label: { Label("Shuffle", systemImage: "shuffle") }
-                            .buttonStyle(.glassProminent)
+                            .glassProminentButtonStyle()
                     }
                     TrackList(tracks: tracks, style: .playlist)
                 }

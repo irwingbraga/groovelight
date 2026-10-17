@@ -149,13 +149,13 @@ struct AlbumCard: View {
                             Button { model.playAlbum(album) } label: {
                                 Image(systemName: "play.fill").frame(width: 18, height: 18)
                             }
-                            .buttonStyle(.glass)
+                            .glassButtonStyle()
                             .buttonBorderShape(.circle)
                             Spacer()
                             Button { model.playAlbum(album, shuffle: true) } label: {
                                 Image(systemName: "shuffle").frame(width: 18, height: 18)
                             }
-                            .buttonStyle(.glass)
+                            .glassButtonStyle()
                             .buttonBorderShape(.circle)
                         }
                         .padding(8)
@@ -305,21 +305,21 @@ private struct AlbumHeaderInfo: View {
             }
             AlbumQualitySummary(tracks: tracks)
                 .padding(.top, 2)
-            GlassEffectContainer(spacing: 12) {
+            GlassGroup(spacing: 12) {
                 HStack(spacing: 12) {
                     Button { model.play(tracks) } label: {
                         Label("Play", systemImage: "play.fill").frame(width: 90)
                     }
-                    .buttonStyle(.glassProminent)
+                    .glassProminentButtonStyle()
                     Button { model.play(tracks, shuffle: true) } label: {
                         Label("Shuffle", systemImage: "shuffle").frame(width: 90)
                     }
-                    .buttonStyle(.glass)
+                    .glassButtonStyle()
                     if hasCredits {
                         Button(action: showCredits) {
                             Label("Credits", systemImage: "person.2")
                         }
-                        .buttonStyle(.glass)
+                        .glassButtonStyle()
                         .help("Musicians, songwriters and production")
                         #if DEBUG
                         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { DebugHitTargets.creditsButton = $0 }
@@ -339,8 +339,9 @@ private struct AlbumHeaderInfo: View {
                         Image(systemName: "ellipsis")
                     }
                     .menuIndicator(.hidden)
-                    .buttonStyle(.glass)
+                    .glassButtonStyle()
                     .buttonBorderShape(.circle)
+                    .fixedSize()
                     .help("More")
                     #if DEBUG
                     .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { DebugHitTargets.albumMoreMenu = $0 }
