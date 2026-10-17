@@ -40,7 +40,7 @@ Copy a Debug build into the shared folder and open it in the VM; the debug tours
 
 ## Releases
 
-`.github/workflows/release.yml` runs on version tags (`git tag v0.2.0 && git push --tags`) or by hand from the Actions tab. It tests the package, builds a Release DMG with `scripts/make-dmg.sh`, signs and notarizes it when the Developer ID secrets are set, writes the Sparkle update feed (`appcast.xml`, signed with `SPARKLE_PRIVATE_KEY`), builds Groovelight Sync for Android (signed with the release keystore secrets) and attaches the DMG, the feed and the APK to a GitHub Release. The app reads the feed from the latest release (`SUFeedURL` in `project.yml`); the public half of the update key is `SUPublicEDKey`.
+`.github/workflows/release.yml` runs on version tags (`git tag v0.2.0 && git push --tags`) or by hand from the Actions tab. It tests the package, builds a Release DMG with `scripts/make-dmg.sh`, signs and notarizes it when the Developer ID secrets are set, writes the Sparkle update feed (`appcast.xml`, signed with `SPARKLE_PRIVATE_KEY`), builds Groovelight Sync for Android (signed with the release keystore secrets) and attaches the DMG, the feed and the APK to a GitHub Release. The release notes come from `docs/releases/<tag>.md` (for example `docs/releases/v0.2.2.md`) when that file exists, otherwise GitHub lists the changes. The app reads the feed from the latest release (`SUFeedURL` in `project.yml`); the public half of the update key is `SUPublicEDKey`.
 
 Secrets: `DEVELOPER_ID_P12`, `DEVELOPER_ID_P12_PASSWORD`, `DEVELOPER_ID_IDENTITY`, `NOTARY_KEY_P8`, `NOTARY_KEY_ID`, `NOTARY_ISSUER_ID` (signing and notarization), `SPARKLE_PRIVATE_KEY` (updates), `ANDROID_KEYSTORE`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` (Android).
 
