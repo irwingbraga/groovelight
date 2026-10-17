@@ -34,7 +34,9 @@ xcodegen generate --quiet
 SIGNING=(CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual ENABLE_HARDENED_RUNTIME=NO)
 if [ -n "${DEVELOPER_ID_IDENTITY:-}" ]; then
     echo "==> Signing with $DEVELOPER_ID_IDENTITY"
-    SIGNING=(CODE_SIGN_IDENTITY="$DEVELOPER_ID_IDENTITY" CODE_SIGN_STYLE=Manual ENABLE_HARDENED_RUNTIME=YES OTHER_CODE_SIGN_FLAGS=--timestamp)
+    # No injected base entitlements: they add get-task-allow (debugging), which notarization rejects.
+    SIGNING=(CODE_SIGN_IDENTITY="$DEVELOPER_ID_IDENTITY" CODE_SIGN_STYLE=Manual ENABLE_HARDENED_RUNTIME=YES OTHER_CODE_SIGN_FLAGS=--timestamp
+             CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO)
 fi
 
 xcodebuild -project Groovelight.xcodeproj -scheme Groovelight -configuration Release \
@@ -61,6 +63,10 @@ if [ -n "${DEVELOPER_ID_IDENTITY:-}" ]; then
     sign --preserve-metadata=entitlements,requirements "$APP"
 fi
 codesign --verify --deep --strict "$APP"
+if [ -n "${DEVELOPER_ID_IDENTITY:-}" ] && codesign -d --entitlements - "$APP" 2>/dev/null | grep -q "get-task-allow"; then
+    echo "The app still requests get-task-allow, which notarization rejects" >&2
+    exit 1
+fi
 # The frameworks must load: a broken signature only shows at launch, so check what dyld will check.
 for framework in "$APP"/Contents/Frameworks/*.framework; do
     codesign --verify --strict "$framework" || { echo "Invalid signature: $framework" >&2; exit 1; }
