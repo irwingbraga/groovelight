@@ -171,10 +171,14 @@ final class LoudnessStore {
         (VolumeNormalization(rawValue: UserDefaults.standard.string(forKey: PlaybackPrefs.normalization) ?? "") ?? .off) != .off
     }
 
+    /// Songs failing in a row after which the job stops for the session.
+    private static let failureLimit = 8
+
     private func start() {
         guard task == nil else { return }
         isRunning = true
         task = Task { [weak self, database] in
+            var failuresInARow = 0
             while let self, !Task.isCancelled {
                 let wanted = self.priority
                 self.priority = []
@@ -195,12 +199,17 @@ final class LoudnessStore {
                     case .success(let loudness):
                         // A level, or nil for silence: either way it is known now.
                         try? database.setLoudness(loudness, trackId: id)
+                        failuresInARow = 0
                     case .failure:
                         // Unreadable now (an unplugged drive): skipped this session, tried again next time.
                         self.skipped.insert(id)
+                        failuresInARow += 1
                     }
-                    if !self.priority.isEmpty { break }
+                    if !self.priority.isEmpty || failuresInARow >= Self.failureLimit { break }
                 }
+                // Song after song failing: a drive that cannot be read right now. Opening every song on it would only
+                // keep the struggling drive busy, so the job waits for the next session (or a song asked for by playback).
+                if failuresInARow >= Self.failureLimit, self.priority.isEmpty { break }
             }
             self?.task = nil
             self?.isRunning = false

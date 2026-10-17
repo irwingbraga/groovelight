@@ -128,4 +128,34 @@ struct ScannerIntegrationTests {
             #expect(buffer.frameLength > 0, "\(url.lastPathComponent) decoded no frames")
         }
     }
+
+    /// A folder the drive cannot read (permissions here, read errors on a failing drive) must not count as deleted:
+    /// its songs stay with their history. A file that is really gone is still removed.
+    @Test func keepsSongsOfUnreadableFolders() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("groovelight-\(UUID().uuidString)")
+        let album = directory.appendingPathComponent("Test Artist/Fixture Album")
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: album.path)
+            try? FileManager.default.removeItem(at: directory)
+        }
+        let files = try Self.makeFixtures(in: directory)
+        let loose = directory.appendingPathComponent("Test Artist/Loose.flac")
+        try FileManager.default.copyItem(at: try #require(files.first { $0.pathExtension == "flac" }), to: loose)
+
+        let database = try LibraryDatabase.inMemory()
+        let artwork = try ArtworkCache(directory: directory.appendingPathComponent("Artwork"))
+        let root = try database.addRoot(path: directory.appendingPathComponent("Test Artist").path, bookmark: Data())
+        let scanner = LibraryScanner(database: database, artwork: artwork)
+        _ = try await scanner.scan(root: root)
+        let count = { try await database.writer.read { try Track.fetchCount($0) } }
+        let before = try await count()
+        #expect(before == files.count + 1)
+
+        // The album folder cannot be listed, and the loose file is deleted.
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: album.path)
+        try FileManager.default.removeItem(at: loose)
+        let summary = try await scanner.scan(root: root)
+        #expect(summary.removed == 1)
+        #expect(try await count() == files.count)
+    }
 }

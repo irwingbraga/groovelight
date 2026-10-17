@@ -269,9 +269,21 @@ public actor LibraryScanner {
         }
         try await save(batch)
 
-        // Remove tracks whose files (or cue tracks) disappeared.
-        let missing = existing.filter { !seenPaths.contains($0.key) && !movedIds.contains($0.value.id) }.map(\.value.id)
+        // Remove tracks whose files (or cue tracks) disappeared. Only when gone for sure: a drive with read errors
+        // can hide whole folders from the listing, and removing their songs would lose their history (they would come
+        // back as new songs once the drive reads again). So a song stays when its file or cue sheet could not be read,
+        // when its file still answers (with an error rather than "no such file"), or when the folder itself went away
+        // during the scan (an unplugged drive).
+        // A cue track goes when its sheet is gone, or when its sheet was read now and no longer lists it.
+        let unreadable = Set(summary.failed)
+        let readCues = Set(cueAlbums.map(\.group.base))
+        let missing = existing.filter { path, old in
+            guard !seenPaths.contains(path), !movedIds.contains(old.id) else { return false }
+            if let base = Self.cueBase(of: path) { return readCues.contains(base) || Self.isGone(base) }
+            return !unreadable.contains(path) && Self.isGone(path)
+        }.map(\.value.id)
         if !missing.isEmpty {
+            guard Self.isReadableFolder(rootURL) else { throw ScanError.folderUnavailable(root.path) }
             summary.removed = missing.count
             _ = try await database.writer.write { db in try Track.deleteAll(db, keys: missing) }
         }
@@ -375,6 +387,28 @@ public actor LibraryScanner {
             if ext == "cue" { cues.append(info) } else { audio.append(info) }
         }
         return (audio, cues)
+    }
+
+    /// The file a cue track's virtual path ("album.cue#03") belongs to, or nil for an ordinary file.
+    static func cueBase(of path: String) -> String? {
+        guard let hash = path.range(of: "#", options: .backwards) else { return nil }
+        let number = path[hash.upperBound...]
+        guard number.count >= 2, number.allSatisfy(\.isNumber) else { return nil }
+        return String(path[..<hash.lowerBound])
+    }
+
+    /// Whether a file is certainly gone. A file on a drive with read errors answers with an I/O error, not "no such
+    /// file": only the latter counts.
+    static func isGone(_ path: String) -> Bool {
+        var info = stat()
+        if lstat(path, &info) == 0 { return false }
+        return errno == ENOENT || errno == ENOTDIR
+    }
+
+    private static func isReadableFolder(_ url: URL) -> Bool {
+        var isDirectory: ObjCBool = false
+        return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) && isDirectory.boolValue
+            && FileManager.default.isReadableFile(atPath: url.path)
     }
 
     /// File identity for move detection: name (case and Unicode normalization insensitive) and size.
