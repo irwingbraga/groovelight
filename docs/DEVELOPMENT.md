@@ -95,7 +95,10 @@ APP=build/DebugUnsandboxed/Build/Products/Debug/Groovelight.app/Contents/MacOS/G
 "$APP" -GLDebugTour /tmp/tour -GLDebugTourHold readme -GLDebugDevice "FIIO M11"   # stages the README screenshots: SHOT-n names and WINDOWID-n windows for screencapture -l (see below)
 "$APP" -GLDebugDataDir /path/to/folder           # use another library folder (database and artwork), e.g. the performance library
 "$APP" -GLDebugTour /tmp/tour -GLDebugTourHold perf -GLDebugDataDir /tmp/perf   # how long each page blocks the main thread (PERF)
+"$APP" -GLDebugTour /tmp/tour -GLDebugTourHold songs-sort -GLDebugDataDir /tmp/perf   # sorts the Songs table by each column: when the list arrived and the longest main thread block (SORT)
+"$APP" -GLDebugTour /tmp/tour -GLDebugTourHold songs-scroll -GLDebugDataDir /tmp/perf [-GLDebugScrollStep 250]   # flings the Songs table and times each frame (SCROLL)
 "$APP" -GLDebugTour /tmp/tour -GLDebugTourHold devices-settings   # Settings, Devices in a window (WINDOW, WINDOWID)
+"$APP" -GLDebugTour /tmp/tour -GLDebugTourHold library-settings   # Settings, Library (music folders) in a window (WINDOW, WINDOWID)
 "$APP" -GLDebugTour /tmp/tour -GLDebugTourHold lastfm   # Settings, Last.fm in a window (writes WINDOW for screencapture -R)
 "$APP" -GLDebugTour /tmp/tour -GLDebugTourHold playlist-files   # exports a playlist in every format, imports each back (PLAYLISTS), then leaves an import report open (WINDOW, READY); deletes what it made
 "$APP" -GLDebugTour /tmp/tour -GLDebugTourHold lyrics   # synced lyrics in the side panel and Now Playing, at the start and at 1:00 (WINDOW, WINDOWID for screencapture -l, READY-0 to READY-3); temporary lyrics are put back

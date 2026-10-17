@@ -48,6 +48,19 @@ struct LibraryDatabaseTests {
         #expect(beatlesAlbums.count == 2)
     }
 
+    @Test func listsCompilationsAsOneEntry() throws {
+        let database = try Self.seeded()
+        let compilations = try #require(try database.writer.read { try LibraryDatabase.compilations($0) })
+        #expect(compilations.isCompilations && compilations.displayName == "Compilations")
+        #expect(compilations.albumCount == 1 && compilations.trackCount == 2)
+        let albums = try database.writer.read { try LibraryDatabase.albums($0, artist: ArtistSummary.compilations) }
+        #expect(albums.map(\.title) == ["Hits 1999"])
+
+        // No compilation albums, no entry.
+        try database.writer.write { try $0.execute(sql: "DELETE FROM track WHERE isCompilation = 1") }
+        #expect(try database.writer.read { try LibraryDatabase.compilations($0) } == nil)
+    }
+
     @Test func albumTracksAreOrdered() throws {
         let database = try Self.seeded()
         let key = Track.makeAlbumKey(album: "Abbey Road", albumArtist: nil, artist: "The Beatles", isCompilation: false)

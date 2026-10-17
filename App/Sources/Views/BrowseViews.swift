@@ -17,12 +17,18 @@ struct ArtistListColumn: View {
         // rows crashes SwiftUI (AttributeGraph precondition) when the window is not key.
         SelectableList(items: artists, id: \.name, selection: $model.selectedArtist, scrollsToSelection: true) { artist in
             HStack(spacing: 10) {
-                // The artist's photo when known, otherwise one of their album covers.
-                ArtworkImage(hash: photos[artist.name.lowercased()] ?? artist.artworkHash, size: .small, cornerRadius: 20)
-                    .frame(width: 40, height: 40)
-                    .clipShape(.circle)
+                // The artist's photo when known, otherwise one of their album covers; a symbol for Compilations.
+                Group {
+                    if artist.isCompilations {
+                        CompilationsArtwork()
+                    } else {
+                        ArtworkImage(hash: photos[artist.name.lowercased()] ?? artist.artworkHash, size: .small, cornerRadius: 20)
+                    }
+                }
+                .frame(width: 40, height: 40)
+                .clipShape(.circle)
                 VStack(alignment: .leading) {
-                    Text(artist.name).lineLimit(1)
+                    Text(artist.displayName).lineLimit(1)
                     Text(artist.albumCount == 1 ? "1 album" : "\(artist.albumCount) albums")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -31,11 +37,16 @@ struct ArtistListColumn: View {
             }
         }
         .navigationTitle("Artists")
-        .observing(model.database, id: 0, { try LibraryDatabase.artists($0) }) { value in
+        // Compilations first, like Music, when the library has any: their songs are not under their own artists.
+        .observing(model.database, id: 0, { db in
+            try [LibraryDatabase.compilations(db)].compactMap { $0 } + LibraryDatabase.artists(db)
+        }) { value in
             artists = value
-            // Names coming from other pages may differ in case from the grouped artist name.
+            // Names coming from other pages may differ in case from the grouped artist name, and a compilation's
+            // "Various Artists" (an album page's artist link) means the compilations entry.
             if let wanted = model.selectedArtist, !value.contains(where: { $0.name == wanted }) {
                 model.selectedArtist = value.first { $0.name.caseInsensitiveCompare(wanted) == .orderedSame }?.name
+                    ?? (wanted.caseInsensitiveCompare("Various Artists") == .orderedSame ? value.first(where: \.isCompilations)?.name : nil)
             }
             if model.selectedArtist == nil { model.selectedArtist = value.first?.name }
         }
@@ -62,7 +73,7 @@ struct ArtistsView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .navigationTitle(model.selectedArtist ?? "Artists")
+        .navigationTitle(model.selectedArtist.map(ArtistSummary.displayName) ?? "Artists")
     }
 }
 
@@ -82,6 +93,8 @@ struct ArtistDetailView: View {
 
     /// The artist's photo, or their first album's cover until a photo is known.
     private var headerImage: String? { info?.imageHash ?? albums.first?.album.artworkHash }
+    /// The compilations entry: various-artists albums, with no artist info to look up.
+    private var isCompilations: Bool { artist == ArtistSummary.compilations }
     private var allTracks: [Track] { albums.flatMap(\.tracks) }
 
     var body: some View {
@@ -124,14 +137,22 @@ struct ArtistDetailView: View {
         .observing(model.database, id: "info-\(artist)", { [artist] db in try LibraryDatabase.artistInfo(db, name: artist)?.data }) { data in
             info = data.flatMap { try? JSONDecoder().decode(ArtistInfo.self, from: $0) }
         }
-        .task(id: artist) { await model.metadata.loadArtistInfo(name: artist) }
+        .task(id: artist) {
+            if !isCompilations { await model.metadata.loadArtistInfo(name: artist) }
+        }
     }
 
     private var photo: some View {
         VStack(spacing: 6) {
-            ArtworkImage(hash: headerImage, size: .large, cornerRadius: 0)
-                .frame(width: 220, height: 220)
-                .clipShape(.circle)
+            Group {
+                if isCompilations {
+                    CompilationsArtwork()
+                } else {
+                    ArtworkImage(hash: headerImage, size: .large, cornerRadius: 0)
+                }
+            }
+            .frame(width: 220, height: 220)
+            .clipShape(.circle)
                 .shadow(color: .black.opacity(0.3), radius: 18, y: 10)
             if info?.imageHash != nil, let url = info?.about?.url {
                 // Commons photos have various open licenses: credit and link to the source article.
@@ -144,7 +165,7 @@ struct ArtistDetailView: View {
 
     private var title: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(artist)
+            Text(ArtistSummary.displayName(artist))
                 .font(.system(size: 34, weight: .bold))
                 .lineLimit(2)
             let songs = allTracks.count
@@ -176,6 +197,21 @@ struct ArtistDetailView: View {
 
 /// An album on its artist's page: the cover on the left; title, genre and year, actions and the songs on the right
 /// (stacked under the cover when the page is narrow).
+/// The picture of the Compilations entry: stacked albums on the app's color, sized to whatever frame it gets.
+struct CompilationsArtwork: View {
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack {
+                LinearGradient(colors: [Color.brand.opacity(0.95), Color.brand.opacity(0.6)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                Image(systemName: "rectangle.stack.fill")
+                    .font(.system(size: proxy.size.width * 0.42, weight: .medium))
+                    .foregroundStyle(.white)
+            }
+        }
+        .accessibilityLabel("Compilations")
+    }
+}
+
 private struct ArtistAlbumSection: View {
     var album: AlbumSummary
     var tracks: [Track]
@@ -264,6 +300,8 @@ struct SongsView: View {
     @State private var tracks: [Track] = []
     @State private var selection: Set<Track.ID> = []
     @State private var sortOrder = [KeyPathComparator(\Track.title, comparator: .localizedStandard)]
+    /// The order `tracks` is in, to tell a new sort from a library change.
+    @State private var shownOrder: [KeyPathComparator<Track>]?
 
     var body: some View {
         Table(tracks, selection: $selection, sortOrder: $sortOrder) {
@@ -313,14 +351,50 @@ struct SongsView: View {
         // Fetched and sorted on the database's thread (and again there when a column header changes the order):
         // sorting tens of thousands of titles with localized comparison would freeze the window.
         .observing(model.database, id: sortOrder, { [sortOrder] db in try LibraryDatabase.allTracks(db).sorted(using: sortOrder) }) { value in
-            tracks = value
+            show(value)
         }
+        #if DEBUG
+        .onReceive(NotificationCenter.default.publisher(for: DebugHitTargets.sortSongs)) { note in
+            sortOrder = switch note.object as? String {
+            case "artist": [KeyPathComparator(\Track.displayArtist, comparator: .localizedStandard)]
+            case "album": [KeyPathComparator(\Track.displayAlbum, comparator: .localizedStandard)]
+            case "time": [KeyPathComparator(\Track.duration)]
+            case "plays": [KeyPathComparator(\Track.playCount, order: .reverse)]
+            case "quality": [KeyPathComparator(\Track.qualityRank)]
+            case "title-desc": [KeyPathComparator(\Track.title, comparator: .localizedStandard, order: .reverse)]
+            default: [KeyPathComparator(\Track.title, comparator: .localizedStandard)]
+            }
+        }
+        #endif
     }
 
     /// The selected songs when `track` is part of a multi-selection, otherwise just `track`.
     private func menuTracks(for track: Track) -> [Track] {
         guard selection.contains(track.id), selection.count > 1 else { return [track] }
         return tracks.filter { selection.contains($0.id) }
+    }
+
+    /// Shows a fetched list. A new sort empties the table first and fills it on the next update: handed the reordered
+    /// list directly, the table moves every row on its own, which takes AppKit seconds for a thousand songs (each
+    /// moved row's view leaves and rejoins the window). Library changes in the same order update the rows in place.
+    private func show(_ value: [Track]) {
+        defer {
+            #if DEBUG
+            DebugHitTargets.songsUpdates += 1
+            #endif
+        }
+        let isNewOrder = shownOrder != nil && shownOrder != sortOrder
+        shownOrder = sortOrder
+        guard isNewOrder, !tracks.isEmpty else {
+            tracks = value
+            return
+        }
+        let kept = selection
+        tracks = []
+        DispatchQueue.main.async {
+            tracks = value
+            selection = kept
+        }
     }
 }
 
@@ -335,9 +409,12 @@ private struct SongTitleCell: View {
         HStack(spacing: 4) {
             Text(track.title).lineLimit(1)
             Spacer(minLength: 4)
-            TrackMenuButton(tracks: menuTracks)
-                .opacity(isHovering || isSelected ? 1 : 0)
+            // Built only when shown: a menu in every row makes fast scrolling stutter (each new row would create one).
+            if isHovering || isSelected {
+                TrackMenuButton(tracks: menuTracks)
+            }
         }
+        .frame(minHeight: 22)
         // Table cells size to their content; fill the column so the button sits at its trailing edge.
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(.rect)

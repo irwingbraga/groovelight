@@ -54,38 +54,37 @@ struct GeneralSettings: View {
 struct LibrarySettings: View {
     @Environment(AppModel.self) private var model
     @State private var roots: [LibraryRoot] = []
-    @State private var selection: Int64?
+    @State private var songCounts: [Int64: Int] = [:]
+    /// The folder waiting for the remove confirmation.
+    @State private var removing: LibraryRoot?
 
     var body: some View {
         Form {
             Section {
-                List(roots, selection: $selection) { root in
-                    VStack(alignment: .leading, spacing: 2) {
-                        Label(URL(fileURLWithPath: root.path).lastPathComponent, systemImage: "folder.fill")
-                        Text(root.path)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        if model.unavailableFolders.contains(root.path) {
-                            HStack(spacing: 8) {
-                                Label("Not available: unplugged or moved. Its songs keep their history.", systemImage: "exclamationmark.triangle.fill")
-                                    .font(.caption2)
-                                    .foregroundStyle(.orange)
-                                Button("Locate…") { model.backup.locate(root) }
-                                    .controlSize(.small)
-                            }
-                        } else {
-                            FolderSyncStatus(root: root, isNetwork: model.sync.networkFolders.contains(root.path))
+                // Each row has its own remove button: a List's selection does not work inside a grouped Form.
+                ForEach(roots) { root in
+                    HStack(alignment: .top, spacing: 10) {
+                        FolderRow(root: root, songs: root.id.flatMap { songCounts[$0] } ?? 0)
+                        Spacer(minLength: 8)
+                        Button {
+                            removing = root
+                        } label: {
+                            Image(systemName: "minus.circle")
                         }
+                        .buttonStyle(.borderless)
+                        .help("Remove from the library")
                     }
-                    .tag(root.id)
+                    .contextMenu {
+                        Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: root.path)]) }
+                        Divider()
+                        Button("Remove from Library…", role: .destructive) { removing = root }
+                    }
                 }
-                .frame(minHeight: 160)
+                if roots.isEmpty {
+                    Text("No music folders yet.").foregroundStyle(.secondary)
+                }
                 HStack {
                     Button("Add Folder…") { model.chooseLibraryFolder() }
-                    Button("Remove") {
-                        if let root = roots.first(where: { $0.id == selection }) { model.removeRoot(root) }
-                    }
-                    .disabled(selection == nil)
                     Spacer()
                     Button("Rescan Now") { model.rescanAll() }
                         .disabled(model.scanProgress != nil)
@@ -103,7 +102,42 @@ struct LibrarySettings: View {
             }
         }
         .formStyle(.grouped)
+        .confirmationDialog(removing.map { "Remove “\(URL(fileURLWithPath: $0.path).lastPathComponent)” from the library?" } ?? "",
+                            isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }), presenting: removing) { root in
+            Button("Remove", role: .destructive) { model.removeRoot(root) }
+        } message: { root in
+            let songs = root.id.flatMap { songCounts[$0] } ?? 0
+            Text("\(songs == 1 ? "Its song leaves" : "Its \(songs) songs leave") Groovelight, with their play counts and loves, and leave your playlists. The files stay where they are.")
+        }
         .observing(model.database, id: 0, { try LibraryDatabase.roots($0) }) { roots = $0 }
+        .observing(model.database, id: "counts", { try LibraryDatabase.trackCountsByRoot($0) }) { songCounts = $0 }
+    }
+}
+
+/// A library folder: its name, path, song count, and how it is kept up to date.
+private struct FolderRow: View {
+    var root: LibraryRoot
+    var songs: Int
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Label(URL(fileURLWithPath: root.path).lastPathComponent, systemImage: "folder.fill")
+            Text("\(root.path) · \(songs == 1 ? "1 song" : "\(songs) songs")")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if model.unavailableFolders.contains(root.path) {
+                HStack(spacing: 8) {
+                    Label("Not available: unplugged or moved. Its songs keep their history.", systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                    Button("Locate…") { model.backup.locate(root) }
+                        .controlSize(.small)
+                }
+            } else {
+                FolderSyncStatus(root: root, isNetwork: model.sync.networkFolders.contains(root.path))
+            }
+        }
     }
 }
 

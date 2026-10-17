@@ -108,11 +108,15 @@ enum DebugTour {
                 try? await Task.sleep(for: .seconds(2))
                 NSApp.activate()
                 model.showArtist(UserDefaults.standard.string(forKey: "GLDebugArtist") ?? "Radiohead")
+                // `-GLDebugGenres YES` shows Genres instead, `-GLDebugLyricsPanel YES` opens the lyrics panel.
+                if UserDefaults.standard.bool(forKey: "GLDebugGenres") { model.selection = .genres }
+                if UserDefaults.standard.bool(forKey: "GLDebugLyricsPanel") { model.isShowingLyricsPanel = true }
                 try? await Task.sleep(for: .seconds(3))
                 if let window = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("main") == true }), let screen = window.screen {
                     let frame = window.frame
                     let top = screen.frame.maxY - frame.maxY
                     try? "\(Int(frame.minX)),\(Int(top)),\(Int(frame.width)),\(Int(frame.height))".write(to: output.appendingPathComponent("WINDOW"), atomically: true, encoding: .utf8)
+                    try? "\(window.windowNumber)".write(to: output.appendingPathComponent("WINDOWID"), atomically: true, encoding: .utf8)
                 }
                 try? "done".write(to: output.appendingPathComponent("DONE"), atomically: true, encoding: .utf8)
                 return
@@ -400,6 +404,79 @@ enum DebugTour {
                 model.selection = .albums
                 for id in made { try? model.database.deletePlaylist(id) }
                 NSApp.appearance = nil
+                try? "done".write(to: output.appendingPathComponent("DONE"), atomically: true, encoding: .utf8)
+                return
+            }
+            // `-GLDebugTourHold songs-sort` sorts the Songs table by each column and writes SORT: when the sorted list
+            // arrived and the longest main thread block (a 10 ms ticker) while it was shown.
+            if UserDefaults.standard.string(forKey: "GLDebugTourHold") == "songs-sort" {
+                try? await Task.sleep(for: .seconds(2))
+                NSApp.activate()
+                if let window = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("main") == true }) {
+                    try? "\(window.windowNumber)".write(to: output.appendingPathComponent("WINDOWID"), atomically: true, encoding: .utf8)
+                }
+                model.selection = .songs
+                for _ in 0..<100 where DebugHitTargets.songsUpdates == 0 { try? await Task.sleep(for: .milliseconds(100)) }
+                try? await Task.sleep(for: .seconds(1))
+                let count = (try? await model.database.writer.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM track") ?? 0 }) ?? 0
+                var lines = ["library: \(count) songs"]
+                for column in ["artist", "album", "time", "plays", "quality", "title-desc", "title"] {
+                    let before = DebugHitTargets.songsUpdates
+                    let start = Date.now
+                    var last = Date.now, longest = 0.0
+                    var arrived: Double?
+                    NotificationCenter.default.post(name: DebugHitTargets.sortSongs, object: column)
+                    while Date.now.timeIntervalSince(start) < 4 {
+                        try? await Task.sleep(for: .milliseconds(10))
+                        longest = max(longest, Date.now.timeIntervalSince(last))
+                        last = .now
+                        if arrived == nil, DebugHitTargets.songsUpdates > before { arrived = Date.now.timeIntervalSince(start) }
+                    }
+                    lines.append(String(format: "%@: sorted list after %.0f ms, longest main thread block %.0f ms",
+                                        column, (arrived ?? -1) * 1000, longest * 1000))
+                }
+                try? lines.joined(separator: "\n").write(to: output.appendingPathComponent("SORT"), atomically: true, encoding: .utf8)
+                try? "done".write(to: output.appendingPathComponent("DONE"), atomically: true, encoding: .utf8)
+                return
+            }
+            // `-GLDebugTourHold songs-scroll` flings the Songs table down and back up (`-GLDebugScrollStep` points a frame,
+            // 600 by default), drawing each frame at once, and writes SCROLL: how long the frames took (over 16.7 ms is a
+            // dropped frame at 60 Hz).
+            if UserDefaults.standard.string(forKey: "GLDebugTourHold") == "songs-scroll" {
+                try? await Task.sleep(for: .seconds(2))
+                NSApp.activate()
+                guard let main = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("main") == true }) else { return }
+                model.selection = .songs
+                for _ in 0..<100 where DebugHitTargets.songsUpdates == 0 { try? await Task.sleep(for: .milliseconds(100)) }
+                try? await Task.sleep(for: .seconds(1))
+                func table(in view: NSView) -> NSTableView? {
+                    if let table = view as? NSTableView { return table }
+                    return view.subviews.lazy.compactMap(table(in:)).first
+                }
+                guard let tableView = main.contentView.flatMap(table(in:)), let scroll = tableView.enclosingScrollView else { return }
+                let step = UserDefaults.standard.double(forKey: "GLDebugScrollStep") > 0 ? UserDefaults.standard.double(forKey: "GLDebugScrollStep") : 600
+                var lines = ["rows: \(tableView.numberOfRows), visible height \(Int(scroll.contentView.bounds.height)), \(Int(step)) points a frame"]
+                for pass in 1...2 {
+                    var frames: [Double] = []
+                    let end = max(0, tableView.bounds.height - scroll.contentView.bounds.height)
+                    var y = 0.0, direction = 1.0
+                    for _ in 0..<240 {
+                        let start = Date.now
+                        y += step * direction
+                        if y >= end { y = end; direction = -1 } else if y <= 0 { y = 0; direction = 1 }
+                        scroll.contentView.scroll(to: NSPoint(x: 0, y: y))
+                        scroll.reflectScrolledClipView(scroll.contentView)
+                        main.displayIfNeeded()
+                        CATransaction.flush()
+                        frames.append(Date.now.timeIntervalSince(start) * 1000)
+                        await Task.yield()
+                    }
+                    let sorted = frames.sorted()
+                    lines.append(String(format: "pass %d: average %.1f ms, 95th percentile %.1f ms, worst %.1f ms, %d of %d frames over 16.7 ms",
+                                        pass, frames.reduce(0, +) / Double(frames.count), sorted[sorted.count * 95 / 100], sorted.last ?? 0,
+                                        frames.filter { $0 > 16.7 }.count, frames.count))
+                }
+                try? lines.joined(separator: "\n").write(to: output.appendingPathComponent("SCROLL"), atomically: true, encoding: .utf8)
                 try? "done".write(to: output.appendingPathComponent("DONE"), atomically: true, encoding: .utf8)
                 return
             }
@@ -834,7 +911,7 @@ enum DebugTour {
                 try? "done".write(to: output.appendingPathComponent("DONE"), atomically: true, encoding: .utf8)
                 return
             }
-            if let hold = UserDefaults.standard.string(forKey: "GLDebugTourHold"), hold == "lastfm" || hold == "playback" || hold == "devices-settings" {
+            if let hold = UserDefaults.standard.string(forKey: "GLDebugTourHold"), hold == "lastfm" || hold == "playback" || hold == "devices-settings" || hold == "library-settings" {
                 try? await Task.sleep(for: .seconds(2))
                 NSApp.activate()
                 let window = NSWindow(contentRect: NSRect(x: 300, y: 200, width: 720, height: 560), styleMask: [.titled], backing: .buffered, defer: false)
@@ -848,6 +925,8 @@ enum DebugTour {
                     window.contentView = NSHostingView(rootView: PlaybackSettings().environment(model).tint(.brand))
                 } else if hold == "devices-settings" {
                     window.contentView = NSHostingView(rootView: DevicesSettings().environment(model).tint(.brand))
+                } else if hold == "library-settings" {
+                    window.contentView = NSHostingView(rootView: LibrarySettings().environment(model).tint(.brand))
                 } else {
                     window.contentView = NSHostingView(rootView: LastFMSettings().environment(model).tint(.brand))
                 }
@@ -2670,6 +2749,10 @@ enum DebugTour {
             let handled = sheet.performKeyEquivalent(with: down)
             if !handled { sheet.sendEvent(down) }
             lines.append("apply via Return: performKeyEquivalent handled=\(handled)")
+            if UserDefaults.standard.bool(forKey: "GLDebugSlowApply") {
+                try? await Task.sleep(for: .seconds(1.5))
+                await snapshot("20b-applying", output)
+            }
         } else {
             lines.append("no sheet window found")
         }
@@ -2746,6 +2829,10 @@ enum DebugHitTargets {
     static var shelfCenterCover: CGPoint = .zero
     static var shelfListOffset: CGFloat = 0
     static var shelfBacksideSettled = false
+    /// Posted with a column name ("artist", "title-desc"...) to sort the Songs table; `songsUpdates` counts the
+    /// sorted lists it received.
+    static let sortSongs = Notification.Name("GLDebugSortSongs")
+    static var songsUpdates = 0
 }
 
 enum LibraryKitQueries {

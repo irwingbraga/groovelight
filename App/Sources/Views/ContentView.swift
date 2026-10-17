@@ -15,6 +15,7 @@ struct ContentView: View {
     /// The sidebar was hidden to make room (see `makeRoom`), so it comes back by itself.
     @State private var sidebarAutoHidden = false
     @State private var windowWidth: CGFloat = 0
+    @State private var playerBarSpan = PlayerBarSpan()
 
     /// Sidebar, list and side panel at their usual widths plus a usable page (420 pt).
     private static let roomForFourColumns: CGFloat = 230 + 250 + 420 + 320
@@ -23,7 +24,8 @@ struct ContentView: View {
     private var isShowingShelf: Bool { model.selection == .shelf }
 
     /// Artists and Genres get a list column between the sidebar and the page, like Music: macOS then gives the list its
-    /// own part of the toolbar (side by side in one column, two scroll views under one toolbar made it flicker).
+    /// own part of the toolbar (side by side in one column, two scroll views under one toolbar made it flicker). The
+    /// player bar spans the list and the page there (`SpanningPlayerBar`).
     @ViewBuilder private var splitView: some View {
         @Bindable var model = model
         switch model.selection {
@@ -34,6 +36,7 @@ struct ContentView: View {
                 Group {
                     if model.selection == .genres { GenreListColumn() } else { ArtistListColumn() }
                 }
+                .playerBarListColumn()
                 .navigationSplitViewColumnWidth(min: 200, ideal: 250, max: 340)
             } detail: {
                 pages
@@ -96,6 +99,8 @@ struct ContentView: View {
                 if visibility == .all { sidebarAutoHidden = false }
             }
 
+            SpanningPlayerBar()
+
             if isDropTargeted {
                 DropToImportOverlay()
                     .transition(.opacity)
@@ -122,6 +127,7 @@ struct ContentView: View {
             }
             return true
         }
+        .environment(playerBarSpan)
         .modifier(AppSheets())
         .alert("Groovelight", isPresented: Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })) {
             Button("OK") { model.errorMessage = nil }

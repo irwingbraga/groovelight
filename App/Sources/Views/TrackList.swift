@@ -120,7 +120,8 @@ struct TrackRow: View {
                 Text(track.title)
                     .font(.system(size: isCompact ? 12 : 13, weight: isCurrent ? .semibold : .regular))
                     .lineLimit(1)
-                if style == .playlist || (track.artist != nil && track.artist != track.albumArtist && track.albumArtist != nil) {
+                // A compilation's songs name their artists even without an album artist set.
+                if style == .playlist || (track.artist != nil && track.artist != track.albumArtist && (track.albumArtist != nil || track.isCompilation)) {
                     Text(style == .playlist ? "\(track.displayArtist) — \(track.displayAlbum)" : track.displayArtist)
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)

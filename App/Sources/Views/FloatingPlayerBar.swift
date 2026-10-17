@@ -17,6 +17,8 @@ struct FloatingPlayerBar: View {
     enum Density { case full, medium, compact }
 
     static let maxWidth: CGFloat = 980
+    /// The bar with its bottom margin: the room a page keeps for it.
+    static let height: CGFloat = 76
 
     var body: some View {
         GeometryReader { geometry in
@@ -125,9 +127,24 @@ private struct NowPlayingSummary: View {
                         AudioQualityButton(track: track, showsText: false, isMini: true)
                     }
                 }
-                Text(item.map { "\($0.artist) — \($0.album)" } ?? " ")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                // Artist and album link to their pages, like in Now Playing (once the library track is loaded).
+                HStack(spacing: 4) {
+                    if let item {
+                        let current = track?.id == item.id ? track : nil
+                        LinkText(text: item.artist, help: "Go to \(item.artist)", action: current?.artistPageName.map { name in
+                            { model.showArtist(name) }
+                        })
+                        .layoutPriority(1)
+                        Text("—")
+                        LinkText(text: item.album, help: "Go to \(item.album)", action: current.map { track in
+                            { model.showAlbum(albumKey: track.albumKey) }
+                        })
+                    } else {
+                        Text(" ")
+                    }
+                }
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
                 HStack(spacing: 8) {
                     if density != .compact {
                         Text(item == nil ? "" : formatDuration(time))
@@ -282,8 +299,14 @@ extension View {
     func playerBarInset() -> some View {
         frame(maxWidth: .infinity, maxHeight: .infinity)
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                FloatingPlayerBar()
+                PageBottomBar()
             }
+    }
+
+    /// The list column of Artists and Genres: it reports where it is, and keeps room at its bottom for the bar that
+    /// spans it and the page.
+    func playerBarListColumn() -> some View {
+        modifier(ListColumnBarSpace())
     }
 
     /// Liquid Glass capsule that follows the system appearance; falls back to an opaque, outlined capsule when
@@ -319,6 +342,66 @@ private struct PlayerBarBackground: ViewModifier {
         .overlay {
             if contrast == .increased {
                 Capsule().strokeBorder(.primary.opacity(0.5), lineWidth: 1)
+            }
+        }
+    }
+}
+
+extension AppModel {
+    /// Artists and Genres show a list column between the sidebar and the page.
+    var hasListColumn: Bool { selection == .artists || selection == .genres }
+}
+
+/// Where the bar goes on pages with a list column (Artists, Genres): across the list and the page, centered on both.
+/// The columns are separate AppKit views, so the bar floats above the split view (`SpanningPlayerBar`) instead of
+/// inside the page, where it would be clipped and lose clicks over the list.
+@MainActor @Observable
+final class PlayerBarSpan {
+    /// Frames in the window, set by the list column and the page.
+    var listFrame: CGRect?
+    var pageFrame: CGRect?
+}
+
+/// The bar at the bottom of a page, or, next to a list column, the room the spanning bar takes.
+private struct PageBottomBar: View {
+    @Environment(PlayerBarSpan.self) private var span: PlayerBarSpan?
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        if let span, model.hasListColumn {
+            Color.clear
+                .frame(height: FloatingPlayerBar.height)
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { span.pageFrame = $0 }
+        } else {
+            FloatingPlayerBar()
+        }
+    }
+}
+
+private struct ListColumnBarSpace: ViewModifier {
+    @Environment(PlayerBarSpan.self) private var span: PlayerBarSpan?
+
+    func body(content: Content) -> some View {
+        content
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                Color.clear.frame(height: FloatingPlayerBar.height)
+            }
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { span?.listFrame = $0 }
+    }
+}
+
+/// The bar across the list column and the page, laid over the whole split view.
+struct SpanningPlayerBar: View {
+    @Environment(PlayerBarSpan.self) private var span
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        if model.hasListColumn, let list = span.listFrame, let page = span.pageFrame, page.maxX > list.minX {
+            GeometryReader { proxy in
+                let origin = proxy.frame(in: .global).origin
+                FloatingPlayerBar()
+                    .frame(width: page.maxX - list.minX)
+                    .offset(x: list.minX - origin.x, y: page.maxY - origin.y - FloatingPlayerBar.height)
             }
         }
     }

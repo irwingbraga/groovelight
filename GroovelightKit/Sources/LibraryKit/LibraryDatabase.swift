@@ -227,7 +227,9 @@ extension LibraryDatabase {
         }
         var arguments: StatementArguments = []
         var filter = ""
-        if let artist {
+        if artist == ArtistSummary.compilations {
+            filter = "WHERE isCompilation = 1"
+        } else if let artist {
             filter = "WHERE isCompilation = 0 AND \(artistNameSQL) = ? COLLATE NOCASE"
             arguments = [artist]
         }
@@ -262,6 +264,16 @@ extension LibraryDatabase {
             GROUP BY \(artistNameSQL) COLLATE NOCASE
             ORDER BY name COLLATE NOCASE
             """)
+    }
+
+    /// The "Compilations" entry for the artist list, or nil when the library has no compilation albums.
+    public static func compilations(_ db: Database) throws -> ArtistSummary? {
+        guard let row = try Row.fetchOne(db, sql: """
+            SELECT COUNT(DISTINCT albumKey) AS albumCount, COUNT(*) AS trackCount, MAX(artworkHash) AS artworkHash
+            FROM track WHERE isCompilation = 1
+            """), let tracks = row["trackCount"] as Int?, tracks > 0 else { return nil }
+        return ArtistSummary(name: ArtistSummary.compilations, albumCount: row["albumCount"], trackCount: tracks,
+                             artworkHash: row["artworkHash"])
     }
 
     public static func genres(_ db: Database) throws -> [String] {
@@ -512,6 +524,15 @@ extension LibraryDatabase {
             try db.execute(sql: "UPDATE libraryRoot SET eventId = ?, eventsVolumeId = ? WHERE id = ?",
                            arguments: [eventId.map { Int64(bitPattern: $0) }, volumeId, rootId])
         }
+    }
+
+    /// How many songs each library folder holds, by folder id.
+    public static func trackCountsByRoot(_ db: Database) throws -> [Int64: Int] {
+        var counts: [Int64: Int] = [:]
+        for row in try Row.fetchAll(db, sql: "SELECT rootId, COUNT(*) AS n FROM track GROUP BY rootId") {
+            counts[row["rootId"]] = row["n"]
+        }
+        return counts
     }
 
     public func removeRoot(_ rootId: Int64) throws {

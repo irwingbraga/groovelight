@@ -150,6 +150,17 @@ public struct ArtistSummary: Codable, Hashable, Sendable, Identifiable, Fetchabl
     public var albumCount: Int
     public var trackCount: Int
     public var artworkHash: String?
+
+    /// The "Compilations" entry of the artist list (various-artists albums), a name no artist can have.
+    public static let compilations = "\u{1}compilations"
+
+    public var isCompilations: Bool { name == Self.compilations }
+    /// The name to show: "Compilations" for the compilations entry.
+    public var displayName: String { Self.displayName(name) }
+
+    public static func displayName(_ name: String) -> String {
+        name == compilations ? "Compilations" : name
+    }
 }
 
 public struct Playlist: Codable, Hashable, Sendable, Identifiable, FetchableRecord, MutablePersistableRecord {
