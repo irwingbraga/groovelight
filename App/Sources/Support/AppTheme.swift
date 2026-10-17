@@ -21,9 +21,11 @@ enum AppTheme: String, CaseIterable, Identifiable {
         UserDefaults.standard.string(forKey: key).flatMap(AppTheme.init) ?? .system
     }
 
+    /// Does nothing before AppKit creates the application (`NSApp` is nil while SwiftUI builds the app's model).
     @MainActor
     func apply() {
-        NSApp.appearance = switch self {
+        guard let app = NSApp else { return }
+        app.appearance = switch self {
         case .system: nil
         case .light: NSAppearance(named: .aqua)
         case .dark: NSAppearance(named: .darkAqua)

@@ -31,14 +31,15 @@ final class LastFMStore {
     var apiKey: String {
         didSet { UserDefaults.standard.set(apiKey.trimmingCharacters(in: .whitespaces), forKey: Keys.apiKey) }
     }
-    var secret: String {
-        didSet { Keychain.set(secret.trimmingCharacters(in: .whitespaces), for: "secret") }
+    var secret = "" {
+        didSet { if keychainLoaded { Keychain.set(secret.trimmingCharacters(in: .whitespaces), for: "secret") } }
     }
 
     var isConnected: Bool { sessionKey != nil }
     var hasCredentials: Bool { !apiKey.trimmingCharacters(in: .whitespaces).isEmpty && !secret.trimmingCharacters(in: .whitespaces).isEmpty }
 
     @ObservationIgnored private var sessionKey: String?
+    @ObservationIgnored private var keychainLoaded = false
     @ObservationIgnored private let database: LibraryDatabase
     @ObservationIgnored private let sender: LastFMSender
     @ObservationIgnored private var connectTask: Task<Void, Never>?
@@ -51,11 +52,13 @@ final class LastFMStore {
         self.database = database
         sender = LastFMSender(database: database)
         apiKey = UserDefaults.standard.string(forKey: Keys.apiKey) ?? ""
-        secret = Keychain.string("secret") ?? ""
-        sessionKey = Keychain.string("session")
-        username = sessionKey == nil ? nil : UserDefaults.standard.string(forKey: Keys.username)
         lastSentAt = UserDefaults.standard.object(forKey: Keys.lastSentAt) as? Date
         UserDefaults.standard.register(defaults: [Keys.scrobble: true, Keys.nowPlaying: true, Keys.syncLoves: true])
+        // After launch, so macOS can ask to allow keychain access (items saved by a build with another signature).
+        // During `App.init` that prompt is cancelled, and the sign-in would look lost.
+        NotificationCenter.default.addObserver(forName: NSApplication.didFinishLaunchingNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.loadKeychain() }
+        }
         Task { [weak self, database] in
             do {
                 for try await count in database.observe({ try LibraryDatabase.lastFMQueueCount($0) }) { self?.pendingCount = count }
@@ -69,6 +72,13 @@ final class LastFMStore {
                 try? await Task.sleep(for: .seconds(300))
             }
         }
+    }
+
+    private func loadKeychain() {
+        secret = Keychain.string("secret") ?? ""
+        sessionKey = Keychain.string("session")
+        username = sessionKey == nil ? nil : UserDefaults.standard.string(forKey: Keys.username)
+        keychainLoaded = true
     }
 
     private func client() -> LastFMClient? {

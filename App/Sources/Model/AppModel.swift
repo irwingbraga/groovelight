@@ -182,7 +182,10 @@ final class AppModel {
         playlistFiles = PlaylistTransfer(model: self)
         wireless = WirelessSyncService(model: self)
         devices = DeviceStore(model: self)
-        AppTheme.current.apply()
+        // After launch: SwiftUI can create this model before AppKit's application exists (`NSApp` is nil then).
+        NotificationCenter.default.addObserver(forName: NSApplication.didFinishLaunchingNotification, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated { AppTheme.current.apply() }
+        }
         restoreQueue()
         startSavingQueue()
         Task { await openLibraryRoots() }

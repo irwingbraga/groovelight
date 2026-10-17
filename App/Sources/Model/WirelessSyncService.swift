@@ -78,11 +78,6 @@ final class WirelessSyncService {
         }
         isEnabled = defaults.bool(forKey: Self.enabledKey)
         paired = defaults.data(forKey: "devices.wireless.paired").flatMap { try? JSONDecoder().decode([PairedDevice].self, from: $0) } ?? []
-        for device in paired {
-            if let key = Keychain.string(device.id, service: Keychain.wirelessService), let data = Data(base64Encoded: key) {
-                keys[device.id] = SymmetricKey(data: data)
-            }
-        }
         if isEnabled { start() }
     }
 
@@ -215,6 +210,11 @@ final class WirelessSyncService {
     }
 
     private func key(for id: String) -> SymmetricKey? {
+        // Read on first use, not at launch: during `App.init` macOS cannot ask to allow keychain access.
+        if keys[id] == nil, paired.contains(where: { $0.id == id }),
+           let key = Keychain.string(id, service: Keychain.wirelessService), let data = Data(base64Encoded: key) {
+            keys[id] = SymmetricKey(data: data)
+        }
         guard let key = keys[id] else { return nil }
         touch(id)
         return key
