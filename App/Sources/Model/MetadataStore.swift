@@ -167,8 +167,10 @@ final class MetadataStore {
     }
 
     /// Applies accepted changes. When writing to files is on, tags (and the cover) go into the files and the database
-    /// follows; files that cannot be written keep the fix as a database override.
-    func apply(_ changes: [Int64: TrackMetadata], cover: Data?, coverTrackIds: [Int64], writeToFiles: Bool) async -> ApplyResult {
+    /// follows; files that cannot be written keep the fix as a database override. `progress` hears how many songs are
+    /// done out of how many, after each one.
+    func apply(_ changes: [Int64: TrackMetadata], cover: Data?, coverTrackIds: [Int64], writeToFiles: Bool,
+               progress: @MainActor (_ done: Int, _ total: Int) -> Void = { _, _ in }) async -> ApplyResult {
         var result = ApplyResult()
         let tracks = (try? await database.writer.read { db in try Track.fetchAll(db, keys: Array(changes.keys) + coverTrackIds) }) ?? []
         let byId = Dictionary(tracks.compactMap { track in track.id.map { ($0, track) } }, uniquingKeysWith: { first, _ in first })
@@ -181,7 +183,17 @@ final class MetadataStore {
         var overrides: [Int64: TrackMetadata] = [:]
         var inFiles: [Int64: TrackMetadata] = [:]
         let ids = Set(changes.keys).union(coverHash == nil ? [] : coverTrackIds)
+        var done = 0
+        progress(0, ids.count)
         for id in ids {
+            defer {
+                done += 1
+                progress(done, ids.count)
+            }
+            #if DEBUG
+            // `-GLDebugSlowApply YES`: a second per song, to see the progress.
+            if UserDefaults.standard.bool(forKey: "GLDebugSlowApply") { try? await Task.sleep(for: .seconds(1)) }
+            #endif
             let metadata = changes[id] ?? TrackMetadata()
             // A cue track shares its audio file with the rest of the album: its fixes stay in the library.
             guard writeToFiles, let track = byId[id], !track.isCueTrack else {

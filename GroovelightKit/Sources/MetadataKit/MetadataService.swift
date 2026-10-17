@@ -97,20 +97,26 @@ public final class MetadataService: Sendable {
 
     /// Candidate releases for a group of tracks (usually an album), best first.
     ///
-    /// Tagged albums are searched by album title and artist. Files without an album are identified one by one by
-    /// title and artist (from tags or the file name), and the releases those recordings appear on become candidates.
+    /// Tagged albums are searched by album title and artist (the ones most of the songs name). Files without an album
+    /// are identified one by one by title and artist (from tags or the file name), and the releases those recordings
+    /// appear on become candidates. Songs spread over several albums (one album imported with mixed-up tags) get both:
+    /// a few songs from each album are identified, so the release holding all of them comes first.
+    ///
+    /// `album` and `artist` replace the songs' tags (a search typed by the user); an empty string searches without
+    /// that field, and nil uses the tags.
     public func candidates(for tracks: [Track], album: String? = nil, artist: String? = nil) async throws -> [MBRelease] {
-        let albumTitle = album ?? tracks.lazy.compactMap { $0.album?.trimmed }.first { !$0.isEmpty }
-        let albumArtist = artist ?? tracks.lazy.compactMap { ($0.albumArtist ?? $0.artist)?.trimmed }.first { !$0.isEmpty }
-        if let albumTitle {
-            let releases = try await musicBrainz.searchReleases(album: albumTitle, artist: albumArtist)
-            if !releases.isEmpty { return ReleaseMatcher.rank(releases, localCount: tracks.count) }
-        }
+        let group = SongGroup(tracks, sampleSize: 3)
+        let albumTitle = album.map { $0.isEmpty ? nil : $0 } ?? group.album
+        let albumArtist = artist.map { $0.isEmpty ? nil : $0 } ?? group.artist
         var releases: [MBRelease] = []
+        if let albumTitle {
+            releases = try await musicBrainz.searchReleases(album: albumTitle, artist: albumArtist)
+            if !releases.isEmpty, !group.isMixed { return ReleaseMatcher.rank(releases, localCount: tracks.count) }
+        }
         var hits: [String: Int] = [:]
-        let sample = Array(tracks.compactMap(LocalTrackInfo.init).prefix(3))
-        for info in sample {
-            let artist = info.artist ?? albumArtist
+        for info in group.sample {
+            // A typed artist (or a cleared one) wins over the song's own tag.
+            let artist = artist != nil ? albumArtist : info.artist ?? albumArtist
             var recordings = try await musicBrainz.searchRecordings(title: info.title, artist: artist, officialAlbumsOnly: true)
             if recordings.isEmpty {
                 recordings = try await musicBrainz.searchRecordings(title: info.title, artist: artist)
@@ -128,12 +134,12 @@ public final class MetadataService: Sendable {
                     release.score = recording.score
                     if release.artistCredit == nil { release.artistCredit = recording.artistCredit }
                     releases.append(release)
-                    found.insert(release.id)
+                    found.insert(release.hitKey)
                 }
             }
             for id in found { hits[id, default: 0] += 1 }
         }
-        return ReleaseMatcher.rank(releases, localCount: tracks.count, hits: hits, sampled: sample.count)
+        return ReleaseMatcher.rank(releases, localCount: tracks.count, hits: hits, sampled: group.sample.count)
     }
 
     /// Fetches the full release and pairs it with the tracks.

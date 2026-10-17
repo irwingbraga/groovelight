@@ -3,10 +3,13 @@ import MetadataKit
 import SwiftUI
 
 /// Review sheet for online metadata: pick the matching MusicBrainz release, then accept the proposed changes field by
-/// field (album info), song by song, and the cover.
+/// field (album info), song by song, and the cover. The songs are fixed as one album even when their tags name
+/// several (songs of one album imported with mixed-up tags); songs missing from the release can still take the
+/// album's info.
 struct FixMetadataSheet: View {
     var tracks: [Track]
     @Environment(AppModel.self) private var model
+    private var group: SongGroup { SongGroup(tracks) }
     @Environment(\.dismiss) private var dismiss
     @AppStorage(MetadataStore.Keys.writeTags) private var writeToFiles = false
 
@@ -33,11 +36,14 @@ struct FixMetadataSheet: View {
     @State private var isLoadingCover = false
     @State private var useCover = true
     @State private var isApplying = false
+    /// Songs written so far and in all, while applying.
+    @State private var applyProgress: (done: Int, total: Int) = (0, 0)
     @State private var loadTask: Task<Void, Never>?
 
     var body: some View {
         VStack(spacing: 0) {
             header
+                .disabled(isApplying)
             Divider()
             HStack(spacing: 0) {
                 candidateList
@@ -46,18 +52,21 @@ struct FixMetadataSheet: View {
                 detail
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+            .disabled(isApplying)
             Divider()
             footer
         }
         .frame(width: 920, height: 640)
+        .interactiveDismissDisabled(isApplying)
         #if DEBUG
         .onChange(of: "\(phase) cover=\(cover != nil) loadingCover=\(isLoadingCover) release=\(match?.release.title ?? "-") changes=\(changes.count)", initial: true) { _, state in
             DebugHitTargets.metadataSheetState = state
         }
         #endif
         .task {
-            albumQuery = tracks.lazy.compactMap { $0.album }.first ?? ""
-            artistQuery = tracks.lazy.compactMap { $0.albumArtist ?? $0.artist }.first ?? ""
+            let group = group
+            albumQuery = group.album ?? ""
+            artistQuery = group.artist ?? ""
             search()
         }
     }
@@ -68,9 +77,10 @@ struct FixMetadataSheet: View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Fix Metadata").font(.headline)
-                Text(tracks.count == 1 ? "1 song" : "\(tracks.count) songs")
+                Text(subtitle)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+                    .help(group.isMixed ? "The songs are now in different albums. The ones you accept become one album." : "")
             }
             Spacer()
             TextField("Album", text: $albumQuery)
@@ -209,7 +219,7 @@ struct FixMetadataSheet: View {
                             set: { on in if on { acceptedTracks.insert(id) } else { acceptedTracks.remove(id) } }))
                             .toggleStyle(.checkbox)
                             .labelsHidden()
-                            .disabled(item == nil)
+                            .disabled(proposal[id] == nil)
                         VStack(alignment: .leading, spacing: 2) {
                             Text("\(track.trackNumber.map { "\($0). " } ?? "")\(track.title)")
                                 .foregroundStyle(item == nil ? .secondary : .primary)
@@ -226,7 +236,9 @@ struct FixMetadataSheet: View {
                                     .foregroundStyle(item.score >= 0.75 ? .primary : Color.orange)
                                     .help(item.score >= 0.75 ? "Good match" : "Uncertain match: check this song")
                             } else {
-                                Text("No match").foregroundStyle(.secondary)
+                                Text("Not on this release: album info only")
+                                    .foregroundStyle(.secondary)
+                                    .help("Check it to give this song the album, album artist, year and genre, keeping its title and number")
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -244,11 +256,21 @@ struct FixMetadataSheet: View {
 
     private var footer: some View {
         HStack(spacing: 12) {
-            Toggle("Write changes into the files", isOn: $writeToFiles)
-                .help("Off: fixes live in Groovelight's library only and survive rescans. On: tags and cover are saved into the audio files.")
+            if isApplying {
+                // Writing tags and covers into many files takes a while.
+                ProgressView(value: Double(applyProgress.done), total: Double(max(applyProgress.total, 1)))
+                    .frame(width: 200)
+                Text("\(writeToFiles ? "Writing" : "Saving") \(min(applyProgress.done + 1, max(applyProgress.total, 1))) of \(max(applyProgress.total, 1)) songs…")
+                    .font(.callout.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            } else {
+                Toggle("Write changes into the files", isOn: $writeToFiles)
+                    .help("Off: fixes live in Groovelight's library only and survive rescans. On: tags and cover are saved into the audio files.")
+            }
             Spacer()
             Button("Cancel") { dismiss() }
                 .keyboardShortcut(.cancelAction)
+                .disabled(isApplying)
             Button(isApplying ? "Applying…" : "Apply") { apply() }
                 .keyboardShortcut(.defaultAction)
                 .disabled(isApplying || phase != .ready || changeCount == 0)
@@ -258,10 +280,18 @@ struct FixMetadataSheet: View {
 
     // MARK: - Values
 
+    private var subtitle: String {
+        let songs = tracks.count == 1 ? "1 song" : "\(tracks.count) songs"
+        let group = group
+        return group.isMixed ? "\(songs) from \(group.albumCount) albums, fixed as one album" : songs
+    }
+
     private func currentValue(_ field: AlbumField) -> String? {
-        // The most common value across the songs.
-        let values = tracks.compactMap { value(field, in: $0.metadata) }
-        return Dictionary(grouping: values, by: { $0 }).max { $0.value.count < $1.value.count }?.key
+        // The songs' value, or the different ones they have now ("The Bends, Kid A").
+        var distinct: [String] = []
+        for value in tracks.compactMap({ value(field, in: $0.metadata) }) where !distinct.contains(value) { distinct.append(value) }
+        guard distinct.count > 1 else { return distinct.first }
+        return distinct.count <= 3 ? distinct.joined(separator: ", ") : "\(distinct.count) different values"
     }
 
     private func value(_ field: AlbumField, in metadata: TrackMetadata) -> String? {
@@ -302,8 +332,8 @@ struct FixMetadataSheet: View {
             do {
                 let album = albumQuery.trimmingCharacters(in: .whitespaces)
                 let artist = artistQuery.trimmingCharacters(in: .whitespaces)
-                let found = try await model.metadata.service.candidates(for: tracks, album: album.isEmpty ? nil : album,
-                                                                        artist: artist.isEmpty ? nil : artist)
+                // Pass the fields as typed: an emptied field searches without it instead of falling back to the tags.
+                let found = try await model.metadata.service.candidates(for: tracks, album: album, artist: artist)
                 guard !Task.isCancelled else { return }
                 candidates = Array(found.prefix(25))
                 if let first = candidates.first {
@@ -329,8 +359,9 @@ struct FixMetadataSheet: View {
                 let result = try await service.match(tracks, releaseId: id)
                 guard !Task.isCancelled else { return }
                 match = result
-                proposal = ReleaseMatcher.proposal(for: result)
-                acceptedTracks = Set(proposal.keys)
+                proposal = ReleaseMatcher.proposal(for: result, includingUnmatched: true)
+                // Songs not on the release are left out unless checked.
+                acceptedTracks = Set(result.matches.map(\.localId))
                 acceptedFields = Set(AlbumField.allCases)
                 phase = .ready
 
@@ -348,11 +379,14 @@ struct FixMetadataSheet: View {
 
     private func apply() {
         isApplying = true
+        applyProgress = (0, 0)
         let changes = changes
         let coverData = useCover ? cover : nil
         Task {
             let result = await model.metadata.apply(changes, cover: coverData, coverTrackIds: tracks.compactMap(\.id),
-                                                    writeToFiles: writeToFiles)
+                                                    writeToFiles: writeToFiles) { done, total in
+                applyProgress = (done, total)
+            }
             isApplying = false
             if !result.failedWrites.isEmpty {
                 model.errorMessage = "Could not write tags to \(result.failedWrites.count) file(s): \(result.failedWrites.prefix(3).joined(separator: ", ")). The changes were saved in the library instead."

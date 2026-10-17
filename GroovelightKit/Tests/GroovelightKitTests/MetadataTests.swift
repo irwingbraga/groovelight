@@ -123,6 +123,40 @@ struct MatchingTests {
         #expect(ranked.map(\.id) == ["cd", "deluxe", "box"])
     }
 
+    @Test func offersAlbumFieldsToSongsMissingFromTheRelease() throws {
+        let release = try Self.release()
+        let local = [
+            LocalTrackInfo(id: 1, title: "Airbag", artist: nil, trackNumber: 1, discNumber: nil, duration: 285),
+            LocalTrackInfo(id: 4, title: "Voice Memo", artist: nil, trackNumber: 9, discNumber: nil, duration: 30),
+        ]
+        let match = ReleaseMatcher.match(local, to: release)
+        #expect(ReleaseMatcher.proposal(for: match)[4] == nil)
+        let stray = try #require(ReleaseMatcher.proposal(for: match, includingUnmatched: true)[4])
+        #expect(stray.album == "OK Computer" && stray.albumArtist == "Radiohead" && stray.year == 1997)
+        #expect(stray.musicBrainzReleaseId == "6a09041b-0f79-3278-88d9-0552dd28d37f")
+        // The song keeps its own title and number.
+        #expect(stray.title == nil && stray.trackNumber == nil && stray.musicBrainzRecordingId == nil)
+    }
+
+    static func song(_ id: Int64, _ title: String, album: String, duration: Double = 200) -> Track {
+        var track = LibraryDatabaseTests.makeTrack(rootId: 1, title, artist: "Radiohead", album: album, number: Int(id))
+        track.id = id
+        track.duration = duration
+        return track
+    }
+
+    @Test func groupsSongsTaggedWithDifferentAlbums() {
+        let songs = [Self.song(1, "Airbag", album: "OK Computer"), Self.song(2, "Lucky", album: "OK Computer"),
+                     Self.song(3, "Paranoid Android", album: "Pablo Honey"), Self.song(4, "Let Down", album: "OK Computer"),
+                     Self.song(5, "No Surprises", album: "Untitled")]
+        let group = SongGroup(songs, sampleSize: 3)
+        #expect(group.album == "OK Computer" && group.artist == "Radiohead")
+        #expect(group.albumCount == 3 && group.isMixed)
+        // One song from each album before a second one from any.
+        #expect(group.sample.map(\.id) == [1, 3, 5])
+        #expect(!SongGroup(Array(songs.prefix(2))).isMixed)
+    }
+
     @Test func usesTheOriginalYear() {
         let reissue = MBRelease(id: "r", title: "OK Computer", date: "2009-03-24",
                                 releaseGroup: MBReleaseGroup(id: "g", firstReleaseDate: "1997-05-21"))
@@ -182,6 +216,60 @@ struct ClientTests {
         let query = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)!.queryItems!
         #expect(query.first { $0.name == "query" }?.value == #"release:(OK Computer \(Remastered\)) AND artist:(Radiohead)"#)
         #expect(query.first { $0.name == "fmt" }?.value == "json")
+    }
+
+    @Test func findsTheAlbumOfSongsWithMixedUpTags() async throws {
+        // Most songs claim "Pablo Honey", but they are all on OK Computer.
+        let wrong = #"{"releases":[{"id":"pablo","title":"Pablo Honey","score":100,"status":"Official","track-count":3}]}"#
+        let right = #"{"id":"okc","title":"OK Computer","status":"Official","track-count":3}"#
+        let recordings = ["Airbag", "Paranoid Android", "Lucky"].map { title in
+            #"{"id":"rec-\#(title)","title":"\#(title)","score":100,"length":200000,"releases":[\#(right)]}"#
+        }
+        let stub = StubFetcher([
+            "/ws/2/release": (200, wrong),
+            "/ws/2/recording": (200, #"{"recordings":[\#(recordings.joined(separator: ","))]}"#),
+        ])
+        let service = MetadataService(
+            musicBrainz: MusicBrainzClient(fetcher: stub, identity: identity, limiter: RateLimiter(interval: .milliseconds(1))),
+            artwork: ArtworkClient(fetcher: stub, identity: identity), lyrics: LRCLibClient(fetcher: stub, identity: identity),
+            wikipedia: WikipediaClient(fetcher: stub, identity: identity))
+        let songs = [MatchingTests.song(1, "Airbag", album: "Pablo Honey"), MatchingTests.song(2, "Paranoid Android", album: "Pablo Honey"),
+                     MatchingTests.song(3, "Lucky", album: "OK Computer")]
+        let candidates = try await service.candidates(for: songs)
+        #expect(candidates.map(\.id) == ["okc", "pablo"])
+        // Searched by the album most songs name, then song by song.
+        let paths = stub.requests.compactMap(\.url?.path)
+        #expect(paths.first == "/ws/2/release" && paths.filter { $0 == "/ws/2/recording" }.count == 3)
+
+        // Songs tagged as one album keep the plain album search.
+        let tagged = StubFetcher(["/ws/2/release": (200, wrong)])
+        let plain = MetadataService(
+            musicBrainz: MusicBrainzClient(fetcher: tagged, identity: identity, limiter: RateLimiter(interval: .milliseconds(1))),
+            artwork: ArtworkClient(fetcher: tagged, identity: identity), lyrics: LRCLibClient(fetcher: tagged, identity: identity),
+            wikipedia: WikipediaClient(fetcher: tagged, identity: identity))
+        #expect(try await plain.candidates(for: Array(songs.prefix(2))).map(\.id) == ["pablo"])
+        #expect(tagged.requests.count == 1)
+    }
+
+    @Test func searchesWithoutAClearedField() async throws {
+        let stub = StubFetcher(["/ws/2/release": (200, #"{"releases":[\#(Fixtures.releaseJSON)]}"#)])
+        let service = MetadataService(
+            musicBrainz: MusicBrainzClient(fetcher: stub, identity: identity, limiter: RateLimiter(interval: .zero)),
+            artwork: ArtworkClient(fetcher: stub, identity: identity), lyrics: LRCLibClient(fetcher: stub, identity: identity),
+            wikipedia: WikipediaClient(fetcher: stub, identity: identity))
+        let songs = [MatchingTests.song(1, "Airbag", album: "OK Computer"), MatchingTests.song(2, "Lucky", album: "OK Computer")]
+        func lastQuery() throws -> String? {
+            let request = try #require(stub.requests.last)
+            return URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "query" }?.value
+        }
+
+        // The artist field emptied by the user: album only, not the "Radiohead" of the tags.
+        _ = try await service.candidates(for: songs, album: "OK Computer", artist: "")
+        #expect(try lastQuery() == "release:(OK Computer)")
+
+        // No override: the tags fill both.
+        _ = try await service.candidates(for: songs)
+        #expect(try lastQuery() == "release:(OK Computer) AND artist:(Radiohead)")
     }
 
     @Test func rateLimitsRequests() async throws {
@@ -393,6 +481,30 @@ struct LiveMetadataTests {
         let cover = await service.cover(for: match.release, album: match.release.title, artist: match.release.artistName)
         print("live: cover from \(cover?.0.source.rawValue ?? "none"), \(cover?.1.count ?? 0) bytes")
         #expect((cover?.1.count ?? 0) > 10_000)
+    }
+
+    @Test func findsTheAlbumOfSongsWithMixedUpTags() async throws {
+        // Songs of OK Computer imported with the tags of other albums.
+        func song(_ id: Int64, _ title: String, album: String, duration: Double) -> Track {
+            var track = Self.track(id, title, duration: duration)
+            track.artist = "Radiohead"
+            track.album = album
+            track.albumKey = Track.makeAlbumKey(album: album, albumArtist: nil, artist: "Radiohead", isCompilation: false)
+            return track
+        }
+        let tracks = [
+            song(1, "Airbag", album: "The Bends", duration: 284),
+            song(2, "Paranoid Android", album: "The Bends", duration: 383),
+            song(3, "Karma Police", album: "Kid A", duration: 264),
+            song(4, "No Surprises", album: "OK Computer", duration: 229),
+        ]
+        let candidates = try await service.candidates(for: tracks)
+        print("live: top " + candidates.prefix(4).map { "'\($0.title)' (\($0.totalTracks))" }.joined(separator: ", "))
+        let best = try #require(candidates.first)
+        let match = try await service.match(tracks, releaseId: best.id)
+        print("live: best '\(match.release.title)' (\(match.release.totalTracks) tracks), \(match.matches.count) of 4 matched")
+        #expect(match.release.title.lowercased().contains("ok computer"))
+        #expect(match.matches.count == 4)
     }
 
     @Test func fetchesSyncedLyrics() async throws {

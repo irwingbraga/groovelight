@@ -57,12 +57,18 @@ public enum ReleaseMatcher {
     /// Orders search results by how likely they are the local album: search score, same track count, official
     /// status, studio album over live or compilation releases.
     ///
-    /// `hits` counts, per release id, how many of the sampled local files were found on that release (when files were
-    /// identified one by one); a release holding all of them is very likely the album.
+    /// `hits` counts, per album (release group id, or release id when unknown), how many of the sampled local files
+    /// were found on it (when files were identified one by one); an album holding all of them is very likely the one.
+    /// Albums rather than releases: each song lists only some of an album's many editions.
     public static func rank(_ releases: [MBRelease], localCount: Int, hits: [String: Int] = [:], sampled: Int = 0) -> [MBRelease] {
         func weight(_ release: MBRelease) -> Double {
             var value = Double(release.score ?? 50) / 100 * 0.5
-            if sampled > 0 { value += Double(hits[release.id] ?? 0) / Double(sampled) * 0.6 }
+            if sampled > 0 {
+                // The songs found on it outweigh a matching track count (a single with as many tracks as the files).
+                let found = hits[release.hitKey] ?? 0
+                value += Double(found) / Double(sampled) * 0.9
+                if found == sampled { value += 0.1 }
+            }
             let count = release.totalTracks
             if count == localCount {
                 value += 0.3
@@ -152,32 +158,99 @@ public enum ReleaseMatcher {
         return title * 0.5 + durationScore * 0.3 + numberScore * 0.2
     }
 
-    /// Proposed tags for every matched file.
-    public static func proposal(for match: ReleaseMatch) -> [Int64: TrackMetadata] {
+    /// Proposed tags for every matched file. With `includingUnmatched`, files without a track on the release get the
+    /// album's own fields, so a group of songs can become one album even where a song is not on the release.
+    public static func proposal(for match: ReleaseMatch, includingUnmatched: Bool = false) -> [Int64: TrackMetadata] {
         let release = match.release
-        let isVarious = release.artistCredit?.isVariousArtists ?? false
-        let albumArtist = isVarious ? "Various Artists" : release.artistName
-        let discTotal = release.media?.count
+        let album = albumFields(for: release)
         var result: [Int64: TrackMetadata] = [:]
         for item in match.matches {
             let artist = item.track.artistCredit?.displayName ?? release.artistName
-            result[item.localId] = TrackMetadata(
-                title: item.track.title,
-                artist: artist.isEmpty ? nil : artist,
-                album: release.title,
-                albumArtist: albumArtist.isEmpty ? nil : albumArtist,
-                genre: release.primaryGenre,
-                year: release.year,
-                trackNumber: item.trackNumber,
-                trackTotal: item.trackTotal,
-                discNumber: item.discNumber,
-                discTotal: discTotal,
-                isCompilation: isVarious,
-                musicBrainzRecordingId: item.track.recording?.id,
-                musicBrainzReleaseId: release.id
-            )
+            var metadata = album
+            metadata.title = item.track.title
+            metadata.artist = artist.isEmpty ? nil : artist
+            metadata.trackNumber = item.trackNumber
+            metadata.trackTotal = item.trackTotal
+            metadata.discNumber = item.discNumber
+            metadata.musicBrainzRecordingId = item.track.recording?.id
+            result[item.localId] = metadata
+        }
+        if includingUnmatched {
+            for id in match.unmatchedLocalIds { result[id] = album }
         }
         return result
+    }
+
+    /// The fields every song of the release shares: album, album artist, genre, year, disc count, compilation and the
+    /// release id.
+    public static func albumFields(for release: MBRelease) -> TrackMetadata {
+        let isVarious = release.artistCredit?.isVariousArtists ?? false
+        let albumArtist = isVarious ? "Various Artists" : release.artistName
+        return TrackMetadata(
+            album: release.title,
+            albumArtist: albumArtist.isEmpty ? nil : albumArtist,
+            genre: release.primaryGenre,
+            year: release.year,
+            discTotal: release.media?.count,
+            isCompilation: isVarious,
+            musicBrainzReleaseId: release.id
+        )
+    }
+}
+
+extension MBRelease {
+    /// What `ReleaseMatcher.rank` counts hits by: the album (release group), or the release when that is unknown.
+    public var hitKey: String { releaseGroup?.id ?? id }
+}
+
+/// Songs fixed together as one album, whatever albums their tags name now (songs of one album imported with mixed-up
+/// tags, say).
+public struct SongGroup: Sendable {
+    /// The album title most of the songs name.
+    public var album: String?
+    /// The album artist (or artist) most of the songs name.
+    public var artist: String?
+    /// How many different albums the songs are in now.
+    public var albumCount: Int
+    /// A few songs to identify one by one, taken in turn from each album they are in now.
+    public var sample: [LocalTrackInfo]
+
+    /// The songs are spread over more than one album.
+    public var isMixed: Bool { albumCount > 1 }
+
+    public init(_ tracks: [Track], sampleSize: Int = 4) {
+        album = Self.mostCommon(tracks.compactMap { $0.album?.trimmingCharacters(in: .whitespaces) })
+        artist = Self.mostCommon(tracks.compactMap { ($0.albumArtist ?? $0.artist)?.trimmingCharacters(in: .whitespaces) })
+        var order: [String] = []
+        var byAlbum: [String: [Track]] = [:]
+        for track in tracks {
+            if byAlbum[track.albumKey] == nil { order.append(track.albumKey) }
+            byAlbum[track.albumKey, default: []].append(track)
+        }
+        albumCount = order.count
+        // Round robin over the albums: a release holding a song from each of them is the likely album.
+        var picked: [Track] = []
+        var round = 0
+        while picked.count < sampleSize, picked.count < tracks.count {
+            for key in order where picked.count < sampleSize {
+                if let track = byAlbum[key]?.dropFirst(round).first { picked.append(track) }
+            }
+            round += 1
+        }
+        sample = picked.compactMap(LocalTrackInfo.init)
+    }
+
+    /// The most frequent non-empty value; ties go to the one seen first.
+    static func mostCommon(_ values: [String]) -> String? {
+        var counts: [String: Int] = [:]
+        var order: [String] = []
+        for value in values where !value.isEmpty {
+            if counts[value] == nil { order.append(value) }
+            counts[value, default: 0] += 1
+        }
+        var best: String?
+        for value in order where best.map({ counts[value]! > counts[$0]! }) ?? true { best = value }
+        return best
     }
 }
 
