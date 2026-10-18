@@ -8,7 +8,8 @@ Nothing is sent to its developer or to any third party.
 ## What the app does with data
 
 - **Your Mac.** The app talks only to Groovelight on your own Mac, over your local network, after you pair them by
-  comparing a code on both screens. It sends the Mac this device's name and model, its storage space, the list of
+  comparing a code on both screens. With Groovelight 0.5 or later on the Mac, the connection is encrypted (TLS) and the
+  app accepts only your Mac's certificate. It sends the Mac this device's name and model, its storage space, the list of
   files in the music folder you chose, and (in a later version) what you played, so the Mac can update play counts.
   It receives music files and information about them from the Mac.
 - **On this device.** The app keeps the key shared with your Mac, the Mac's name and address, the folder you chose,

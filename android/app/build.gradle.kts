@@ -91,6 +91,10 @@ dependencies {
     implementation(libs.lifecycle.viewmodel.compose)
     implementation(libs.lifecycle.runtime.compose)
     implementation(libs.documentfile)
+    implementation(libs.coil.compose)
+    implementation(libs.compose.navigation.suite)
+    implementation(libs.navigation3.ui)
+    implementation(libs.palette)
     testImplementation(libs.junit)
 }
 

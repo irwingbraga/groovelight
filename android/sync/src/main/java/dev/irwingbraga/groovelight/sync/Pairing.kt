@@ -72,6 +72,12 @@ object Pairing {
         return Base64.getEncoder().encodeToString(hmac(key, message))
     }
 
+    /** The Mac's proof that it serves the certificate with this fingerprint (`WirelessProtocol.certificateProof`). */
+    fun certificateProof(fingerprint: String, nonce: String, key: ByteArray): String =
+        Base64.getEncoder().encodeToString(hmac(key, "groovelight-certificate\n$fingerprint\n$nonce".toByteArray()))
+
+    fun hexString(bytes: ByteArray): String = bytes.joinToString("") { "%02x".format(it) }
+
     private fun hmac(key: ByteArray, data: ByteArray): ByteArray {
         val mac = Mac.getInstance("HmacSHA256")
         mac.init(SecretKeySpec(key, "HmacSHA256"))

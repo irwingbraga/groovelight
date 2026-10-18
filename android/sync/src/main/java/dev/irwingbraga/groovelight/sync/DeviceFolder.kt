@@ -123,6 +123,33 @@ class DeviceFolder(private val context: Context, val tree: Uri) {
     /** The document URI of a file found by `scan`, which players and other apps can open (null when unknown). */
     fun documentUri(path: String): Uri? = index[path]?.takeIf { !it.isFolder }?.let { uri(it.id) }
 
+    /** SHA-256 of a file found by `scan` (lowercase hex), read back from storage. */
+    fun sha256(path: String): String? = index[path]?.let { item ->
+        runCatching {
+            resolver.openInputStream(uri(item.id))?.use { input ->
+                val digest = java.security.MessageDigest.getInstance("SHA-256")
+                val buffer = ByteArray(1 shl 20)
+                while (true) {
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    digest.update(buffer, 0, count)
+                }
+                digest.digest().joinToString("") { "%02x".format(it) }
+            }
+        }.getOrNull()
+    }
+
+    companion object {
+        /**
+         * The document URI of a file at `path` under the folder, without listing it: the storage providers of internal
+         * memory and SD cards name documents by their path ("primary:Music/Artist/01 Song.flac").
+         */
+        fun documentUri(tree: Uri, path: String): Uri {
+            val root = DocumentsContract.getTreeDocumentId(tree)
+            return DocumentsContract.buildDocumentUriUsingTree(tree, if (root.endsWith(":")) root + path else "$root/$path")
+        }
+    }
+
     private fun partialPath(path: String): String {
         val folder = path.substringBeforeLast('/', "")
         val name = ".${path.substringAfterLast('/')}.partial"

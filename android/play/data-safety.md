@@ -5,7 +5,7 @@ Draft, 2026-10-18. Must match [`privacy-policy.md`](privacy-policy.md).
 | Question | Answer |
 |---|---|
 | Does your app collect or share any of the required user data types? | **No** |
-| Is all of the user data collected by your app encrypted in transit? | Not applicable (no data collected). Traffic stays on the local network between the device and the user's own Mac; protocol v2 adds TLS |
+| Is all of the user data collected by your app encrypted in transit? | Not applicable (no data collected). Traffic stays on the local network between the device and the user's own Mac, over TLS with the Mac's pinned certificate (Groovelight 0.5 and later on the Mac) |
 | Do you provide a way for users to request that their data be deleted? | Not applicable (no data collected). Uninstalling removes everything the app keeps; "Forget" removes the pairing |
 
 Why "no collection" holds: Google's definition counts data sent off the device to the developer or third parties.

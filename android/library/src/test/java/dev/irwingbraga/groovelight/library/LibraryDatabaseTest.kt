@@ -7,6 +7,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -19,31 +21,57 @@ class LibraryDatabaseTest {
 
     @After fun close() = database.close()
 
+    /** The snapshot the Mac's SnapshotFixtureTests writes (GroovelightKit/Tests): the same file on both sides. */
+    private fun fixture(): Snapshot = Snapshot.read(javaClass.classLoader!!.getResourceAsStream("snapshot-v1.json"))
+
     @Test
-    fun keepsAlbumsInDiscAndTrackOrder() = runTest {
-        library.upsertArtists(listOf(Artist(1, "Radiohead")))
-        library.upsertAlbums(listOf(Album(10, "OK Computer", 1, "Radiohead", 1997)))
-        library.upsertTracks(listOf(
-            Track(102, "Paranoid Android", 1, "Radiohead", 10, discNumber = 1, trackNumber = 2, path = "Radiohead/OK Computer/02.flac"),
-            Track(101, "Airbag", 1, "Radiohead", 10, discNumber = 1, trackNumber = 1, path = "Radiohead/OK Computer/01.flac"),
-        ))
-        assertEquals(listOf("Airbag", "Paranoid Android"), library.tracksOfAlbum(10).first().map { it.title })
-        assertEquals(2, library.trackCount())
+    fun readsTheMacsSnapshot() {
+        val snapshot = fixture()
+        assertEquals(listOf("Hits", "OK Computer"), snapshot.albums.map { it.title })
+        val airbag = snapshot.tracks.first { it.id == 101L }
+        assertEquals("Music/Radiohead/OK Computer (1997)/01 Airbag.flac", airbag.path)
+        assertEquals(284_500L, airbag.durationMs)
+        assertEquals(24, airbag.bitDepth)
+        assertTrue(airbag.loved)
+        assertEquals(1_700_000_000_000L, airbag.lovedAt)
+        assertEquals("[00:10.00]In the next world war", airbag.lyrics)
+        // ReplayGain first, else the measured loudness against -18 LUFS, as on the Mac.
+        assertEquals(-7.25, airbag.normalizationGain!!, 0.0)
+        assertEquals(-6.0, snapshot.tracks.first { it.id == 102L }.normalizationGain!!, 0.0)
+        assertNull(snapshot.tracks.first { it.id == 201L }.normalizationGain)
+        assertEquals(setOf("abc123"), snapshot.artworkHashes)
     }
 
     @Test
-    fun replacesPlaylistSongsInOrder() = runTest {
-        library.upsertTracks(listOf(
-            Track(1, "One", null, "A", null, path = "1.flac"),
-            Track(2, "Two", null, "A", null, path = "2.flac"),
-            Track(3, "Three", null, "A", null, path = "3.flac"),
-        ))
-        library.upsertPlaylists(listOf(Playlist(7, "Mix")))
-        library.setPlaylistTracks(7, listOf(3, 1, 2))
-        library.setPlaylistTracks(7, listOf(2, 3))
-        assertEquals(listOf("Two", "Three"), library.tracksOfPlaylist(7).first().map { it.title })
-        // Songs removed from the device leave their playlists.
-        library.deleteTracks(listOf(3))
-        assertEquals(listOf("Two"), library.tracksOfPlaylist(7).first().map { it.title })
+    fun importsAndReplacesTheLibrary() = runTest {
+        fixture().importInto(database)
+        assertEquals(listOf("Airbag", "Paranoid Android"), library.tracksOfAlbum("radiohead|ok computer").first().map { it.title })
+        assertEquals(listOf("Song", "Airbag"), library.tracksOfPlaylist(7).first().map { it.title })
+        // Album artists, compilations apart; playlists with their counts and first cover.
+        assertEquals(listOf("Radiohead"), library.artists().first().map { it.name })
+        val playlists = library.playlists().first()
+        assertEquals(listOf("Mix" to 2, "Most Played" to 2), playlists.map { it.name to it.songs })
+        assertEquals("abc123", playlists.first().artworkHash)
+        assertEquals(listOf("Airbag"), library.lovedTracks().first().map { it.title })
+
+        // The next sync's snapshot replaces everything: a song left the device, and its playlist entry with it.
+        val smaller = fixture().let { Snapshot(it.albums, it.tracks.filter { track -> track.id != 201L }, it.playlists,
+            it.items.filter { item -> item.trackId != 201L }) }
+        smaller.importInto(database)
+        assertEquals(2, library.trackCount())
+        assertEquals(listOf("Airbag"), library.tracksOfPlaylist(7).first().map { it.title })
+    }
+
+    @Test
+    fun searchesAndListsAnArtist() = runTest {
+        fixture().importInto(database)
+        assertEquals(listOf("Paranoid Android"), library.searchTracks(likePattern("paranoid"), 10).map { it.title })
+        assertEquals(listOf("OK Computer"), library.searchAlbums(likePattern("ok comp"), 10).map { it.title })
+        assertEquals(listOf("Radiohead"), library.searchArtists(likePattern("RADIO"), 10).map { it.name })
+        // Wildcards typed are matched as text.
+        assertTrue(library.searchTracks(likePattern("%"), 10).isEmpty())
+        assertTrue(library.searchTracks(likePattern("_irbag"), 10).isEmpty())
+        assertEquals(listOf("Airbag", "Paranoid Android"), library.tracksOfArtist("Radiohead").first().map { it.title })
+        assertEquals("Paranoid Android", library.track(102).first()?.title)
     }
 }

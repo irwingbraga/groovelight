@@ -1,0 +1,103 @@
+{
+  "albums" : [
+    {
+      "artist" : "Various Artists",
+      "isCompilation" : true,
+      "key" : "compilation|hits",
+      "title" : "Hits"
+    },
+    {
+      "artist" : "Radiohead",
+      "artworkHash" : "abc123",
+      "isCompilation" : false,
+      "key" : "radiohead|ok computer",
+      "title" : "OK Computer",
+      "year" : 1997
+    }
+  ],
+  "createdAt" : "2027-01-15T08:00:00Z",
+  "playlists" : [
+    {
+      "id" : 7,
+      "isSmart" : false,
+      "name" : "Mix",
+      "songIds" : [
+        201,
+        101
+      ]
+    },
+    {
+      "id" : 8,
+      "isSmart" : true,
+      "name" : "Most Played",
+      "songIds" : [
+        101,
+        201
+      ]
+    }
+  ],
+  "songs" : [
+    {
+      "albumGain" : -6.5,
+      "albumKey" : "radiohead|ok computer",
+      "artist" : "Radiohead",
+      "artworkHash" : "abc123",
+      "bitDepth" : 24,
+      "codec" : "flac",
+      "dateAdded" : "2020-09-13T12:26:40Z",
+      "discNumber" : 1,
+      "duration" : 284.5,
+      "genre" : "Alternative",
+      "id" : 101,
+      "lastPlayed" : "2025-06-15T15:06:40Z",
+      "loved" : true,
+      "lovedAt" : "2023-11-14T22:13:20Z",
+      "lyrics" : "[00:10.00]In the next world war",
+      "path" : "Music\/Radiohead\/OK Computer (1997)\/01 Airbag.flac",
+      "playCount" : 12,
+      "rating" : 5,
+      "sampleRate" : 96000,
+      "title" : "Airbag",
+      "trackGain" : -7.25,
+      "trackNumber" : 1,
+      "year" : 1997
+    },
+    {
+      "albumKey" : "radiohead|ok computer",
+      "artist" : "Radiohead",
+      "artworkHash" : "abc123",
+      "bitDepth" : 16,
+      "codec" : "flac",
+      "dateAdded" : "2020-09-13T12:26:40Z",
+      "discNumber" : 1,
+      "duration" : 383,
+      "id" : 102,
+      "loudness" : -12,
+      "loved" : false,
+      "path" : "Music\/Radiohead\/OK Computer (1997)\/02 Paranoid Android.flac",
+      "playCount" : 0,
+      "rating" : 0,
+      "sampleRate" : 44100,
+      "title" : "Paranoid Android",
+      "trackNumber" : 2,
+      "year" : 1997
+    },
+    {
+      "albumKey" : "compilation|hits",
+      "artist" : "Someone",
+      "codec" : "mp3",
+      "dateAdded" : "2022-04-15T05:20:00Z",
+      "duration" : 200,
+      "genre" : "Pop",
+      "id" : 201,
+      "loved" : false,
+      "path" : "Music\/Compilations\/Hits\/01 Song.mp3",
+      "playCount" : 3,
+      "rating" : 0,
+      "sampleRate" : 44100,
+      "title" : "Song",
+      "trackNumber" : 1
+    }
+  ],
+  "version" : 1
+}

@@ -6,9 +6,14 @@ import android.os.Build
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.withTimeoutOrNull
+import dev.irwingbraga.groovelight.library.ArtworkStore
+import dev.irwingbraga.groovelight.library.LibraryDatabase
+import dev.irwingbraga.groovelight.library.Snapshot
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
+import java.security.MessageDigest
+import javax.net.ssl.SSLException
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 
@@ -23,21 +28,48 @@ class SyncEngine(private val context: Context, private val prefs: Prefs) {
         const val MANIFEST = ".groovelight-device.json"
     }
 
-    /** The paired Mac at its last address, or found again on the network (its address may have changed). */
+    /**
+     * The paired Mac at its last address, or found again on the network (its address may have changed). Over HTTPS when
+     * the Mac offers it (protocol v2): its certificate is pinned the first time, with the Mac's proof that it holds the
+     * pairing key, and from then on nothing else is accepted.
+     */
     suspend fun connect(): MacClient {
         val key = prefs.key?.let { Pairing.fromBase64(it) } ?: throw MacError("Not paired with a Mac")
         val macId = prefs.macId ?: throw MacError("Not paired with a Mac")
-        val host = prefs.host
-        if (host != null) {
-            val client = MacClient(host, prefs.port, prefs.deviceId, key)
-            if (runCatching { client.info().getString("id") == macId }.getOrDefault(false)) return client
+        val (host, info) = locate(key, macId)
+        val tlsPort = info.optInt("tlsPort", 0)
+        prefs.tlsPort = tlsPort
+        if (tlsPort == 0) {
+            // Pinned before: someone may be pretending the Mac has no HTTPS, so its traffic can be read.
+            if (prefs.certificate != null) {
+                throw MacError("${prefs.macName ?: "The Mac"} did not offer its secure connection. Update Groovelight on the Mac, or forget it here and pair again.")
+            }
+            return MacClient(host, prefs.port, prefs.deviceId, key)
+        }
+        prefs.certificate?.let { pinned ->
+            val client = MacClient(host, prefs.port, prefs.deviceId, key, MacClient.Tls(tlsPort, pinned))
+            val check = runCatching { client.info() }
+            if (check.isSuccess) return client
+            // Another certificate (the Mac made a new one): pinned again below, only with the Mac's proof.
+            if (check.exceptionOrNull() !is SSLException) throw check.exceptionOrNull()!!
+        }
+        val fingerprint = MacClient(host, prefs.port, prefs.deviceId, key).pinnedCertificate()
+        prefs.certificate = fingerprint
+        return MacClient(host, prefs.port, prefs.deviceId, key, MacClient.Tls(tlsPort, fingerprint))
+    }
+
+    /** Where the Mac is now, and its `/info`. */
+    private suspend fun locate(key: ByteArray, macId: String): Pair<String, JSONObject> {
+        prefs.host?.let { host ->
+            val info = runCatching { MacClient(host, prefs.port, prefs.deviceId, key).info() }.getOrNull()
+            if (info?.optString("id") == macId) return host to info
         }
         val found = withTimeoutOrNull(10_000) {
             Discovery.macs(context).mapNotNull { macs -> macs.firstOrNull { it.id == macId } }.first()
         } ?: throw MacError("${prefs.macName ?: "The Mac"} is not reachable. Is Groovelight open, with wireless sync on, on the same Wi-Fi?")
         prefs.host = found.host
         prefs.port = found.port
-        return MacClient(found.host, found.port, prefs.deviceId, key)
+        return found.host to MacClient(found.host, found.port, prefs.deviceId, key).info()
     }
 
     suspend fun run(progress: (Progress) -> Unit): String {
@@ -59,8 +91,13 @@ class SyncEngine(private val context: Context, private val prefs: Prefs) {
             .put("volumes", Storage.json(folder.volumes))
             .put("model", "${Build.MANUFACTURER} ${Build.MODEL}")
             .put("name", deviceName())
+        val player = prefs.mode == Prefs.Mode.PLAYER
+        request.put("mode", if (player) "player" else "sync")
+        if (player) request.put("decodes", JSONArray(Formats.decodable()))
         val plan = client.sync(request)
         val session = plan.getString("session")
+        // The download token (v2, over HTTPS): files without signing each request.
+        val token = plan.optString("token").takeIf { it.isNotEmpty() }
         val writes = plan.getJSONArray("writes")
         val deletions = plan.getJSONArray("deletions")
         val failed = mutableListOf<String>()
@@ -89,7 +126,7 @@ class SyncEngine(private val context: Context, private val prefs: Prefs) {
                 continue
             }
             try {
-                val size = download(client, folder, session, write.getInt("index"), path)
+                val size = download(client, folder, session, write.getInt("index"), path, token)
                 val entry = write.getJSONObject("entry").put("size", size)
                 entries.put(path, entry)
                 touched += path
@@ -101,6 +138,12 @@ class SyncEngine(private val context: Context, private val prefs: Prefs) {
         }
         manifest.put("lastSync", Instant.now().truncatedTo(ChronoUnit.SECONDS).toString())
         save(folder, manifest)
+        // Player mode: the library from the Mac, for the songs now in the folder (other players need no media scan,
+        // but it keeps the folder browsable in Files and player apps if the user switches).
+        if (player && token != null) {
+            progress(Progress(writes.length(), writes.length(), "Updating the library…"))
+            updateLibrary(client, session, token, failedPaths = failed.map { it.substringBefore(": ") }.toSet())
+        }
         folder.scanMedia(touched)
         progress(Progress(writes.length(), writes.length(), "Finishing…"))
 
@@ -120,8 +163,35 @@ class SyncEngine(private val context: Context, private val prefs: Prefs) {
         return summary
     }
 
-    /** Downloads one file, resuming a partial copy; up to three tries when Wi-Fi drops. Returns its size. */
-    private fun download(client: MacClient, folder: DeviceFolder, session: String, index: Int, path: String): Long {
+    /** Imports the plan's library snapshot and fetches the covers it needs (both checked against their SHA-256). */
+    private suspend fun updateLibrary(client: MacClient, session: String, token: String, failedPaths: Set<String>) {
+        val (data, hash) = client.snapshot(session, token)
+        if (hash != null && sha256(data) != hash) throw MacError("The library from the Mac arrived damaged: sync again")
+        val full = Snapshot.read(data.inputStream())
+        // Songs that could not be written are left out (their playlist entries too).
+        val tracks = full.tracks.filter { it.path !in failedPaths }
+        val ids = tracks.map { it.id }.toSet()
+        val snapshot = Snapshot(full.albums.filter { album -> tracks.any { it.albumKey == album.key } }, tracks, full.playlists,
+            full.items.filter { it.trackId in ids })
+        val artwork = ArtworkStore(context)
+        for (cover in snapshot.artworkHashes.filter { !artwork.has(it) }) {
+            runCatching {
+                val (image, imageHash) = client.artwork(session, token, cover)
+                // Every cover comes with its SHA-256: an empty or damaged one is not kept (the next sync asks again).
+                if (image.isNotEmpty() && imageHash != null && sha256(image) == imageHash) artwork.save(cover, image)
+            }
+        }
+        snapshot.importInto(LibraryDatabase.get(context))
+        artwork.prune(keeping = snapshot.artworkHashes)
+    }
+
+    private fun sha256(data: ByteArray): String = Pairing.hexString(MessageDigest.getInstance("SHA-256").digest(data))
+
+    /**
+     * Downloads one file, resuming a partial copy; up to three tries when Wi-Fi drops. With the Mac's SHA-256 (v2),
+     * the written file is read back and checked, and a damaged one is downloaded again. Returns its size.
+     */
+    private fun download(client: MacClient, folder: DeviceFolder, session: String, index: Int, path: String, token: String?): Long {
         var attempt = 0
         while (true) {
             attempt++
@@ -129,7 +199,7 @@ class SyncEngine(private val context: Context, private val prefs: Prefs) {
             var size = offset
             try {
                 val (input, connection) = try {
-                    client.download(session, index, offset)
+                    client.download(session, index, offset, token)
                 } catch (error: MacError) {
                     output.close()
                     if (error.status == 416) {
@@ -154,6 +224,11 @@ class SyncEngine(private val context: Context, private val prefs: Prefs) {
                     connection.disconnect()
                 }
                 folder.commit(path, size)
+                val expected = connection.getHeaderField("X-GL-SHA256")
+                if (expected != null && folder.sha256(path) != expected) {
+                    folder.delete(path)
+                    throw IOException("the copy did not match the Mac's")
+                }
                 return size
             } catch (error: IOException) {
                 runCatching { output.close() }

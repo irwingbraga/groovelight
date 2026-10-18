@@ -5,7 +5,7 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 
-@Database(entities = [Artist::class, Album::class, Track::class, Playlist::class, PlaylistItem::class], version = 1, exportSchema = true)
+@Database(entities = [Album::class, Track::class, Playlist::class, PlaylistItem::class], version = 1, exportSchema = true)
 abstract class LibraryDatabase : RoomDatabase() {
     abstract fun library(): LibraryDao
 

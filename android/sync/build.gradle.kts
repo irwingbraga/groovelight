@@ -14,6 +14,8 @@ android {
 }
 
 dependencies {
+    // A sync in Player mode fills the library from the Mac's snapshot.
+    api(project(":library"))
     implementation(libs.core.ktx)
     api(libs.work.runtime)
     implementation(libs.documentfile)

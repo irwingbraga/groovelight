@@ -2,46 +2,16 @@
   "formatVersion": 1,
   "database": {
     "version": 1,
-    "identityHash": "eef7705dce4ffc34f06fe4a6f2f51f29",
+    "identityHash": "a24f26b7b7452089086706792f52fc00",
     "entities": [
       {
-        "tableName": "artist",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER NOT NULL, `name` TEXT NOT NULL, `sortName` TEXT NOT NULL, PRIMARY KEY(`id`))",
-        "fields": [
-          {
-            "fieldPath": "id",
-            "columnName": "id",
-            "affinity": "INTEGER",
-            "notNull": true
-          },
-          {
-            "fieldPath": "name",
-            "columnName": "name",
-            "affinity": "TEXT",
-            "notNull": true
-          },
-          {
-            "fieldPath": "sortName",
-            "columnName": "sortName",
-            "affinity": "TEXT",
-            "notNull": true
-          }
-        ],
-        "primaryKey": {
-          "autoGenerate": false,
-          "columnNames": [
-            "id"
-          ]
-        }
-      },
-      {
         "tableName": "album",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER NOT NULL, `title` TEXT NOT NULL, `artistId` INTEGER, `artistName` TEXT NOT NULL, `year` INTEGER, `isCompilation` INTEGER NOT NULL, `artworkHash` TEXT, PRIMARY KEY(`id`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`key` TEXT NOT NULL, `title` TEXT NOT NULL, `artist` TEXT NOT NULL, `year` INTEGER, `isCompilation` INTEGER NOT NULL, `artworkHash` TEXT, PRIMARY KEY(`key`))",
         "fields": [
           {
-            "fieldPath": "id",
-            "columnName": "id",
-            "affinity": "INTEGER",
+            "fieldPath": "key",
+            "columnName": "key",
+            "affinity": "TEXT",
             "notNull": true
           },
           {
@@ -51,13 +21,8 @@
             "notNull": true
           },
           {
-            "fieldPath": "artistId",
-            "columnName": "artistId",
-            "affinity": "INTEGER"
-          },
-          {
-            "fieldPath": "artistName",
-            "columnName": "artistName",
+            "fieldPath": "artist",
+            "columnName": "artist",
             "affinity": "TEXT",
             "notNull": true
           },
@@ -81,24 +46,24 @@
         "primaryKey": {
           "autoGenerate": false,
           "columnNames": [
-            "id"
+            "key"
           ]
         },
         "indices": [
           {
-            "name": "index_album_artistId",
+            "name": "index_album_artist",
             "unique": false,
             "columnNames": [
-              "artistId"
+              "artist"
             ],
             "orders": [],
-            "createSql": "CREATE INDEX IF NOT EXISTS `index_album_artistId` ON `${TABLE_NAME}` (`artistId`)"
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_album_artist` ON `${TABLE_NAME}` (`artist`)"
           }
         ]
       },
       {
         "tableName": "track",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER NOT NULL, `title` TEXT NOT NULL, `artistId` INTEGER, `artistName` TEXT NOT NULL, `albumId` INTEGER, `discNumber` INTEGER, `trackNumber` INTEGER, `genre` TEXT, `durationMs` INTEGER NOT NULL, `path` TEXT NOT NULL, `codec` TEXT, `sampleRate` INTEGER, `bitDepth` INTEGER, `trackGain` REAL, `albumGain` REAL, `loved` INTEGER NOT NULL, `rating` INTEGER NOT NULL, `playCount` INTEGER NOT NULL, `lastPlayed` INTEGER, `dateAdded` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`albumId`) REFERENCES `album`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER NOT NULL, `title` TEXT NOT NULL, `artist` TEXT NOT NULL, `albumKey` TEXT NOT NULL, `discNumber` INTEGER, `trackNumber` INTEGER, `genre` TEXT, `year` INTEGER, `durationMs` INTEGER NOT NULL, `path` TEXT NOT NULL, `codec` TEXT NOT NULL, `sampleRate` INTEGER, `bitDepth` INTEGER, `trackGain` REAL, `albumGain` REAL, `loudness` REAL, `loved` INTEGER NOT NULL, `lovedAt` INTEGER, `rating` INTEGER NOT NULL, `playCount` INTEGER NOT NULL, `lastPlayed` INTEGER, `dateAdded` INTEGER NOT NULL, `lyrics` TEXT, `artworkHash` TEXT, PRIMARY KEY(`id`), FOREIGN KEY(`albumKey`) REFERENCES `album`(`key`) ON UPDATE NO ACTION ON DELETE CASCADE )",
         "fields": [
           {
             "fieldPath": "id",
@@ -113,20 +78,16 @@
             "notNull": true
           },
           {
-            "fieldPath": "artistId",
-            "columnName": "artistId",
-            "affinity": "INTEGER"
-          },
-          {
-            "fieldPath": "artistName",
-            "columnName": "artistName",
+            "fieldPath": "artist",
+            "columnName": "artist",
             "affinity": "TEXT",
             "notNull": true
           },
           {
-            "fieldPath": "albumId",
-            "columnName": "albumId",
-            "affinity": "INTEGER"
+            "fieldPath": "albumKey",
+            "columnName": "albumKey",
+            "affinity": "TEXT",
+            "notNull": true
           },
           {
             "fieldPath": "discNumber",
@@ -144,6 +105,11 @@
             "affinity": "TEXT"
           },
           {
+            "fieldPath": "year",
+            "columnName": "year",
+            "affinity": "INTEGER"
+          },
+          {
             "fieldPath": "durationMs",
             "columnName": "durationMs",
             "affinity": "INTEGER",
@@ -158,7 +124,8 @@
           {
             "fieldPath": "codec",
             "columnName": "codec",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": true
           },
           {
             "fieldPath": "sampleRate",
@@ -181,10 +148,20 @@
             "affinity": "REAL"
           },
           {
+            "fieldPath": "loudness",
+            "columnName": "loudness",
+            "affinity": "REAL"
+          },
+          {
             "fieldPath": "loved",
             "columnName": "loved",
             "affinity": "INTEGER",
             "notNull": true
+          },
+          {
+            "fieldPath": "lovedAt",
+            "columnName": "lovedAt",
+            "affinity": "INTEGER"
           },
           {
             "fieldPath": "rating",
@@ -208,6 +185,16 @@
             "columnName": "dateAdded",
             "affinity": "INTEGER",
             "notNull": true
+          },
+          {
+            "fieldPath": "lyrics",
+            "columnName": "lyrics",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "artworkHash",
+            "columnName": "artworkHash",
+            "affinity": "TEXT"
           }
         ],
         "primaryKey": {
@@ -218,22 +205,22 @@
         },
         "indices": [
           {
-            "name": "index_track_albumId",
+            "name": "index_track_albumKey",
             "unique": false,
             "columnNames": [
-              "albumId"
+              "albumKey"
             ],
             "orders": [],
-            "createSql": "CREATE INDEX IF NOT EXISTS `index_track_albumId` ON `${TABLE_NAME}` (`albumId`)"
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_track_albumKey` ON `${TABLE_NAME}` (`albumKey`)"
           },
           {
-            "name": "index_track_artistId",
+            "name": "index_track_artist",
             "unique": false,
             "columnNames": [
-              "artistId"
+              "artist"
             ],
             "orders": [],
-            "createSql": "CREATE INDEX IF NOT EXISTS `index_track_artistId` ON `${TABLE_NAME}` (`artistId`)"
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_track_artist` ON `${TABLE_NAME}` (`artist`)"
           },
           {
             "name": "index_track_path",
@@ -248,20 +235,20 @@
         "foreignKeys": [
           {
             "table": "album",
-            "onDelete": "SET NULL",
+            "onDelete": "CASCADE",
             "onUpdate": "NO ACTION",
             "columns": [
-              "albumId"
+              "albumKey"
             ],
             "referencedColumns": [
-              "id"
+              "key"
             ]
           }
         ]
       },
       {
         "tableName": "playlist",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER NOT NULL, `name` TEXT NOT NULL, `isSmart` INTEGER NOT NULL, `artworkHash` TEXT, PRIMARY KEY(`id`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER NOT NULL, `name` TEXT NOT NULL, `isSmart` INTEGER NOT NULL, PRIMARY KEY(`id`))",
         "fields": [
           {
             "fieldPath": "id",
@@ -280,11 +267,6 @@
             "columnName": "isSmart",
             "affinity": "INTEGER",
             "notNull": true
-          },
-          {
-            "fieldPath": "artworkHash",
-            "columnName": "artworkHash",
-            "affinity": "TEXT"
           }
         ],
         "primaryKey": {
@@ -363,7 +345,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'eef7705dce4ffc34f06fe4a6f2f51f29')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'a24f26b7b7452089086706792f52fc00')"
     ]
   }
 }
