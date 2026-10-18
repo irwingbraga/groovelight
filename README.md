@@ -6,7 +6,7 @@
 
 **A music player for people who own their music.**
 
-A native macOS player and library manager with the look of Apple Music and the soul of iTunes: bit-perfect hi-res playback, every format you have, a 15-band parametric EQ, synced lyrics, credits, Cover Flow, visualizers, and your library on your DAP, SD card or Android phone.
+A native macOS player and library manager with the look of Apple Music and the soul of iTunes: bit-perfect hi-res playback, every format you have, a 15-band parametric EQ, synced lyrics, credits, Cover Flow, visualizers, and your library on your DAP, SD card or Android phone. And a music player you can talk to: ask Claude to play, find, import and fix your music, or script it from Terminal.
 
 ![Status: preview](https://img.shields.io/badge/status-preview-orange.svg)
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
@@ -14,7 +14,7 @@ A native macOS player and library manager with the look of Apple Music and the s
 ![Swift 6](https://img.shields.io/badge/Swift-6-orange.svg)
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-support-FFDD00?logo=buymeacoffee&logoColor=black)](https://www.buymeacoffee.com/irwing)
 
-[Download](https://github.com/irwingbraga/groovelight/releases/latest) · [Features](#features) · [Build from source](#build-from-source)
+[Download](https://github.com/irwingbraga/groovelight/releases/latest) · [Features](#features) · [Claude and the command line](#works-with-claude-and-your-scripts) · [Build from source](#build-from-source)
 
 ![Groovelight's album library](docs/screenshots/albums.png)
 
@@ -31,7 +31,36 @@ Streaming apps treat local files as an afterthought, and audiophile players ofte
 - **Loudness that matches.** Sound Check style normalization from ReplayGain tags, and songs without them measured in the background (EBU R128).
 - **Take it with you.** Sync chosen playlists, artists, albums or genres to a DAP or SD card with covers, lyrics and playlists in the layout players expect, or wirelessly to an Android player or phone with the companion app. Only what changed is copied.
 - **Nostalgia, done properly.** Cover Flow with the flip to the track list, and full-screen Metal visualizers in the spirit of iTunes and Windows Media Player.
+- **Talk to your library.** Groovelight works with Claude: "play Living Inside Myself by Gino Vannelli", "make a playlist of his ten best songs", "import the album in my Downloads and fix its tags". It also has a command line tool for your own scripts. Changes to files always come as a preview you approve first. See [below](#works-with-claude-and-your-scripts).
 - **Local and open.** No account, no subscription, no cloud. Your music, your files, your history. Open source under the GPL.
+
+## Works with Claude and your scripts
+
+Groovelight comes with `groovelight`, a command line tool that drives the running app, and with an MCP server built on it, so AI assistants can use your library the way you do. Your music stays on your Mac: Claude only sees the results of what it asks Groovelight to do.
+
+**With Claude Desktop**, download `Groovelight-<version>.mcpb` from the [latest release](https://github.com/irwingbraga/groovelight/releases/latest) and open it. Then just ask:
+
+> *Play Kid A on shuffle.*<br>
+> *Which albums do I have by Radiohead?*<br>
+> *Make a playlist with the ten best Gino Vannelli songs I have.*<br>
+> *Import the zip in my Downloads, and move it to the Trash afterwards.*<br>
+> *The tags on "OK Computer" are a mess: fix them from MusicBrainz.*
+
+- **16 tools:** search the library, play albums, artists, playlists and songs, control playback, see what is playing, create and fill playlists, import songs, folders and archives, fix metadata from MusicBrainz, organize file names, rescan, and undo.
+- **Nothing changes behind your back.** Imports, metadata fixes and renames are previewed first. Claude shows you what would change and applies exactly that preview, only after you agree. Imports and organizing can be undone.
+- **Built to be safe with an AI.** No tool reads file contents. Private and system folders (`~/Library`, hidden folders, the home folder as a whole) are refused. Links inside archives are dropped. The server talks only to the app on your Mac.
+- **Claude Code** too: `claude mcp add groovelight -- /usr/local/bin/groovelight mcp`. Any other MCP client can run `groovelight mcp`.
+
+**From Terminal**, every command takes `--json`, and the ones that change files take `--dry-run`:
+
+```sh
+groovelight import ~/Downloads/album.zip --trash-archives --dry-run
+groovelight fix-metadata --album "OK Computer" --dry-run
+groovelight play --album "Kid A" --shuffle
+groovelight now-playing --json | jq -r '"\(.title) - \(.artist)"'
+```
+
+Settings, General shows the one-line command that puts the tool in your PATH. The full references are [docs/CLI.md](docs/CLI.md) (every command, JSON output, scripting) and [docs/MCP.md](docs/MCP.md) (connecting Claude, the tools, the safety model).
 
 ## A tour
 
@@ -113,6 +142,14 @@ Streaming apps treat local files as an afterthought, and audiophile players ofte
 - Liquid Glass throughout on macOS 26, and the classic translucent look on macOS 15; light and dark (the Shelf is always dark), one library window like Music.
 - Every action in the menus; keyboard shortcuts you can remap (Settings, Shortcuts).
 - Updates from GitHub releases, verified before installing (Sparkle).
+
+### Command line and Claude
+- `groovelight` controls the running app from Terminal, scripts and AI tools: `status`, `search`, `import` (songs, folders, archives), `fix-metadata`, `organize`, `undo`, `rescan`, `play`, `pause`, `next`, `now-playing` and more. Every command takes `--json`, and the ones that change files take `--dry-run`.
+- The tool asks the app to do the work, so the library, undo and the windows stay in step; it starts Groovelight in the background when needed.
+- Settings, General, Command Line shows the one-line command that puts it in your PATH.
+- **Use it with Claude:** `groovelight mcp` is an MCP server. Claude Desktop installs it from the extension attached to each release (`Groovelight-<version>.mcpb`: download and open it); Claude Code with `claude mcp add groovelight -- /usr/local/bin/groovelight mcp`. Claude can then search your library, play music, and import, fix and organize files. Changes to files always come as a preview first, applied only after you agree.
+
+- See [Works with Claude and your scripts](#works-with-claude-and-your-scripts), [docs/CLI.md](docs/CLI.md) and [docs/MCP.md](docs/MCP.md).
 
 ## Install
 
