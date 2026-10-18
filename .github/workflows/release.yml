@@ -147,12 +147,20 @@ jobs:
           rm "$RUNNER_TEMP/sparkle.key"
           cat build/appcast.xml
 
+      - name: Pack the Claude Desktop extension
+        # Groovelight-<version>.mcpb: installs Groovelight's MCP server (the app's `groovelight mcp`) in Claude Desktop.
+        id: mcpb
+        run: |
+          scripts/make-mcpb.sh build/Release/Build/Products/Release/Groovelight.app build/extension
+          echo "file=build/extension/Groovelight-${{ steps.dmg.outputs.version }}.mcpb" >> "$GITHUB_OUTPUT"
+
       - name: Keep the DMG
         uses: actions/upload-artifact@v4
         with:
           name: Groovelight-${{ steps.dmg.outputs.version }}
           path: |
             ${{ steps.dmg.outputs.dmg }}
+            ${{ steps.mcpb.outputs.file }}
             build/appcast.xml
 
       - name: Publish release
@@ -161,8 +169,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: v${{ steps.dmg.outputs.version }}
           DMG: ${{ steps.dmg.outputs.dmg }}
+          MCPB: ${{ steps.mcpb.outputs.file }}
         run: |
-          FILES=("$DMG")
+          FILES=("$DMG" "$MCPB")
           if [ -f build/appcast.xml ]; then FILES+=(build/appcast.xml); fi
           if gh release view "$TAG" > /dev/null 2>&1; then
             gh release upload "$TAG" "${FILES[@]}" --clobber

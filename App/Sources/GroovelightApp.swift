@@ -4,6 +4,7 @@ import Visualizers
 
 @main
 struct GroovelightApp: App {
+    @NSApplicationDelegateAdaptor private var appDelegate: AppDelegate
     @State private var model = AppModel()
 
     var body: some Scene {
@@ -16,6 +17,9 @@ struct GroovelightApp: App {
                 .frame(minWidth: 960, minHeight: 600)
         }
         .windowManagerRole(.principal)
+        // Files opened with the app (the command line tool, Finder's Open With) go to the app delegate only: a scene
+        // that takes the event shows its window again, which made the whole window fade out and back in.
+        .handlesExternalEvents(matching: [])
         .defaultSize(width: 1360, height: 860)
         .windowToolbarStyle(.unified)
         .commands { PlayerCommands(model: model) }
@@ -29,6 +33,7 @@ struct GroovelightApp: App {
         } defaultValue: {
             WindowID.visualizerValue
         }
+        .handlesExternalEvents(matching: [])
         .defaultSize(width: 1100, height: 700)
 
         Window("Equalizer", id: WindowID.equalizer) {
@@ -38,6 +43,7 @@ struct GroovelightApp: App {
         }
         .windowResizability(.contentSize)
         .defaultPosition(.center)
+        .handlesExternalEvents(matching: [])
 
         MenuBarExtra {
             MiniPlayerView()
@@ -276,5 +282,12 @@ extension OpenWindowAction {
     /// Opens the visualizer, or brings the existing one to the front.
     func visualizer() {
         callAsFunction(id: WindowID.visualizer, value: WindowID.visualizerValue)
+    }
+}
+
+/// Files opened with the app (Finder's Open With, the Dock icon, the command line tool) go to the import.
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    func application(_ application: NSApplication, open urls: [URL]) {
+        MainActor.assumeIsolated { AppModel.current?.control.open(urls) }
     }
 }

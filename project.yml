@@ -16,6 +16,9 @@ packages:
   Sparkle:
     url: https://github.com/sparkle-project/Sparkle
     from: 2.6.0
+  ArgumentParser:
+    url: https://github.com/apple/swift-argument-parser
+    from: 1.5.0
 targets:
   Groovelight:
     type: application
@@ -45,7 +48,16 @@ targets:
         product: Scrobbler
       - package: GroovelightKit
         product: WirelessSync
+      - package: GroovelightKit
+        product: ControlKit
       - package: Sparkle
+      # The command line tool, inside the app (Contents/Helpers/groovelight).
+      - target: groovelight-cli
+        embed: true
+        codeSign: false
+        copy:
+          destination: wrapper
+          subpath: Contents/Helpers
     entitlements:
       path: App/Groovelight.entitlements
       properties:
@@ -59,6 +71,9 @@ targets:
         com.apple.security.temporary-exception.mach-lookup.global-name:
           - $(PRODUCT_BUNDLE_IDENTIFIER)-spks
           - $(PRODUCT_BUNDLE_IDENTIFIER)-spki
+        # The command line tool reaches the app on a message port named after this group (ControlKit's ControlPort).
+        com.apple.security.application-groups:
+          - MHW58UT524.dev.irwingbraga.groovelight
     info:
       path: App/Info.plist
       properties:
@@ -72,6 +87,18 @@ targets:
         SUFeedURL: https://github.com/irwingbraga/groovelight/releases/latest/download/appcast.xml
         SUPublicEDKey: twg01yBaUF9k29yow7s+wAGu5Iucbw7btMg2Panx7D0=
         SUEnableInstallerLauncherService: true
+        # Music the app can be opened with (Open With, the Dock icon, the command line tool): imported. Alternate, so
+        # Groovelight never becomes the default app for these.
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Music
+            CFBundleTypeRole: Editor
+            LSHandlerRank: Alternate
+            LSItemContentTypes: [public.audio, public.folder, public.zip-archive, org.7-zip.7-zip-archive, com.rarlab.rar-archive,
+                                 public.tar-archive, org.gnu.gnu-zip-archive, public.bzip2-archive, org.tukaani.xz-archive]
+          - CFBundleTypeName: Cue Sheet
+            CFBundleTypeRole: Editor
+            LSHandlerRank: Alternate
+            CFBundleTypeExtensions: [cue]
         UTExportedTypeDeclarations:
           - UTTypeIdentifier: dev.irwingbraga.groovelight.backup
             UTTypeDescription: Groovelight Backup
@@ -88,3 +115,23 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: Groovelight
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         GENERATE_INFOPLIST_FILE: NO
+
+  # `groovelight`: controls the running app from the terminal (and AI tools). Embedded in the app.
+  groovelight-cli:
+    type: tool
+    platform: macOS
+    sources:
+      - CLI/Sources
+    dependencies:
+      - package: GroovelightKit
+        product: ControlKit
+      - package: ArgumentParser
+        product: ArgumentParser
+    settings:
+      base:
+        PRODUCT_NAME: groovelight
+        PRODUCT_BUNDLE_IDENTIFIER: dev.irwingbraga.groovelight.cli
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "-"
+        ENABLE_HARDENED_RUNTIME: YES
+        SKIP_INSTALL: YES

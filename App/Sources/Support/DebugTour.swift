@@ -449,7 +449,7 @@ enum DebugTour {
                 model.selection = .songs
                 for _ in 0..<100 where DebugHitTargets.songsUpdates == 0 { try? await Task.sleep(for: .milliseconds(100)) }
                 try? await Task.sleep(for: .seconds(1))
-                func table(in view: NSView) -> NSTableView? {
+                @MainActor func table(in view: NSView) -> NSTableView? {
                     if let table = view as? NSTableView { return table }
                     return view.subviews.lazy.compactMap(table(in:)).first
                 }
@@ -911,7 +911,8 @@ enum DebugTour {
                 try? "done".write(to: output.appendingPathComponent("DONE"), atomically: true, encoding: .utf8)
                 return
             }
-            if let hold = UserDefaults.standard.string(forKey: "GLDebugTourHold"), hold == "lastfm" || hold == "playback" || hold == "devices-settings" || hold == "library-settings" {
+            if let hold = UserDefaults.standard.string(forKey: "GLDebugTourHold"), hold == "lastfm" || hold == "playback" || hold == "devices-settings" || hold == "library-settings"
+                || hold == "general-settings" {
                 try? await Task.sleep(for: .seconds(2))
                 NSApp.activate()
                 let window = NSWindow(contentRect: NSRect(x: 300, y: 200, width: 720, height: 560), styleMask: [.titled], backing: .buffered, defer: false)
@@ -927,6 +928,8 @@ enum DebugTour {
                     window.contentView = NSHostingView(rootView: DevicesSettings().environment(model).tint(.brand))
                 } else if hold == "library-settings" {
                     window.contentView = NSHostingView(rootView: LibrarySettings().environment(model).tint(.brand))
+                } else if hold == "general-settings" {
+                    window.contentView = NSHostingView(rootView: GeneralSettings().environment(model).tint(.brand))
                 } else {
                     window.contentView = NSHostingView(rootView: LastFMSettings().environment(model).tint(.brand))
                 }

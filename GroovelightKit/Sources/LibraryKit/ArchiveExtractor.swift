@@ -23,7 +23,8 @@ public enum ArchiveExtractor {
 
     /// Extracts `archive` into `folder` (created when missing). This process opens the archive and hands it to bsdtar
     /// as standard input: a file there can still be seeked (7z needs it), and the tool, sandboxed like the app, never
-    /// has to open the user's file itself. bsdtar refuses entries with ".." in their path and strips a leading "/".
+    /// has to open the user's file itself. bsdtar refuses entries with ".." in their path and strips a leading "/";
+    /// links that came out of the archive are removed (see `removeLinks`).
     public static func extract(_ archive: URL, into folder: URL) throws {
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let input = try FileHandle(forReadingFrom: archive)
@@ -41,6 +42,7 @@ public enum ArchiveExtractor {
         // Read before waiting: a full pipe would block bsdtar.
         let output = String(decoding: errors.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
         process.waitUntilExit()
+        removeLinks(in: folder)
         guard process.terminationStatus != 0 else { return }
         let name = archive.lastPathComponent
         let lowered = output.lowercased()
@@ -48,5 +50,17 @@ public enum ArchiveExtractor {
         let reason = output.split(separator: "\n").map { $0.replacingOccurrences(of: "bsdtar: ", with: "").replacingOccurrences(of: "tar: ", with: "") }
             .first { !$0.contains("Error exit delayed") } ?? "unknown error"
         throw ExtractError.failed(name, reason)
+    }
+
+    /// Removes symbolic links (and the folders they would reach through): an archive made to look like music could
+    /// carry a "song" that is a link to another file on the Mac, which the import would then read and move into the
+    /// library. Hard links to files outside cannot come out of an archive (bsdtar only links within it).
+    static func removeLinks(in folder: URL) {
+        let enumerator = FileManager.default.enumerator(at: folder, includingPropertiesForKeys: [.isSymbolicLinkKey])
+        var links: [URL] = []
+        while let url = enumerator?.nextObject() as? URL {
+            if (try? url.resourceValues(forKeys: [.isSymbolicLinkKey]))?.isSymbolicLink == true { links.append(url) }
+        }
+        for link in links { try? FileManager.default.removeItem(at: link) }
     }
 }

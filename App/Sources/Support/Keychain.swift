@@ -5,8 +5,13 @@ import Security
 enum Keychain {
     /// The real app is sandboxed. Unsandboxed builds (debug tours run from the command line) keep separate items, so
     /// they can never read, replace or delete the user's real ones (the keychain is shared, unlike the preferences,
-    /// which an unsandboxed build keeps outside the app's container).
-    private static let suffix = ProcessInfo.processInfo.environment["APP_SANDBOX_CONTAINER_ID"] == nil ? ".unsandboxed" : ""
+    /// which an unsandboxed build keeps outside the app's container). So do copies under another bundle id (test
+    /// builds): reading the real items would also make macOS ask for access.
+    private static let suffix: String = {
+        if ProcessInfo.processInfo.environment["APP_SANDBOX_CONTAINER_ID"] == nil { return ".unsandboxed" }
+        let id = Bundle.main.bundleIdentifier ?? ""
+        return id == "dev.irwingbraga.groovelight" ? "" : "." + id
+    }()
     static let service = "dev.irwingbraga.groovelight.lastfm" + suffix
     /// Keys shared with paired Android devices, by device id.
     static let wirelessService = "dev.irwingbraga.groovelight.wireless" + suffix

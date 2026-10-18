@@ -1,0 +1,38 @@
+#!/bin/sh
+# Claude Desktop runs this: the MCP server of the installed Groovelight app (`groovelight mcp`, inside the app), so
+# the server always matches the app. $1: another copy of the app to use (the extension's "Groovelight app" setting).
+
+tool() { [ -n "$1" ] && [ -x "$1/Contents/Helpers/groovelight" ]; }
+# A copy found here rather than chosen in the setting must be the real app, signed by its developer: anything can
+# claim the bundle id (a look-alike in Downloads, say), and this runs its tool with access to the library.
+genuine() {
+    tool "$1" && codesign --verify --strict \
+        -R='anchor apple generic and certificate leaf[subject.OU] = "MHW58UT524"' "$1" 2>/dev/null
+}
+
+app=""
+if [ -n "$1" ]; then
+    # Chosen in the extension's settings (a development build, say): used as it is, or not at all.
+    if ! tool "$1"; then
+        echo "The Groovelight app set in the extension's settings ($1) has no command line tool (Groovelight 0.4 or later)." >&2
+        exit 1
+    fi
+    app="$1"
+fi
+if [ -z "$app" ]; then
+    for candidate in /Applications/Groovelight.app "$HOME/Applications/Groovelight.app"; do
+        if genuine "$candidate"; then app="$candidate"; break; fi
+    done
+fi
+if [ -z "$app" ]; then
+    # Anywhere else Spotlight knows of (paths may have spaces: one per line).
+    app=$(mdfind "kMDItemCFBundleIdentifier == 'dev.irwingbraga.groovelight'" 2>/dev/null | while IFS= read -r candidate; do
+        if genuine "$candidate"; then echo "$candidate"; break; fi
+    done)
+fi
+if [ -z "$app" ]; then
+    echo "Groovelight 0.4 or later is not installed (it includes the command line tool this extension runs)." >&2
+    echo "Download it from https://github.com/irwingbraga/groovelight/releases/latest" >&2
+    exit 1
+fi
+exec "$app/Contents/Helpers/groovelight" mcp

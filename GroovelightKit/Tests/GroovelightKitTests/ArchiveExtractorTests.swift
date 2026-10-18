@@ -50,6 +50,24 @@ struct ArchiveExtractorTests {
         #expect(!FileManager.default.fileExists(atPath: base.appendingPathComponent("01 Song.flac").path))
     }
 
+    @Test func leavesOutLinks() throws {
+        let base = try makeAlbum()
+        defer { try? FileManager.default.removeItem(at: base) }
+        // A "song" that points at a file elsewhere on the Mac, and a folder link.
+        let secret = base.appendingPathComponent("secret.txt")
+        try Data("private".utf8).write(to: secret)
+        let album = base.appendingPathComponent("source/Album")
+        try FileManager.default.createSymbolicLink(at: album.appendingPathComponent("02 Song.mp3"), withDestinationURL: secret)
+        try FileManager.default.createSymbolicLink(at: album.appendingPathComponent("Elsewhere"), withDestinationURL: base)
+        let archive = base.appendingPathComponent("Album.zip")
+        try run("/usr/bin/bsdtar", ["-c", "-f", archive.path, "--format", "zip", "-C", "source", "Album"], in: base)
+
+        let output = base.appendingPathComponent("out", isDirectory: true)
+        try ArchiveExtractor.extract(archive, into: output)
+        let contents = try FileManager.default.contentsOfDirectory(atPath: output.appendingPathComponent("Album").path).sorted()
+        #expect(contents == ["01 Song.flac", "cover.jpg"])
+    }
+
     @Test func reportsPasswordProtectedArchives() throws {
         let base = try makeAlbum()
         defer { try? FileManager.default.removeItem(at: base) }

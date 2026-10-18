@@ -120,6 +120,10 @@ final class AppModel {
     private(set) var sleepTimer: SleepTimer!
     /// Measures songs without ReplayGain tags for volume normalization.
     private(set) var loudness: LoudnessStore!
+    /// The command line tool's requests (`groovelight`).
+    @ObservationIgnored private(set) var control: ControlService!
+    /// The app's model, for the app delegate (files opened with the app).
+    static weak var current: AppModel?
     @ObservationIgnored private let nowPlaying = NowPlayingCenter()
 
     static let volumeKey = "player.volume"
@@ -188,6 +192,9 @@ final class AppModel {
         }
         restoreQueue()
         startSavingQueue()
+        control = ControlService(model: self)
+        control.start()
+        Self.current = self
         Task { await openLibraryRoots() }
         Task { [database] in
             do {
@@ -197,6 +204,8 @@ final class AppModel {
         #if DEBUG
         // Lets unsandboxed debug builds be pointed at a fixture library: `-GLDebugLibraryPath /path/to/music`.
         if let path = UserDefaults.standard.string(forKey: "GLDebugLibraryPath") {
+            // Created when missing: a sandboxed test copy can use a folder in its own container.
+            try? FileManager.default.createDirectory(atPath: path, withIntermediateDirectories: true)
             addLibraryFolder(URL(fileURLWithPath: path, isDirectory: true))
         }
         #endif

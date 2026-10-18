@@ -196,8 +196,13 @@ final class ImportSession: Identifiable {
     var roots: [LibraryRoot] = []
     /// Moves each archive to the Trash once everything from it is imported (remembered for the next import).
     var deleteArchives = UserDefaults.standard.bool(forKey: ImportSession.deleteArchivesKey) {
-        didSet { UserDefaults.standard.set(deleteArchives, forKey: Self.deleteArchivesKey) }
+        didSet { if isInteractive { UserDefaults.standard.set(deleteArchives, forKey: Self.deleteArchivesKey) } }
     }
+    /// Off for imports from the command line: no alerts (problems go in `problems`), and their options are not the
+    /// ones to offer next time.
+    @ObservationIgnored var isInteractive = true
+    /// Archives that could not be extracted (or only in part).
+    private(set) var problems: [String] = []
     /// Archives moved to the Trash by this import.
     private(set) var trashedArchives = 0
 
@@ -225,6 +230,13 @@ final class ImportSession: Identifiable {
 
     deinit {
         try? FileManager.default.removeItem(at: staging)
+    }
+
+    /// Where a file comes from, for people: its path, or the archive and its path inside it.
+    func sourceDescription(_ url: URL) -> String {
+        let path = url.resolvingSymlinksInPath().path
+        guard let entry = extracted.first(where: { path.hasPrefix($0.folder.path + "/") }) else { return url.path }
+        return entry.archive.path + ": " + String(path.dropFirst(entry.folder.path.count + 1))
     }
 
     /// The extracted archive a file came from.
@@ -304,7 +316,8 @@ final class ImportSession: Identifiable {
                 urls.append(folder)
             }
         }
-        if !problems.isEmpty { model.errorMessage = problems.joined(separator: "\n") }
+        self.problems = problems
+        if !problems.isEmpty, isInteractive { model.errorMessage = problems.joined(separator: "\n") }
         let urls = urls
         let (files, cueFiles) = await Task.detached { Self.audioFiles(in: urls) }.value
         phase = .reading(done: 0, total: files.count)

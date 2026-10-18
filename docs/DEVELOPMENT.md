@@ -11,7 +11,10 @@ Requirements: Xcode 26+ (developed with Xcode 27), [XcodeGen](https://github.com
   - `MetadataKit`: MusicBrainz, Cover Art Archive, iTunes Search and LRCLIB clients, release matching, LRC parser
   - `Scrobbler`: Last.fm client (desktop auth, now playing, scrobbles, loves) and the sender of the offline queue
   - `WirelessSync`: wireless sync with the Android app: protocol (X25519 pairing, signed requests), local HTTP server with Bonjour
-- `App/`: the macOS app (SwiftUI views, app model, Now Playing / media keys)
+  - `ControlKit`: the command line tool talking to the app: requests and replies (JSON), the client and the app's server,
+    the MCP server, and `ImportPaths` (the places imports may not read from, checked by the tool and the app)
+- `App/`: the macOS app (SwiftUI views, app model, Now Playing / media keys); `App/Sources/Control/ControlService.swift` runs the tool's commands
+- `CLI/`: `groovelight`, the command line tool (swift-argument-parser), embedded in the app at `Contents/Helpers/groovelight`
 - `android/`: Groovelight Sync, the Android 12+ companion app for wireless sync (Kotlin, Compose; see `android/README.md`)
 - `project.yml`: XcodeGen spec (the `.xcodeproj` is generated, not committed)
 
@@ -26,6 +29,51 @@ export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 xcodegen generate
 xcodebuild -project Groovelight.xcodeproj -scheme Groovelight -configuration Debug build
 ```
+
+### Command line tool
+
+User documentation: [CLI.md](CLI.md) (commands) and [MCP.md](MCP.md) (Claude and AI tools). This section is how
+it works inside.
+
+`groovelight` never opens the library itself: it sends requests to the running app, so there is one writer and the
+windows stay in step. How it reaches the sandboxed app:
+
+- **Requests:** JSON in Mach messages (`CFMessagePort`) on a port named after the App Group,
+  `MHW58UT524.dev.irwingbraga.groovelight.control`. A sandboxed app may only publish names that start with one of its
+  App Groups (the `com.apple.security.application-groups` entitlement). Debug builds use `….control-debug`, so they run
+  beside the installed app; `GROOVELIGHT_PORT` overrides both. A fork signed by another team changes the group and
+  `ControlPort.appGroup` together.
+- **Jobs:** quick commands answer at once. Imports, fixes, organize and rescans reply with a job id that the tool
+  polls (`.poll`) for progress lines and the result, so no message waits long. One job runs at a time.
+- **File access:** the sandboxed app cannot read paths it is sent. `import` first tells the app which paths are coming
+  (`.expectFiles`), then opens them with the app through Launch Services, which grants a sandbox extension as Finder's
+  Open With does (the app declares music, folders, archives and cue sheets as `Alternate` document types). The app
+  takes announced files silently (`ControlService.open`); other opened files (Open With, the Dock icon) start the usual
+  import sheet.
+- **Results:** every reply has a `summary` for people and `data` (JSON) for `--json`, scripts and AI tools.
+- **MCP:** `groovelight mcp` serves the same requests to AI tools (Model Context Protocol, newline-delimited
+  JSON-RPC on stdin and stdout; `ControlKit/MCPServer.swift`, tested without the app in `MCPServerTests`). Tools that
+  change files come in pairs: `preview_import`, `preview_fix_metadata` and `preview_organize` return a `preview_id`,
+  and `import_music`, `apply_fix_metadata` and `organize_files` take only that id, running exactly what was previewed
+  (the fix applies the previewed release). Tool results carry the summary as text and the data as
+  `structuredContent`; job progress goes out as `notifications/progress` when the client sends a progress token.
+- **Claude Desktop extension:** `extension/` holds the manifest and a launcher script that runs the installed app's
+  `groovelight mcp` (so the extension always matches the app and carries no binary of its own). Its "Groovelight app"
+  setting points it at another copy, such as a build from Xcode. `scripts/make-mcpb.sh path/to/Groovelight.app` packs
+  `Groovelight-<version>.mcpb` (version from the app, icon from its `Groovelight.icns`); the release workflow attaches
+  it to each release. `MCPServerTests` checks the manifest lists the server's tools.
+
+Try it against a scratch library with a debug build (the tool inside it talks to the debug port):
+
+```sh
+APP=build/DebugUnsandboxed/Build/Products/Debug/Groovelight.app
+"$APP/Contents/MacOS/Groovelight" -GLDebugDataDir /tmp/cli-data -GLDebugLibraryPath /tmp/cli-library &
+"$APP/Contents/Helpers/groovelight" import ~/Music/some-album.zip --dry-run
+```
+
+To test the sandbox, sign a Debug copy under another bundle id with the Developer ID and the app's entitlements:
+its keychain items and container are its own (`Keychain` adds the bundle id to the service of such copies), and
+`-GLDebugLibraryPath` can point inside its container (it is created when missing).
 
 ### Testing on macOS 15
 
@@ -99,6 +147,7 @@ APP=build/DebugUnsandboxed/Build/Products/Debug/Groovelight.app/Contents/MacOS/G
 "$APP" -GLDebugTour /tmp/tour -GLDebugTourHold songs-scroll -GLDebugDataDir /tmp/perf [-GLDebugScrollStep 250]   # flings the Songs table and times each frame (SCROLL)
 "$APP" -GLDebugTour /tmp/tour -GLDebugTourHold devices-settings   # Settings, Devices in a window (WINDOW, WINDOWID)
 "$APP" -GLDebugTour /tmp/tour -GLDebugTourHold library-settings   # Settings, Library (music folders) in a window (WINDOW, WINDOWID)
+"$APP" -GLDebugTour /tmp/tour -GLDebugTourHold general-settings   # Settings, General (appearance, updates, command line) in a window
 "$APP" -GLDebugTour /tmp/tour -GLDebugTourHold lastfm   # Settings, Last.fm in a window (writes WINDOW for screencapture -R)
 "$APP" -GLDebugTour /tmp/tour -GLDebugTourHold playlist-files   # exports a playlist in every format, imports each back (PLAYLISTS), then leaves an import report open (WINDOW, READY); deletes what it made
 "$APP" -GLDebugTour /tmp/tour -GLDebugTourHold lyrics   # synced lyrics in the side panel and Now Playing, at the start and at 1:00 (WINDOW, WINDOWID for screencapture -l, READY-0 to READY-3); temporary lyrics are put back

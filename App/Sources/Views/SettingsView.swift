@@ -45,9 +45,77 @@ struct GeneralSettings: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            CommandLineSection()
         }
         .formStyle(.grouped)
         .onChange(of: theme) { _, theme in theme.apply() }
+    }
+}
+
+/// The `groovelight` tool inside the app, the command that puts it in the PATH (a sandboxed app cannot), and how to
+/// connect it to Claude.
+private struct CommandLineSection: View {
+    @Environment(AppModel.self) private var model
+
+    private var installCommand: String {
+        let tool = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/groovelight").path
+        // In single quotes: the command runs with sudo, and in double quotes a "$" or "`" in a folder's name would run.
+        let quoted = "'" + tool.replacingOccurrences(of: "'", with: #"'\''"#) + "'"
+        return "sudo mkdir -p /usr/local/bin && sudo ln -sf \(quoted) /usr/local/bin/groovelight"
+    }
+
+    private let claudeCode = "claude mcp add groovelight -- /usr/local/bin/groovelight mcp"
+    private let releases = URL(string: "https://github.com/irwingbraga/groovelight/releases/latest")!
+
+    var body: some View {
+        Section {
+            CopyableCommand(title: "To use `groovelight` in Terminal, run this once:", command: installCommand)
+            if !model.control.isListening {
+                Label("Another copy of Groovelight is answering the command line.", systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+            }
+        } header: {
+            Text("Command Line")
+        } footer: {
+            Text("`groovelight status`, `search`, `import`, `fix-metadata`, `organize`, `undo`, `play` and more: see `groovelight --help`. Add `--json` for scripts. The tool asks this app to do the work, and starts it when needed.")
+                .foregroundStyle(.secondary)
+        }
+        Section {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Claude Desktop: download Groovelight.mcpb from the latest release and open it to install the extension.")
+                Link("Get the Claude Desktop Extension", destination: releases)
+            }
+            CopyableCommand(title: "Claude Code: run (needs the command line tool above)", command: claudeCode)
+        } header: {
+            Text("Use with Claude")
+        } footer: {
+            Text("Claude can then search your library, play music, and import, fix and organize files. Changes to files always come as a preview first, and Claude applies them only after you agree.")
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+/// A command to copy into Terminal or a settings file.
+private struct CopyableCommand: View {
+    var title: LocalizedStringKey
+    var command: String
+    @State private var copied = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+            HStack(alignment: .top) {
+                Text(command)
+                    .font(.system(.caption, design: .monospaced))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Button(copied ? "Copied" : "Copy") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(command, forType: .string)
+                    copied = true
+                }
+            }
+        }
     }
 }
 

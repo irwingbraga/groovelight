@@ -60,6 +60,8 @@ if [ -n "${DEVELOPER_ID_IDENTITY:-}" ]; then
         sign "$SPARKLE/Updater.app"
     fi
     for framework in "$APP"/Contents/Frameworks/*.framework; do sign "$framework"; done
+    # The command line tool (no entitlements: it is not sandboxed, it asks the app to do the work).
+    sign --identifier dev.irwingbraga.groovelight.cli "$APP/Contents/Helpers/groovelight"
     sign --preserve-metadata=entitlements,requirements "$APP"
 fi
 codesign --verify --deep --strict "$APP"
@@ -71,6 +73,8 @@ fi
 for framework in "$APP"/Contents/Frameworks/*.framework; do
     codesign --verify --strict "$framework" || { echo "Invalid signature: $framework" >&2; exit 1; }
 done
+# The command line tool runs (and reads the app's version beside it).
+"$APP/Contents/Helpers/groovelight" --version || { echo "The command line tool does not run" >&2; exit 1; }
 
 echo "==> Packaging $DMG"
 rm -rf "$STAGING" "$DMG"
