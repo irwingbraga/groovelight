@@ -120,6 +120,9 @@ class DeviceFolder(private val context: Context, val tree: Uri) {
 
     private fun uri(id: String): Uri = DocumentsContract.buildDocumentUriUsingTree(tree, id)
 
+    /** The document URI of a file found by `scan`, which players and other apps can open (null when unknown). */
+    fun documentUri(path: String): Uri? = index[path]?.takeIf { !it.isFolder }?.let { uri(it.id) }
+
     private fun partialPath(path: String): String {
         val folder = path.substringBeforeLast('/', "")
         val name = ".${path.substringAfterLast('/')}.partial"

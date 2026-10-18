@@ -15,7 +15,7 @@ Requirements: Xcode 26+ (developed with Xcode 27), [XcodeGen](https://github.com
     the MCP server, and `ImportPaths` (the places imports may not read from, checked by the tool and the app)
 - `App/`: the macOS app (SwiftUI views, app model, Now Playing / media keys); `App/Sources/Control/ControlService.swift` runs the tool's commands
 - `CLI/`: `groovelight`, the command line tool (swift-argument-parser), embedded in the app at `Contents/Helpers/groovelight`
-- `android/`: Groovelight Sync, the Android 12+ companion app for wireless sync (Kotlin, Compose; see `android/README.md`)
+- `android/`: Groovelight for Android, the Android 12+ companion: wireless sync (released as Groovelight Sync) and the player in development (Kotlin, Compose, Media3, Room; modules `sync`, `library`, `playback`, `app`; see `android/README.md`)
 - `project.yml`: XcodeGen spec (the `.xcodeproj` is generated, not committed)
 
 ## Build and test

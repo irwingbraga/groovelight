@@ -223,10 +223,14 @@ jobs:
         env:
           GROOVELIGHT_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           GROOVELIGHT_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        # The GitHub build is the APK attached to the release. The Play build (an App Bundle) is only built and checked
+        # (permissions, target API, lint), so the app stays ready to submit to Google Play. The player stays out of
+        # releases until it is ready (-Pplayer=true builds it in).
         run: |
           if [ -f "$RUNNER_TEMP/release.jks" ]; then export GROOVELIGHT_KEYSTORE="$RUNNER_TEMP/release.jks"; fi
-          ./gradlew --no-daemon testDebugUnitTest assembleRelease -PversionName="$VERSION" -PversionCode="${{ github.run_number }}"
-          cp app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/GroovelightSync-$VERSION.apk"
+          ./gradlew --no-daemon testDebugUnitTest :app:testGithubDebugUnitTest assembleGithubRelease bundlePlayRelease \
+            checkPlayReleasePolicy :app:lintPlayRelease -PversionName="$VERSION" -PversionCode="${{ github.run_number }}"
+          cp app/build/outputs/apk/github/release/app-github-release.apk "$RUNNER_TEMP/GroovelightSync-$VERSION.apk"
 
       - name: Keep the APK
         uses: actions/upload-artifact@v4

@@ -73,7 +73,7 @@ class MacIntegrationTest {
         manifest.put("profile", plan.opt("profile"))
         for (i in 0 until writes.length()) {
             val write = writes.getJSONObject(i)
-            val target = File(folder, write.getString("path")).apply { parentFile.mkdirs() }
+            val target = File(folder, write.getString("path")).apply { parentFile?.mkdirs() }
             val partial = File(target.parentFile, ".${target.name}.partial")
             if (cutFirstDownload && i == 0) {
                 // Only the first half arrives, as if Wi-Fi dropped.

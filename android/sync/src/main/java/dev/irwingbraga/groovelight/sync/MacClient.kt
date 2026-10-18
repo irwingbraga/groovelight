@@ -44,6 +44,16 @@ class Prefs(context: Context) {
     var lastSync: Long
         get() = prefs.getLong("lastSync", 0)
         set(value) = prefs.edit().putLong("lastSync", value).apply()
+    /** How the music is listened to: [Mode.PLAYER] (Groovelight plays it) or [Mode.SYNC_ONLY] (another player app
+     *  does); null until chosen. Devices paired before the player existed are Sync only (see [resolvedMode]). */
+    var mode: Mode?
+        get() = prefs.getString("mode", null)?.let { name -> Mode.entries.firstOrNull { it.name == name } }
+        set(value) = prefs.edit().putString("mode", value?.name).apply()
+
+    /** The mode, deciding it for a device that synced before modes existed: it stays as it was, Sync only. */
+    val resolvedMode: Mode? get() = mode ?: if (isPaired || folder != null) Mode.SYNC_ONLY.also { mode = it } else null
+
+    enum class Mode { PLAYER, SYNC_ONLY }
 
     val isPaired: Boolean get() = key != null && macId != null
 
