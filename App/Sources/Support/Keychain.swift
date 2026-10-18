@@ -15,6 +15,15 @@ enum Keychain {
     static let service = "dev.irwingbraga.groovelight.lastfm" + suffix
     /// Keys shared with paired Android devices, by device id.
     static let wirelessService = "dev.irwingbraga.groovelight.wireless" + suffix
+    /// The key and certificate wireless sync serves HTTPS with (protocol v2), in the login keychain. Only the build that
+    /// made a key uses it without macOS asking: a release keeps its signature across updates, but each unsandboxed
+    /// debug build is signed anew, so each makes its own (labeled with its build time).
+    static var wirelessTLSLabel: String {
+        let label = "dev.irwingbraga.groovelight.wireless-tls" + suffix
+        guard ProcessInfo.processInfo.environment["APP_SANDBOX_CONTAINER_ID"] == nil else { return label }
+        let built = Bundle.main.executableURL.flatMap { try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate }
+        return label + ".\(Int(built?.timeIntervalSince1970 ?? 0))"
+    }
 
     static func string(_ account: String, service: String = Keychain.service) -> String? {
         let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,

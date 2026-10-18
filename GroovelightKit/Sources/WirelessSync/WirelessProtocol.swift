@@ -2,15 +2,20 @@ import CryptoKit
 import Foundation
 import LibraryKit
 
-/// The protocol between Groovelight on the Mac and the Groovelight Sync app on Android, over the local network.
+/// The protocol between Groovelight on the Mac and Groovelight for Android, over the local network.
 ///
 /// The Mac serves (Bonjour `_groovelight._tcp`); the Android app finds it, pairs once, and then pulls: it sends what
 /// it holds, gets a plan, downloads the files and reports back. Every request after pairing is signed with a key both
 /// sides derived from an X25519 exchange (it never travels), and pairing is confirmed by a 6-digit code shown on both
 /// screens, so another device on the network can neither pose as the Mac nor as the player.
+///
+/// Version 2 adds HTTPS on a second port (`Info.tlsPort`): the device pins the Mac's certificate from a signed
+/// `GET /certificate`, whose answer only the paired Mac can make (`certificateProof`), before connecting to it. Over it, a player device reports
+/// what it decodes, downloads with the plan's token, checks each file's SHA-256, and gets the library snapshot.
+/// Version 1 (plain HTTP) stays for Groovelight Sync 0.4 and earlier.
 public enum WirelessProtocol {
     public static let serviceType = "_groovelight._tcp"
-    public static let version = 1
+    public static let version = 2
 
     // MARK: - Pairing
 
@@ -58,6 +63,33 @@ public enum WirelessProtocol {
         public static let signature = "x-gl-signature"
         /// Random per request, so two identical requests in the same second still differ (and a replay is caught).
         public static let nonce = "x-gl-nonce"
+        /// The plan's download token (v2, over TLS): files, the snapshot and covers of that sync, without signing each.
+        public static let token = "x-gl-token"
+        /// SHA-256 of a whole downloaded file (lowercase hex), checked by the device before keeping it.
+        public static let sha256 = "x-gl-sha256"
+    }
+
+    // MARK: - Certificate (v2)
+
+    /// GET /certificate?nonce=<random> (signed): the certificate the HTTPS port serves, and proof that the paired Mac is
+    /// the one serving it. The device pins the fingerprint when the proof checks, then accepts only that certificate.
+    public struct Certificate: Codable, Sendable {
+        /// SHA-256 of the certificate's DER bytes, lowercase hex.
+        public var fingerprint: String
+        /// `certificateProof`, base64.
+        public var proof: String
+
+        public init(fingerprint: String, proof: String) {
+            self.fingerprint = fingerprint
+            self.proof = proof
+        }
+    }
+
+    /// HMAC-SHA256 of "groovelight-certificate\n<fingerprint>\n<nonce>" with the pairing key: only the paired Mac can
+    /// make it, and the device's nonce makes an old answer useless.
+    public static func certificateProof(fingerprint: String, nonce: String, key: SymmetricKey) -> String {
+        Data(HMAC<SHA256>.authenticationCode(for: Data("groovelight-certificate\n\(fingerprint)\n\(nonce)".utf8), using: key))
+            .base64EncodedString()
     }
 
     /// "METHOD\npath\ntime\nnonce\nsha256(body) in hex", signed with HMAC-SHA256 and sent in base64.
@@ -85,11 +117,14 @@ public enum WirelessProtocol {
         public var id: String
         public var name: String
         public var version: Int
+        /// The HTTPS port (v2), when it is serving.
+        public var tlsPort: Int?
 
-        public init(id: String, name: String, version: Int = WirelessProtocol.version) {
+        public init(id: String, name: String, version: Int = WirelessProtocol.version, tlsPort: Int? = nil) {
             self.id = id
             self.name = name
             self.version = version
+            self.tlsPort = tlsPort
         }
     }
 
@@ -158,9 +193,13 @@ public enum WirelessProtocol {
         public var name: String?
         /// Every storage of the device (older app versions do not send it).
         public var volumes: [Volume]?
+        /// "player" (Groovelight plays the music) or "sync" (another app does); v1 devices send nothing (sync).
+        public var mode: String?
+        /// `AudioSpec.Codec` raw values the device decodes (player mode): the Mac converts the rest to FLAC.
+        public var decodes: [String]?
 
         public init(manifest: DeviceManifest?, files: [String], capacity: Int64, available: Int64, model: String? = nil,
-                    name: String? = nil, volumes: [Volume]? = nil) {
+                    name: String? = nil, volumes: [Volume]? = nil, mode: String? = nil, decodes: [String]? = nil) {
             self.manifest = manifest
             self.files = files
             self.capacity = capacity
@@ -168,7 +207,11 @@ public enum WirelessProtocol {
             self.model = model
             self.name = name
             self.volumes = volumes
+            self.mode = mode
+            self.decodes = decodes
         }
+
+        public var isPlayer: Bool { mode == "player" }
     }
 
     /// The plan for the device.
@@ -198,9 +241,11 @@ public enum WirelessProtocol {
         public var profile: DeviceProfile
         public var songs: Int
         public var skipped: [String]
+        /// The download token (v2, over TLS): sent as `Header.token` for this session's files, snapshot and covers.
+        public var token: String?
 
         public init(session: String, writes: [Write], deletions: [String], unchanged: [String: DeviceManifest.Entry],
-                    profile: DeviceProfile, songs: Int, skipped: [String]) {
+                    profile: DeviceProfile, songs: Int, skipped: [String], token: String? = nil) {
             self.session = session
             self.writes = writes
             self.deletions = deletions
@@ -208,6 +253,7 @@ public enum WirelessProtocol {
             self.profile = profile
             self.songs = songs
             self.skipped = skipped
+            self.token = token
         }
     }
 

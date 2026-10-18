@@ -23,6 +23,10 @@ final class WirelessSyncService {
         var lastResult: String?
         /// Internal memory and SD cards, as of the last sync.
         var volumes: [WirelessProtocol.Volume]?
+        /// "player" when Groovelight plays the music on the device, "sync" (or nil, older apps) when another app does.
+        var mode: String?
+
+        var isPlayer: Bool { mode == "player" }
     }
 
     /// A device asking to pair, shown in a sheet with its code.
@@ -63,6 +67,8 @@ final class WirelessSyncService {
     /// What each device reported at its last sync, for the device page's preview.
     @ObservationIgnored private(set) var lastRequests: [String: WirelessProtocol.SyncRequest] = [:]
     @ObservationIgnored private var keys: [String: SymmetricKey] = [:]
+    /// Songs converted to FLAC for player devices that cannot decode them, kept only while a sync needs them.
+    @ObservationIgnored private let conversions = ConversionCache(folder: URL.cachesDirectory.appendingPathComponent("Groovelight/Conversions", isDirectory: true))
 
     /// This Mac's id for devices (stable across launches).
     let macId: String
@@ -78,7 +84,14 @@ final class WirelessSyncService {
         }
         isEnabled = defaults.bool(forKey: Self.enabledKey)
         paired = defaults.data(forKey: "devices.wireless.paired").flatMap { try? JSONDecoder().decode([PairedDevice].self, from: $0) } ?? []
-        if isEnabled { start() }
+        // Conversions left by a sync that did not finish.
+        conversions.prune(keeping: [])
+        // After launch: the HTTPS certificate is in the keychain, which macOS cannot ask about during `App.init`.
+        if isEnabled {
+            NotificationCenter.default.addObserver(forName: NSApplication.didFinishLaunchingNotification, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { if self?.isEnabled == true { self?.start() } }
+            }
+        }
     }
 
     static var macName: String { Host.current().localizedName ?? "Mac" }
@@ -113,20 +126,49 @@ final class WirelessSyncService {
         guard server == nil else { return }
         let server = WirelessSyncServer(backend: backend())
         self.server = server
-        // A fixed port is easier to allow through firewalls; another one when it is taken.
-        server.start(name: "Groovelight on \(Self.macName)", port: 52_300) { [weak self] port in
-            Task { @MainActor in
-                guard let self else { return }
-                if port == nil, self.server === server {
-                    server.stop()
-                    let retry = WirelessSyncServer(backend: self.backend())
-                    self.server = retry
-                    retry.start(name: "Groovelight on \(Self.macName)") { port in Task { @MainActor in self.port = port } }
-                } else {
-                    self.port = port
+        // HTTPS for Groovelight for Android 0.5 and later (protocol v2); without the certificate, HTTP only. The
+        // keychain is read off the main thread: checking the key can take a few seconds.
+        Task { [weak self] in
+            let tls = await Task.detached(priority: .userInitiated) { Self.loadIdentity() }.value
+            guard let self, self.server === server else { return }
+            // A fixed port is easier to allow through firewalls (HTTPS on the next one); others when it is taken.
+            server.start(name: "Groovelight on \(Self.macName)", port: 52_300, tls: tls?.pair) { [weak self] port in
+                Task { @MainActor in
+                    guard let self else { return }
+                    if port == nil, self.server === server {
+                        server.stop()
+                        let retry = WirelessSyncServer(backend: self.backend())
+                        self.server = retry
+                        retry.start(name: "Groovelight on \(Self.macName)", tls: tls?.pair) { port in Task { @MainActor in self.port = port } }
+                    } else {
+                        self.port = port
+                    }
                 }
             }
         }
+    }
+
+    /// The certificate to serve HTTPS with, unless it cannot be loaded or macOS would ask before using its key (made
+    /// by another build): then HTTP only, rather than every connection waiting on the question.
+    nonisolated private static func loadIdentity() -> ServerIdentity? {
+        do {
+            let loaded = try TLSIdentity.load(label: Keychain.wirelessTLSLabel)
+            guard TLSIdentity.canSign(loaded.identity) else {
+                NSLog("Groovelight: wireless sync serves HTTP only: macOS is asking whether Groovelight may use its key")
+                return nil
+            }
+            return ServerIdentity(identity: loaded.identity, fingerprint: loaded.fingerprint)
+        } catch {
+            NSLog("Groovelight: wireless sync serves HTTP only, the certificate could not be loaded: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    /// The HTTPS identity: immutable, so it can travel between threads.
+    struct ServerIdentity: @unchecked Sendable {
+        let identity: SecIdentity
+        let fingerprint: String
+        var pair: (identity: SecIdentity, fingerprint: String) { (identity, fingerprint) }
     }
 
     private func stop() {
@@ -154,6 +196,11 @@ final class WirelessSyncService {
                     self?.progress[id] = (index + 1, total)
                     self?.model.devices.wirelessProgress(DeviceStore.wirelessId(id), done: index + 1, total: total)
                 }
+            },
+            flac: { [conversions] source, fingerprint in try conversions.flac(for: source, fingerprint: fingerprint) },
+            snapshot: { [database = model.database] _, paths, codecs in
+                let snapshot = try await database.writer.read { try DeviceSnapshot.build($0, paths: paths, codecs: codecs) }
+                return try WirelessProtocol.encoder.encode(snapshot)
             })
     }
 
@@ -163,7 +210,8 @@ final class WirelessSyncService {
         pairings[request.deviceId] = (request, pairing, "pending")
         let prompt = PairingPrompt(request: request, code: pairing.code)
         #if DEBUG
-        // `-GLDebugAutoPair YES` (tours): allows the device and gives it the first albums to sync.
+        // `-GLDebugAutoPair YES` (tours): allows the device and gives it the first albums to sync (the whole library
+        // with `-GLDebugSyncEverything YES`).
         if UserDefaults.standard.bool(forKey: "GLDebugAutoPair") {
             answerPairing(prompt, allow: true)
             try? "\(pairing.code)".write(toFile: NSTemporaryDirectory() + "groovelight-pair-code", atomically: true, encoding: .utf8)
@@ -171,6 +219,7 @@ final class WirelessSyncService {
                 let albums = (try? await model.database.writer.read { try LibraryDatabase.albums($0, sort: .artist) }) ?? []
                 var selection = DeviceSelection()
                 selection.albumKeys = Set(albums.prefix(3).map(\.albumKey))
+                selection.everything = UserDefaults.standard.bool(forKey: "GLDebugSyncEverything")
                 model.devices.setSelection(selection, for: DeviceStore.wirelessId(request.deviceId))
             }
             return
@@ -267,12 +316,21 @@ final class WirelessSyncService {
             paired[index].capacity = request.capacity
             paired[index].available = request.available
             if let volumes = request.volumes { paired[index].volumes = volumes }
+            paired[index].mode = request.mode ?? "sync"
             save()
         }
         syncRequested.remove(id)
         progress[id] = (0, 0)
         let deviceId = DeviceStore.wirelessId(id)
-        let selection = model.devices.selection(deviceId), profile = model.devices.profile(deviceId)
+        let selection = model.devices.selection(deviceId)
+        var profile = model.devices.profile(deviceId)
+        // A player gets the songs only: covers, lyrics and playlists come with the library snapshot.
+        let player = request.isPlayer ? DeviceSync.Player(decodes: Set(request.decodes ?? [])) : nil
+        if player != nil {
+            profile.writesCovers = false
+            profile.writesLyrics = false
+            profile.writesPlaylists = false
+        }
         let sends = pendingSends(id)
         let contents = try await model.database.writer.read { db in
             (try LibraryDatabase.deviceContents(db, selection), try Self.contents(db, sends))
@@ -285,10 +343,10 @@ final class WirelessSyncService {
             // Nothing chosen to sync: only what was sent, and nothing is removed.
             if selection.isEmpty {
                 return DeviceSync.plan(tracks: contents.1.tracks, playlists: contents.1.playlists, profile: profile, manifest: manifest,
-                                       mode: .send, root: root, existing: existing)
+                                       mode: .send, root: root, player: player, existing: existing)
             }
             return DeviceSync.plan(syncing: contents.0, sending: contents.1, profile: profile, manifest: manifest, root: root,
-                                   existing: existing)
+                                   player: player, existing: existing)
         }.value
         // Sent songs are in this plan now.
         UserDefaults.standard.removeObject(forKey: "devices.wireless.\(id).sends")
@@ -314,6 +372,8 @@ final class WirelessSyncService {
 
     private func finished(_ id: String, _ result: WirelessProtocol.SyncResult) {
         progress[id] = nil
+        // The device has its converted songs: free the space (unless another device is syncing now).
+        if progress.isEmpty { conversions.prune(keeping: []) }
         var summary = result.written == 0 && result.deleted == 0 ? "Already up to date." : "Copied \(result.written), removed \(result.deleted)."
         if !result.failed.isEmpty { summary += " \(result.failed.count) could not be written." }
         if let index = paired.firstIndex(where: { $0.id == id }) {

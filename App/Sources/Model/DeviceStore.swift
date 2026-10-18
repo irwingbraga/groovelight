@@ -20,6 +20,8 @@ final class DeviceStore {
         var isFAT32: Bool
         /// A paired Android device, synced over the local network.
         var isWireless = false
+        /// Groovelight for Android plays the music (Player mode), rather than another app.
+        var isPlayer = false
         var isOnline = true
         /// Its storages (internal memory, SD cards), the one with the music folder marked.
         var volumes: [WirelessProtocol.Volume] = []
@@ -107,7 +109,8 @@ final class DeviceStore {
             devices += wireless.paired.map { device in
                 Device(id: Self.wirelessId(device.id), name: device.name, root: URL(fileURLWithPath: "/"), capacity: device.capacity,
                        available: device.available, format: ["Wi-Fi", device.model].compactMap { $0 }.joined(separator: " · "),
-                       isFAT32: false, isWireless: true, isOnline: wireless.isOnline(device), volumes: device.volumes ?? [])
+                       isFAT32: false, isWireless: true, isPlayer: device.isPlayer, isOnline: wireless.isOnline(device),
+                       volumes: device.volumes ?? [])
             }
         }
         accessible = Set(devices.filter { $0.isWireless || access($0, asking: false) != nil }.map(\.id))

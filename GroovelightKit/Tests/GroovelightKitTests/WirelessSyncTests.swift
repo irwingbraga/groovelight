@@ -172,6 +172,152 @@ struct WirelessSyncTests {
         #expect(try await call("GET", filePath, key: key).1.statusCode == 404)
     }
 
+    @Test func makesAValidSelfSignedCertificate() throws {
+        let key = try #require(SecKeyCreateRandomKey([kSecAttrKeyType: kSecAttrKeyTypeECSECPrimeRandom, kSecAttrKeySizeInBits: 256] as CFDictionary, nil))
+        let der = try TLSIdentity.makeCertificate(privateKey: key, commonName: "Groovelight", now: Date(timeIntervalSince1970: 1_800_000_000))
+        let certificate = try #require(SecCertificateCreateWithData(nil, der as CFData))
+        #expect(SecCertificateCopySubjectSummary(certificate) as String? == "Groovelight")
+        // Its public key is the key's, and its signature checks with it (self-signed).
+        let publicKey = try #require(SecCertificateCopyKey(certificate))
+        #expect(SecKeyCopyExternalRepresentation(publicKey, nil) as Data? == SecKeyCopyExternalRepresentation(SecKeyCopyPublicKey(key)!, nil) as Data?)
+        var trust: SecTrust?
+        SecTrustCreateWithCertificates(certificate, SecPolicyCreateBasicX509(), &trust)
+        SecTrustSetAnchorCertificates(trust!, [certificate] as CFArray)
+        SecTrustSetVerifyDate(trust!, Date(timeIntervalSince1970: 1_800_000_000) as CFDate)
+        #expect(SecTrustEvaluateWithError(trust!, nil))
+        #expect(TLSIdentity.fingerprint(of: certificate).count == 64)
+        #expect(DER.oid("1.2.840.10045.4.3.2") == Data([0x06, 0x08, 0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x04, 0x03, 0x02]))
+    }
+
+    /// Version 2 against a real HTTPS server: the device pins the certificate from a proof only the paired Mac can make,
+    /// gets a player plan (an ALAC song converted to FLAC), downloads with the plan's token and checks each file's
+    /// SHA-256, and gets the library snapshot. The token does not work in plain HTTP.
+    @Test(.timeLimit(.minutes(1))) func servesPlayersOverTLS() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("groovelight-tls-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let flacSource = folder.appendingPathComponent("a.flac"), alacSource = folder.appendingPathComponent("b.m4a")
+        let converted = folder.appendingPathComponent("b-converted.flac")
+        try Data(repeating: 1, count: 100_000).write(to: flacSource)
+        try Data(repeating: 2, count: 50_000).write(to: alacSource)
+        try Data(repeating: 3, count: 60_000).write(to: converted)
+        var a = LibraryDatabaseTests.makeTrack(rootId: 1, "One", artist: "Band", album: "LP", number: 1)
+        a.id = 1; a.path = flacSource.path; a.format = "FLAC"
+        var b = LibraryDatabaseTests.makeTrack(rootId: 1, "Two", artist: "Band", album: "LP", number: 2)
+        b.id = 2; b.path = alacSource.path; b.format = "Apple Lossless"
+        let tracks = [a, b]
+
+        let label = "dev.irwingbraga.groovelight.test-\(UUID().uuidString)"
+        defer { TLSIdentity.remove(label: label) }
+        let tls = try TLSIdentity.load(label: label)
+        // Loading again gives the same certificate.
+        #expect(try TLSIdentity.load(label: label).fingerprint == tls.fingerprint)
+
+        let key = SymmetricKey(size: .bits256)
+        final class Seen: @unchecked Sendable { var snapshot: [Int64: String] = [:]; var codecs: [Int64: String] = [:] }
+        let seen = Seen()
+        let backend = WirelessSyncServer.Backend(
+            info: { WirelessProtocol.Info(id: "mac-1", name: "Test Mac") },
+            pairRequested: { _, _ in }, pairStatus: { _ in "accepted" },
+            key: { $0 == "phone-1" ? key : nil },
+            plan: { _, request in
+                let player = request.isPlayer ? DeviceSync.Player(decodes: Set(request.decodes ?? [])) : nil
+                let plan = DeviceSync.plan(tracks: tracks, playlists: [], profile: DeviceProfile(), manifest: DeviceManifest(), mode: .sync,
+                                           root: URL(fileURLWithPath: "/device"), player: player)
+                return (plan, DeviceProfile())
+            },
+            cover: { _, _ in Data([0xFF, 0xD8]) },
+            finished: { _, _ in },
+            status: { _ in WirelessProtocol.Status(syncRequested: false, pendingSends: 0) },
+            flac: { source, fingerprint in
+                #expect(source == alacSource && fingerprint.hasSuffix("|flac"))
+                return converted
+            },
+            snapshot: { _, paths, codecs in
+                seen.snapshot = paths
+                seen.codecs = codecs
+                return Data("{\"songs\":2}".utf8)
+            })
+        let server = WirelessSyncServer(backend: backend)
+        let port: UInt16 = try await withCheckedThrowingContinuation { continuation in
+            server.start(name: "Groovelight TLS Test \(UUID().uuidString.prefix(4))", tls: (tls.identity, tls.fingerprint)) { port in
+                if let port { continuation.resume(returning: port) } else { continuation.resume(throwing: CocoaError(.featureUnsupported)) }
+            }
+        }
+        defer { server.stop() }
+        let (infoData, _) = try await URLSession.shared.data(from: URL(string: "http://127.0.0.1:\(port)/info")!)
+        let info = try WirelessProtocol.decoder.decode(WirelessProtocol.Info.self, from: infoData)
+        #expect(info.version == 2)
+        let tlsPort = try #require(info.tlsPort)
+
+        /// Trusts any certificate (as a device does before pinning) and remembers the one the server showed.
+        final class Pinning: NSObject, URLSessionDelegate, @unchecked Sendable {
+            var seen: String?
+            func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge) async
+                -> (URLSession.AuthChallengeDisposition, URLCredential?) {
+                guard let trust = challenge.protectionSpace.serverTrust,
+                      let chain = SecTrustCopyCertificateChain(trust) as? [SecCertificate], let leaf = chain.first else {
+                    return (.cancelAuthenticationChallenge, nil)
+                }
+                seen = TLSIdentity.fingerprint(of: leaf)
+                return (.useCredential, URLCredential(trust: trust))
+            }
+        }
+        let pinning = Pinning()
+        let session = URLSession(configuration: .ephemeral, delegate: pinning, delegateQueue: nil)
+        func call(_ method: String, _ path: String, query: String = "", body: Data = Data(), signed: Bool = true, secure: Bool = true,
+                  headers: [String: String] = [:]) async throws -> (Data, HTTPURLResponse) {
+            var request = URLRequest(url: URL(string: secure ? "https://127.0.0.1:\(tlsPort)\(path)\(query)" : "http://127.0.0.1:\(port)\(path)\(query)")!)
+            request.httpMethod = method
+            if !body.isEmpty { request.httpBody = body }
+            if signed {
+                let time = Int(Date.now.timeIntervalSince1970), nonce = UUID().uuidString
+                request.setValue("phone-1", forHTTPHeaderField: WirelessProtocol.Header.device)
+                request.setValue("\(time)", forHTTPHeaderField: WirelessProtocol.Header.time)
+                request.setValue(nonce, forHTTPHeaderField: WirelessProtocol.Header.nonce)
+                request.setValue(WirelessProtocol.signature(method: method, path: path, time: time, nonce: nonce, body: body, key: key),
+                                 forHTTPHeaderField: WirelessProtocol.Header.signature)
+            }
+            for (name, value) in headers { request.setValue(value, forHTTPHeaderField: name) }
+            let (data, response) = try await session.data(for: request)
+            return (data, response as! HTTPURLResponse)
+        }
+
+        // Pinning, before any HTTPS: the proof checks with the pairing key, and names the certificate HTTPS then shows.
+        let nonce = UUID().uuidString
+        let (certificateData, certificateResponse) = try await call("GET", "/certificate", query: "?nonce=\(nonce)", secure: false)
+        #expect(certificateResponse.statusCode == 200)
+        let certificate = try WirelessProtocol.decoder.decode(WirelessProtocol.Certificate.self, from: certificateData)
+        #expect(certificate.fingerprint == tls.fingerprint)
+        #expect(certificate.proof == WirelessProtocol.certificateProof(fingerprint: certificate.fingerprint, nonce: nonce, key: key))
+        // A request without a nonce gets nothing.
+        #expect(try await call("GET", "/certificate", secure: false).1.statusCode == 400)
+        _ = try await call("GET", "/status")
+        #expect(pinning.seen == certificate.fingerprint)
+
+        // A player that decodes FLAC but not ALAC.
+        let syncBody = try WirelessProtocol.encoder.encode(WirelessProtocol.SyncRequest(
+            manifest: nil, files: [], capacity: 1_000_000_000, available: 500_000_000, mode: "player", decodes: ["flac", "mp3"]))
+        let plan = try WirelessProtocol.decoder.decode(WirelessProtocol.SyncPlan.self, from: try await call("POST", "/sync", body: syncBody).0)
+        let token = try #require(plan.token)
+        #expect(plan.writes.map(\.path) == ["Music/Band/LP (1969)/01 One.flac", "Music/Band/LP (1969)/02 Two.flac"])
+        for write in plan.writes {
+            let (data, response) = try await call("GET", "/sync/\(plan.session)/file/\(write.index)", signed: false,
+                                                  headers: [WirelessProtocol.Header.token: token])
+            #expect(response.statusCode == 200)
+            #expect(response.value(forHTTPHeaderField: WirelessProtocol.Header.sha256) == WirelessSyncServer.sha256(data))
+            #expect(data.count == (write.path.hasSuffix("One.flac") ? 100_000 : 60_000))
+        }
+        let (snapshot, _) = try await call("GET", "/sync/\(plan.session)/snapshot", signed: false, headers: [WirelessProtocol.Header.token: token])
+        #expect(String(data: snapshot, encoding: .utf8) == "{\"songs\":2}")
+        #expect(seen.snapshot == [1: "Music/Band/LP (1969)/01 One.flac", 2: "Music/Band/LP (1969)/02 Two.flac"])
+        #expect(seen.codecs == [2: "flac"])
+        // The token is refused in plain HTTP, and a wrong one over TLS.
+        #expect(try await call("GET", "/sync/\(plan.session)/file/0", signed: false, secure: false,
+                               headers: [WirelessProtocol.Header.token: token]).1.statusCode == 401)
+        #expect(try await call("GET", "/sync/\(plan.session)/file/0", signed: false, headers: [WirelessProtocol.Header.token: "nope"]).1.statusCode == 401)
+    }
+
     @Test func sendsJoinTheSyncWithoutBecomingPartOfIt() throws {
         var a = LibraryDatabaseTests.makeTrack(rootId: 1, "One", artist: "Band", album: "First", number: 1)
         a.id = 1

@@ -1,8 +1,10 @@
 import Foundation
 import Network
+import Security
 
 /// A small HTTP/1.1 server for the local network, advertised with Bonjour: one request per connection, JSON bodies up
 /// to 64 MB, and file bodies streamed in 1 MB pieces with Range support (so a download cut off by Wi-Fi resumes).
+/// With a TLS identity it serves HTTPS (TLS 1.2 or later) instead.
 public final class LocalHTTPServer: @unchecked Sendable {
     public struct Request: Sendable {
         public var method: String
@@ -14,6 +16,8 @@ public final class LocalHTTPServer: @unchecked Sendable {
         public var body: Data
         /// Address of the device asking, for logs.
         public var remote: String
+        /// Came over TLS.
+        public var secure = false
     }
 
     public struct Response: Sendable {
@@ -47,6 +51,7 @@ public final class LocalHTTPServer: @unchecked Sendable {
 
     private let queue = DispatchQueue(label: "dev.irwingbraga.groovelight.http")
     private let handler: Handler
+    private let identity: SecIdentity?
     private var listener: NWListener?
     private let lock = NSLock()
     private var boundPort: UInt16 = 0
@@ -54,7 +59,8 @@ public final class LocalHTTPServer: @unchecked Sendable {
     static let maximumBody = 64 * 1024 * 1024
     static let chunk = 1024 * 1024
 
-    public init(handler: @escaping Handler) {
+    public init(identity: SecIdentity? = nil, handler: @escaping Handler) {
+        self.identity = identity
         self.handler = handler
     }
 
@@ -65,7 +71,15 @@ public final class LocalHTTPServer: @unchecked Sendable {
     /// with the TXT record. Calls `ready` with the port, or nil when it could not start.
     public func start(name: String?, txt: [String: String] = [:], port: UInt16 = 0, ready: @escaping @Sendable (UInt16?) -> Void) {
         do {
-            let parameters = NWParameters.tcp
+            let parameters: NWParameters
+            if let identity, let secIdentity = sec_identity_create(identity) {
+                let tls = NWProtocolTLS.Options()
+                sec_protocol_options_set_local_identity(tls.securityProtocolOptions, secIdentity)
+                sec_protocol_options_set_min_tls_protocol_version(tls.securityProtocolOptions, .TLSv12)
+                parameters = NWParameters(tls: tls, tcp: NWProtocolTCP.Options())
+            } else {
+                parameters = NWParameters.tcp
+            }
             parameters.includePeerToPeer = false
             let listener = try NWListener(using: parameters, on: port == 0 ? .any : NWEndpoint.Port(rawValue: port)!)
             if let name {
@@ -118,6 +132,7 @@ public final class LocalHTTPServer: @unchecked Sendable {
                     self.send(.error(400, "bad request"), on: connection, request: nil)
                     return
                 }
+                request.secure = self.identity != nil
                 let length = Int(request.headers["content-length"] ?? "0") ?? 0
                 guard length <= Self.maximumBody else {
                     self.send(.error(413, "too large"), on: connection, request: nil)

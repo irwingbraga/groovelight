@@ -90,6 +90,12 @@ private struct DeviceHeader: View {
                 }
                 Spacer()
             }
+            if device.isPlayer {
+                Label("Groovelight plays the music on this device. Covers, lyrics and playlists come with the library, and songs in formats it cannot play are converted to FLAC as they sync.",
+                      systemImage: "music.note")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
             CapacityBar(capacity: device.capacity, music: music, other: used - music,
                         afterSync: preview.map { max(min(used + $0.netBytes, device.capacity), 0) })
             if device.volumes.count > 1 || device.volumes.contains(where: \.removable) {

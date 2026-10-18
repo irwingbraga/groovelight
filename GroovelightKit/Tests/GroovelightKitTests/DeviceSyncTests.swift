@@ -146,4 +146,64 @@ struct DeviceSyncTests {
         #expect(DeviceSync.stripCounter("Music/A/01 x (2).flac") == "Music/A/01 x.flac")
         #expect(DeviceSync.stripCounter("Music/A/01 x.flac") == "Music/A/01 x.flac")
     }
+
+    @Test func playerDevicesGetSongsTheyCanDecodeOrFLAC() throws {
+        let fixture = try Fixture()
+        var flac = try fixture.addTrack(1, "Airbag", artist: "Radiohead", album: "OK Computer", number: 1)
+        flac.format = "FLAC"
+        var alac = try fixture.addTrack(2, "Paranoid Android", artist: "Radiohead", album: "OK Computer", number: 2)
+        alac.format = "Apple Lossless"
+        alac.path = alac.path.replacingOccurrences(of: ".flac", with: ".m4a")
+        var dsd = try fixture.addTrack(3, "Subterranean", artist: "Radiohead", album: "OK Computer", number: 3)
+        dsd.format = "DSD Stream"
+        var cue = try fixture.addTrack(4, "Exit Music", artist: "Radiohead", album: "OK Computer", number: 4)
+        cue.audioPath = cue.path
+
+        let player = DeviceSync.Player(decodes: ["flac", "mp3", "aac"])
+        #expect(player.delivery(of: flac) == .asIs)
+        #expect(player.delivery(of: alac) == .flac)
+        let plan = DeviceSync.plan(tracks: [flac, alac, dsd, cue], playlists: [], profile: DeviceProfile(), manifest: DeviceManifest(),
+                                   mode: .sync, root: fixture.device, player: player)
+        let songs = Dictionary(uniqueKeysWithValues: plan.writes.filter { $0.entry.kind == .song }.map { ($0.entry.trackId, $0) })
+        #expect(songs[1]?.content == .file(flac.url))
+        // The ALAC song arrives as FLAC, under a .flac name, and its fingerprint changes with the conversion.
+        #expect(songs[2]?.content == .flac(alac.url))
+        #expect(songs[2]?.path.hasSuffix("02 Paranoid Android.flac") == true)
+        #expect(songs[2]?.entry.fingerprint.hasSuffix("|flac") == true)
+        #expect(songs[3] == nil && songs[4] == nil)
+        #expect(plan.skipped.map(\.reason).sorted() == ["DSD is not supported on Android yet", "albums with a CUE sheet are not supported in the player yet"])
+    }
+
+    @Test func convertsToFLACKeepingTheResolution() throws {
+        let base = FileManager.default.temporaryDirectory.appendingPathComponent("groovelight-convert-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: base) }
+        // One second of 24-bit 96 kHz stereo silence as AIFF, then ALAC (afconvert comes with macOS).
+        let aiff = base.appendingPathComponent("tone.aiff")
+        let alac = base.appendingPathComponent("tone.m4a")
+        try run("/usr/bin/afconvert", ["-f", "AIFF", "-d", "BEI24@96000", "-c", "2", "/System/Library/Sounds/Ping.aiff", aiff.path])
+        try run("/usr/bin/afconvert", ["-f", "m4af", "-d", "alac", aiff.path, alac.path])
+
+        let cache = ConversionCache(folder: base.appendingPathComponent("cache"))
+        for source in [aiff, alac] {
+            let flac = try cache.flac(for: source, fingerprint: source.path)
+            let properties = try TagReader.read(flac)
+            #expect(properties.format == "FLAC")
+            #expect(properties.sampleRate == 96000)
+            #expect(properties.bitDepth == 24)
+            // Converted once: asking again gives the same file.
+            #expect(try cache.flac(for: source, fingerprint: source.path) == flac)
+        }
+        cache.prune(keeping: [alac.path])
+        #expect(try FileManager.default.contentsOfDirectory(atPath: cache.folder.path).count == 1)
+    }
+
+    private func run(_ path: String, _ arguments: [String]) throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: path)
+        process.arguments = arguments
+        try process.run()
+        process.waitUntilExit()
+        #expect(process.terminationStatus == 0)
+    }
 }
