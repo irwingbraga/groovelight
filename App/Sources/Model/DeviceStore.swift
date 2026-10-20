@@ -156,16 +156,38 @@ final class DeviceStore {
     func profile(_ id: String) -> DeviceProfile {
         var profile = layout
         if id.hasPrefix("wifi:") { profile.musicFolder = "" }
+        profile.encoding = encoding(id)
         return profile
     }
+
+    /// The lossy format this device gets lossless songs in (nil: as they are).
+    func encoding(_ id: String) -> LossyEncoding? {
+        #if DEBUG
+        // `-GLDebugEncoding opus160` (tours): every device gets that format.
+        if let value = UserDefaults.standard.string(forKey: "GLDebugEncoding") { return LossyEncoding(rawValue: value) }
+        #endif
+        return UserDefaults.standard.string(forKey: key(id, "encoding")).flatMap(LossyEncoding.init(rawValue:))
+    }
+
+    func setEncoding(_ encoding: LossyEncoding?, for id: String) {
+        UserDefaults.standard.set(encoding?.rawValue, forKey: key(id, "encoding"))
+        selectionRevision += 1
+        if let device = device(id) { updatePreview(device) }
+    }
+
+    /// Changes whenever a selection or format is set (the device page reloads when the Android app changed it).
 
     func selection(_ id: String) -> DeviceSelection {
         UserDefaults.standard.data(forKey: key(id, "selection")).flatMap { try? JSONDecoder().decode(DeviceSelection.self, from: $0) }
             ?? DeviceSelection()
     }
 
+    private(set) var selectionRevision = 0
+
     func setSelection(_ selection: DeviceSelection, for id: String) {
+        guard selection != self.selection(id) else { return }
         UserDefaults.standard.set(try? JSONEncoder().encode(selection), forKey: key(id, "selection"))
+        selectionRevision += 1
         if let device = device(id) { updatePreview(device) }
     }
 
@@ -230,7 +252,7 @@ final class DeviceStore {
                 guard let contents = try? await database.writer.read({ try LibraryDatabase.deviceContents($0, selection) }) else { return nil }
                 let manifest = DeviceManifest.read(from: root)
                 let plan = DeviceSync.plan(tracks: contents.tracks, playlists: contents.playlists, profile: profile, manifest: manifest,
-                                           mode: .sync, root: root, fat32: device.isFAT32) {
+                                           mode: .sync, root: root, fat32: device.isFAT32, excluded: selection.excludedTrackIds) {
                     FileManager.default.fileExists(atPath: root.appendingPathComponent($0).path)
                 }
                 return Preview(songs: plan.songCount, bytesToWrite: plan.bytesToWrite, filesToWrite: plan.writes.count,
@@ -255,7 +277,7 @@ final class DeviceStore {
             let preview = await Task.detached(priority: .utility) { () -> Preview? in
                 guard let contents = try? await database.writer.read({ try LibraryDatabase.deviceContents($0, selection) }) else { return nil }
                 let plan = DeviceSync.plan(tracks: contents.tracks, playlists: contents.playlists, profile: profile, manifest: manifest,
-                                           mode: .sync, root: URL(fileURLWithPath: "/device")) { files.contains($0.lowercased()) }
+                                           mode: .sync, root: URL(fileURLWithPath: "/device"), excluded: selection.excludedTrackIds) { files.contains($0.lowercased()) }
                 return Preview(songs: plan.songCount, bytesToWrite: plan.bytesToWrite, filesToWrite: plan.writes.count,
                                filesToRemove: plan.deletions.count, netBytes: plan.netBytes, musicBytes: manifest.musicBytes,
                                skipped: plan.skipped.map { "\($0.title): \($0.reason)" })
@@ -356,6 +378,8 @@ final class DeviceStore {
         guard let root = root ?? access(device, asking: true) else { return }
         _ = root.startAccessingSecurityScopedResource()
         let profile = device.id.hasPrefix("folder:") ? DeviceProfile() : profile(device.id)
+        // Songs removed from the device stay off it, and their files go.
+        let excluded = device.id.hasPrefix("folder:") ? [] : selection(device.id).excludedTrackIds
         let database = model.database, artwork = model.artwork
         cancelFlag.isSet = false
         job = Job(deviceId: device.id, title: "\(title) to \(device.name)", phase: .planning)
@@ -366,7 +390,7 @@ final class DeviceStore {
                 let manifest = DeviceManifest.read(from: root)
                 let plan = await Task.detached(priority: .userInitiated) {
                     DeviceSync.plan(tracks: tracks, playlists: playlists, profile: profile, manifest: manifest, mode: mode, root: root,
-                                    fat32: device.isFAT32) { FileManager.default.fileExists(atPath: root.appendingPathComponent($0).path) }
+                                    fat32: device.isFAT32, excluded: excluded) { FileManager.default.fileExists(atPath: root.appendingPathComponent($0).path) }
                 }.value
                 // Room for the songs, with a little to spare for the card's own bookkeeping.
                 let available = Self.availableBytes(root)

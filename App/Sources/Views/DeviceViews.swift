@@ -26,6 +26,7 @@ struct DeviceView: View {
                     }
                 }
                 DeviceSelectionSection(selection: $selection)
+                DeviceFormatSection(deviceId: deviceId, isPlayer: device.isPlayer)
                 Section {
                     HStack {
                         Text("Folders, covers, lyrics and playlists on devices are set in Settings, Devices.")
@@ -59,6 +60,11 @@ struct DeviceView: View {
                 loadedId = deviceId
             }
             .onChange(of: selection) { if loadedId == deviceId { store.setSelection(selection, for: deviceId) } }
+            // Changed elsewhere (the Android app asked for an album): shown here at once.
+            .onChange(of: store.selectionRevision) {
+                let saved = store.selection(deviceId)
+                if saved != selection { selection = saved }
+            }
         } else {
             ContentUnavailableView("Device Not Connected", systemImage: "sdcard")
         }
@@ -284,8 +290,14 @@ private struct DeviceSelectionSection: View {
         } header: {
             Text("Music to Sync")
         } footer: {
-            Text(summary)
-                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(summary)
+                    .foregroundStyle(.secondary)
+                if !selection.excludedTrackIds.isEmpty {
+                    Button("Bring Back Removed Songs") { selection.excludedTrackIds = [] }
+                        .help("Songs removed on the device come back at its next sync")
+                }
+            }
         }
         .observing(model.database, id: "device-lists", { db in
             (try LibraryDatabase.artists(db).map(\.name), try LibraryDatabase.albums(db, sort: .artist), try LibraryDatabase.genres(db))
@@ -336,7 +348,9 @@ private struct DeviceSelectionSection: View {
     }
 
     private var summary: String {
-        if selection.everything { return "Every song in the library. Songs removed from the library are removed from the device at the next sync." }
+        let removed = selection.excludedTrackIds.count
+        let removedNote = removed == 0 ? "" : " \(removed) song\(removed == 1 ? " was" : "s were") removed from the device there, and stay off it."
+        if selection.everything { return "Every song in the library. Songs removed from the library are removed from the device at the next sync." + removedNote }
         var parts: [String] = []
         if selection.lovedSongs { parts.append("Loved Songs") }
         func count(_ number: Int, _ noun: String) { if number > 0 { parts.append("\(number) \(noun)\(number == 1 ? "" : "s")") } }
@@ -344,9 +358,10 @@ private struct DeviceSelectionSection: View {
         count(selection.artists.count, "artist")
         count(selection.albumKeys.count, "album")
         count(selection.genres.count, "genre")
-        return parts.isEmpty
+        count(selection.trackIds.count, "song")
+        return (parts.isEmpty
             ? "Nothing chosen yet. Songs added with Send To stay on the device; a sync only removes songs it put there."
-            : "Syncing " + ListFormatter.localizedString(byJoining: parts) + ". A sync only removes songs it put there; other files on the drive are left alone."
+            : "Syncing " + ListFormatter.localizedString(byJoining: parts) + ". A sync only removes songs it put there; other files on the drive are left alone.") + removedNote
     }
 }
 
@@ -400,6 +415,27 @@ struct DeviceLayoutSection: View {
                                            options: OrganizeOptions(template: profile.template, portableNames: true))
         let folder = profile.musicFolder.split(separator: "/").joined(separator: "/")
         return "/" + (folder.isEmpty ? path : "\(folder)/\(path)")
+    }
+}
+
+/// The format a device gets lossless songs in: as they are, or a lossy format that fits more music.
+private struct DeviceFormatSection: View {
+    var deviceId: String
+    var isPlayer: Bool
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        Section {
+            Picker("Lossless songs", selection: Binding(get: { model.devices.encoding(deviceId) }, set: { model.devices.setEncoding($0, for: deviceId) })) {
+                Text(isPlayer ? "As they are (FLAC when needed)" : "As they are").tag(LossyEncoding?.none)
+                ForEach(LossyEncoding.allCases) { Text($0.displayName).tag(Optional($0)) }
+            }
+        } header: {
+            Text("Format")
+        } footer: {
+            Text("FLAC, ALAC, WAV, AIFF and other lossless songs can go to this device in a lossy format, about a fifth of their size or less: Opus at 160 kbps, AAC at 192 kbps and MP3 at 320 kbps are each close to transparent. Songs that are already lossy are copied as they are. Hi-res songs are brought down to 44.1 or 48 kHz. Encoded songs are made at the next sync, once each, and kept until they change.")
+                .foregroundStyle(.secondary)
+        }
     }
 }
 

@@ -2,6 +2,7 @@ import AppKit
 import CryptoKit
 import LibraryKit
 import Observation
+import PlayerCore
 import WirelessSync
 
 /// Wireless sync with the Groovelight Sync app on Android (players and phones): the Mac serves on the local network,
@@ -122,15 +123,18 @@ final class WirelessSyncService {
 
     // MARK: - Server
 
-    private func start() {
+    private func start(identity known: ServerIdentity? = nil) {
         guard server == nil else { return }
         let server = WirelessSyncServer(backend: backend())
         self.server = server
         // HTTPS for Groovelight for Android 0.5 and later (protocol v2); without the certificate, HTTP only. The
         // keychain is read off the main thread: checking the key can take a few seconds.
         Task { [weak self] in
-            let tls = await Task.detached(priority: .userInitiated) { Self.loadIdentity() }.value
+            let loaded = if let known { (tls: Optional(known), waiting: ServerIdentity?.none) }
+                else { await Task.detached(priority: .userInitiated) { Self.loadIdentity() }.value }
+            let tls = loaded.tls
             guard let self, self.server === server else { return }
+            if let waiting = loaded.waiting { self.serveTLS(once: waiting) }
             // A fixed port is easier to allow through firewalls (HTTPS on the next one); others when it is taken.
             server.start(name: "Groovelight on \(Self.macName)", port: 52_300, tls: tls?.pair) { [weak self] port in
                 Task { @MainActor in
@@ -149,18 +153,33 @@ final class WirelessSyncService {
     }
 
     /// The certificate to serve HTTPS with, unless it cannot be loaded or macOS would ask before using its key (made
-    /// by another build): then HTTP only, rather than every connection waiting on the question.
-    nonisolated private static func loadIdentity() -> ServerIdentity? {
+    /// by another build): then HTTP only, rather than every connection waiting on the question, and the identity
+    /// waiting for that answer (`waiting`).
+    nonisolated private static func loadIdentity() -> (tls: ServerIdentity?, waiting: ServerIdentity?) {
         do {
             let loaded = try TLSIdentity.load(label: Keychain.wirelessTLSLabel)
+            let identity = ServerIdentity(identity: loaded.identity, fingerprint: loaded.fingerprint)
             guard TLSIdentity.canSign(loaded.identity) else {
                 NSLog("Groovelight: wireless sync serves HTTP only: macOS is asking whether Groovelight may use its key")
-                return nil
+                return (nil, identity)
             }
-            return ServerIdentity(identity: loaded.identity, fingerprint: loaded.fingerprint)
+            return (identity, nil)
         } catch {
             NSLog("Groovelight: wireless sync serves HTTP only, the certificate could not be loaded: \(error.localizedDescription)")
-            return nil
+            return (nil, nil)
+        }
+    }
+
+    /// macOS asked whether Groovelight may use its key: when the user allows it, the server starts again with HTTPS
+    /// (the Android app needs it for the Mac's library), without restarting the app.
+    private func serveTLS(once identity: ServerIdentity) {
+        Task.detached(priority: .utility) { [weak self] in
+            guard TLSIdentity.canSign(identity.identity, within: 600) else { return }
+            await MainActor.run { [weak self] in
+                guard let self, self.server != nil else { return }
+                self.stop()
+                self.start(identity: identity)
+            }
         }
     }
 
@@ -198,10 +217,43 @@ final class WirelessSyncService {
                 }
             },
             flac: { [conversions] source, fingerprint in try conversions.flac(for: source, fingerprint: fingerprint) },
-            snapshot: { [database = model.database] _, paths, codecs in
-                let snapshot = try await database.writer.read { try DeviceSnapshot.build($0, paths: paths, codecs: codecs) }
+            snapshot: { [weak self, database = model.database] _, paths, codecs in
+                let equalizer = await self?.snapshotEqualizer()
+                let snapshot = try await database.writer.read { try DeviceSnapshot.build($0, paths: paths, codecs: codecs, equalizer: equalizer) }
                 return try WirelessProtocol.encoder.encode(snapshot)
+            },
+            catalog: { [weak self, database = model.database] id in
+                let selection = await self?.model.devices.selection(DeviceStore.wirelessId(id)) ?? DeviceSelection()
+                let catalog = try await database.writer.read { try DeviceCatalog.build($0, selection: selection) }
+                return try WirelessProtocol.encoder.encode(catalog)
+            },
+            requests: { [weak self] id, requests in
+                await self?.applyRequests(requests, from: id) ?? DeviceCatalog.Chosen(DeviceSelection())
             })
+    }
+
+    /// Albums, artists and songs the Android app asked for (or to remove): its selection changes, as if chosen here,
+    /// and the app syncs next.
+    private func applyRequests(_ requests: [TransferRequest], from id: String) -> DeviceCatalog.Chosen {
+        let deviceId = DeviceStore.wirelessId(id)
+        // Removing only changes what this device holds: the songs stay in the library.
+        let database = model.database
+        let selection = model.devices.selection(deviceId).applying(requests) { kind, key in
+            (try? database.writer.read { try LibraryDatabase.trackIds($0, of: kind, key: key) }) ?? []
+        }
+        model.devices.setSelection(selection, for: deviceId)
+        return DeviceCatalog.Chosen(selection)
+    }
+
+    /// The equalizer's saved presets and current curve, for the device to offer.
+    private func snapshotEqualizer() -> DeviceSnapshot.Equalizer {
+        func preset(_ preset: EQPreset) -> DeviceSnapshot.EQPreset {
+            DeviceSnapshot.EQPreset(name: preset.name, preamp: preset.preamp, bands: preset.bands.map {
+                DeviceSnapshot.EQPreset.Band(isEnabled: $0.isEnabled, type: $0.type.rawValue, frequency: $0.frequency, gain: $0.gain, q: $0.q)
+            })
+        }
+        let store = model.equalizer
+        return DeviceSnapshot.Equalizer(presets: store.userPresets.map(preset), current: preset(store.preset), isEnabled: store.isEnabled)
     }
 
     // MARK: - Pairing
@@ -341,12 +393,13 @@ final class WirelessSyncService {
             let root = URL(fileURLWithPath: "/device")
             let existing: (String) -> Bool = { files.contains($0.lowercased()) }
             // Nothing chosen to sync: only what was sent, and nothing is removed.
+            let excluded = selection.excludedTrackIds
             if selection.isEmpty {
                 return DeviceSync.plan(tracks: contents.1.tracks, playlists: contents.1.playlists, profile: profile, manifest: manifest,
-                                       mode: .send, root: root, player: player, existing: existing)
+                                       mode: .send, root: root, player: player, excluded: excluded, existing: existing)
             }
             return DeviceSync.plan(syncing: contents.0, sending: contents.1, profile: profile, manifest: manifest, root: root,
-                                   player: player, existing: existing)
+                                   player: player, excluded: excluded, existing: existing)
         }.value
         // Sent songs are in this plan now.
         UserDefaults.standard.removeObject(forKey: "devices.wireless.\(id).sends")

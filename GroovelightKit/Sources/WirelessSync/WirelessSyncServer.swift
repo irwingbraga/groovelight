@@ -23,9 +23,13 @@ public final class WirelessSyncServer: @unchecked Sendable {
         /// A file of a plan was asked for (index, count), for progress on the Mac.
         public var fileServed: @Sendable (String, Int, Int) -> Void
         /// The FLAC conversion of a song (its source and the plan's fingerprint), for player devices (v2).
-        public var flac: @Sendable (URL, String) throws -> URL
+        public var flac: @Sendable (FormatConverter.Source, String) throws -> URL
         /// The library snapshot (JSON) for a device: song ids to their paths on it, and to the codec of converted ones.
         public var snapshot: @Sendable (String, [Int64: String], [Int64: String]) async throws -> Data
+        /// The whole library for a device to browse (`DeviceCatalog` JSON).
+        public var catalog: @Sendable (String) async throws -> Data
+        /// Applies a device's requests to its selection and asks it to sync; returns what the selection holds then.
+        public var requests: @Sendable (String, [TransferRequest]) async -> DeviceCatalog.Chosen
 
         public init(info: @escaping @Sendable () -> WirelessProtocol.Info,
                     pairRequested: @escaping @Sendable (WirelessProtocol.PairRequest, WirelessProtocol.Pairing) async -> Void,
@@ -36,8 +40,12 @@ public final class WirelessSyncServer: @unchecked Sendable {
                     finished: @escaping @Sendable (String, WirelessProtocol.SyncResult) async -> Void,
                     status: @escaping @Sendable (String) async -> WirelessProtocol.Status,
                     fileServed: @escaping @Sendable (String, Int, Int) -> Void = { _, _, _ in },
-                    flac: @escaping @Sendable (URL, String) throws -> URL = { source, _ in source },
-                    snapshot: @escaping @Sendable (String, [Int64: String], [Int64: String]) async throws -> Data = { _, _, _ in Data("{}".utf8) }) {
+                    flac: @escaping @Sendable (FormatConverter.Source, String) throws -> URL = { source, _ in source.url },
+                    snapshot: @escaping @Sendable (String, [Int64: String], [Int64: String]) async throws -> Data = { _, _, _ in Data("{}".utf8) },
+                    catalog: @escaping @Sendable (String) async throws -> Data = { _ in Data("{}".utf8) },
+                    requests: @escaping @Sendable (String, [TransferRequest]) async -> DeviceCatalog.Chosen = { _, _ in
+                        DeviceCatalog.Chosen(DeviceSelection())
+                    }) {
             self.info = info
             self.pairRequested = pairRequested
             self.pairStatus = pairStatus
@@ -49,6 +57,8 @@ public final class WirelessSyncServer: @unchecked Sendable {
             self.fileServed = fileServed
             self.flac = flac
             self.snapshot = snapshot
+            self.catalog = catalog
+            self.requests = requests
         }
     }
 
@@ -168,8 +178,38 @@ public final class WirelessSyncServer: @unchecked Sendable {
             return await download(session: parts[1], parts: parts, deviceId: deviceId)
         case ("POST", 3, "sync") where parts[2] == "done":
             return await finish(session: parts[1], deviceId: deviceId, request: request)
+        // The whole library and the device's requests (v2, over TLS only: they describe the library).
+        case ("GET", 1, "catalog"):
+            guard request.secure else { return .error(403, "HTTPS only") }
+            return await catalog(deviceId: deviceId, request: request)
+        case ("GET", 3, "catalog") where parts[1] == "artwork":
+            guard request.secure else { return .error(403, "HTTPS only") }
+            guard let data = backend.cover(parts[2], 300) else { return .error(404, "no cover") }
+            return LocalHTTPServer.Response(headers: ["Content-Type": "image/jpeg", WirelessProtocol.Header.sha256: Self.sha256(data)],
+                                            body: .data(data))
+        case ("POST", 1, "requests"):
+            guard request.secure else { return .error(403, "HTTPS only") }
+            guard let body = try? WirelessProtocol.decoder.decode(WirelessProtocol.Requests.self, from: request.body) else {
+                return .error(400, "bad requests")
+            }
+            return .json(await backend.requests(deviceId, body.requests))
         default:
             return .error(404, "unknown request")
+        }
+    }
+
+    /// The catalog, deflated (raw DEFLATE, `X-GL-Encoding: deflate`), with its SHA-256 as the ETag: a device that has
+    /// this version gets 304 and nothing else.
+    private func catalog(deviceId: String, request: LocalHTTPServer.Request) async -> LocalHTTPServer.Response {
+        do {
+            let json = try await backend.catalog(deviceId)
+            let tag = Self.sha256(json)
+            if request.headers["if-none-match"] == tag { return LocalHTTPServer.Response(status: 304, headers: ["ETag": tag]) }
+            let deflated = try (json as NSData).compressed(using: .zlib) as Data
+            return LocalHTTPServer.Response(headers: ["Content-Type": "application/json", "ETag": tag, WirelessProtocol.Header.encoding: "deflate",
+                                                      WirelessProtocol.Header.sha256: Self.sha256(deflated)], body: .data(deflated))
+        } catch {
+            return .error(500, error.localizedDescription)
         }
     }
 
@@ -274,7 +314,7 @@ public final class WirelessSyncServer: @unchecked Sendable {
         switch write.content {
         case .file(let url):
             return fileResponse(url, session: id, index: index, cached: session.hashes[index])
-        case .flac(let source):
+        case .converted(let source):
             // Converted on first request (cached by the Mac), off the server's queue.
             let converted = await Task.detached(priority: .userInitiated) { [backend] in
                 Result { try backend.flac(source, write.entry.fingerprint) }
@@ -309,11 +349,11 @@ public final class WirelessSyncServer: @unchecked Sendable {
         for write in session.plan.writes where write.entry.kind == .song {
             guard let id = write.entry.trackId else { continue }
             paths[id] = write.path
-            if case .flac = write.content { codecs[id] = "flac" }
+            if case .converted = write.content, let codec = DeviceSync.convertedCodec(fingerprint: write.entry.fingerprint) { codecs[id] = codec }
         }
-        // Converted earlier and unchanged since: still FLAC on the device.
-        for (path, entry) in session.plan.unchanged where entry.kind == .song && entry.fingerprint.hasSuffix("|flac") {
-            if let id = entry.trackId, paths[id] == path { codecs[id] = "flac" }
+        // Converted earlier and unchanged since: still in that format on the device.
+        for (path, entry) in session.plan.unchanged where entry.kind == .song {
+            if let id = entry.trackId, paths[id] == path, let codec = DeviceSync.convertedCodec(fingerprint: entry.fingerprint) { codecs[id] = codec }
         }
         do {
             let data = try await backend.snapshot(session.deviceId, paths, codecs)

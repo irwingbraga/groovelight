@@ -67,6 +67,8 @@ public enum WirelessProtocol {
         public static let token = "x-gl-token"
         /// SHA-256 of a whole downloaded file (lowercase hex), checked by the device before keeping it.
         public static let sha256 = "x-gl-sha256"
+        /// "deflate": the body is raw DEFLATE (the catalog).
+        public static let encoding = "x-gl-encoding"
     }
 
     // MARK: - Certificate (v2)
@@ -287,6 +289,15 @@ public enum WirelessProtocol {
     }
 
     /// GET /status (signed): whether the Mac asked for a sync (its Sync button), so an open app starts one.
+    /// Changes the app asks of its selection (`POST /requests`), answered with what the selection holds then.
+    public struct Requests: Codable, Sendable {
+        public var requests: [TransferRequest]
+
+        public init(requests: [TransferRequest]) {
+            self.requests = requests
+        }
+    }
+
     public struct Status: Codable, Sendable {
         public var syncRequested: Bool
         public var pendingSends: Int

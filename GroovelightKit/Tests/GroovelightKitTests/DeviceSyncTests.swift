@@ -1,4 +1,5 @@
 import Foundation
+import SFBAudioEngine
 import Testing
 @testable import LibraryKit
 
@@ -167,11 +168,89 @@ struct DeviceSyncTests {
         let songs = Dictionary(uniqueKeysWithValues: plan.writes.filter { $0.entry.kind == .song }.map { ($0.entry.trackId, $0) })
         #expect(songs[1]?.content == .file(flac.url))
         // The ALAC song arrives as FLAC, under a .flac name, and its fingerprint changes with the conversion.
-        #expect(songs[2]?.content == .flac(alac.url))
+        #expect(songs[2]?.content == .converted(FormatConverter.Source(url: alac.url)))
         #expect(songs[2]?.path.hasSuffix("02 Paranoid Android.flac") == true)
         #expect(songs[2]?.entry.fingerprint.hasSuffix("|flac") == true)
-        #expect(songs[3] == nil && songs[4] == nil)
-        #expect(plan.skipped.map(\.reason).sorted() == ["DSD is not supported on Android yet", "albums with a CUE sheet are not supported in the player yet"])
+        #expect(songs[3] == nil)
+        #expect(plan.skipped.map(\.reason) == ["DSD is not supported on Android yet"])
+        // A song of a CUE album arrives as a FLAC of its own: its region of the album's file, with its own tags.
+        #expect(songs[4]?.content == .converted(.cueTrack(cue)))
+        #expect(songs[4]?.path.hasSuffix("04 Exit Music.flac") == true)
+        #expect(songs[4]?.entry.fingerprint.hasSuffix("|0.0--1.0|flac") == true)
+    }
+
+    @Test func devicesSetToALossyFormatGetLosslessSongsEncoded() throws {
+        let fixture = try Fixture()
+        var flac = try fixture.addTrack(1, "Airbag", artist: "Radiohead", album: "OK Computer", number: 1)
+        flac.format = "FLAC"
+        flac.duration = 100
+        var mp3 = try fixture.addTrack(2, "Lucky", artist: "Radiohead", album: "OK Computer", number: 2)
+        mp3.format = "MP3"
+        mp3.path = mp3.path.replacingOccurrences(of: ".flac", with: ".mp3")
+        var cue = try fixture.addTrack(3, "Exit Music", artist: "Radiohead", album: "OK Computer", number: 3)
+        cue.audioPath = cue.path
+        cue.format = "FLAC"
+        var profile = DeviceProfile()
+        profile.encoding = .opus160
+        // A memory card (no player): the FLAC song as Opus, the MP3 as it is, the CUE song split and encoded.
+        let plan = DeviceSync.plan(tracks: [flac, mp3, cue], playlists: [], profile: profile, manifest: DeviceManifest(), mode: .sync,
+                                   root: fixture.device)
+        let songs = Dictionary(uniqueKeysWithValues: plan.writes.filter { $0.entry.kind == .song }.map { ($0.entry.trackId, $0) })
+        #expect(songs[1]?.content == .converted(FormatConverter.Source(url: flac.url, encoding: .opus160)))
+        #expect(songs[1]?.path.hasSuffix("01 Airbag.opus") == true)
+        let planned = songs[1]?.entry.size ?? 0
+        #expect(planned == 2_000_000, "planned \(planned)")
+        #expect(DeviceSync.convertedCodec(fingerprint: songs[1]!.entry.fingerprint) == "opus")
+        #expect(songs[2]?.content == .file(mp3.url))
+        #expect(DeviceSync.convertedCodec(fingerprint: songs[2]!.entry.fingerprint) == nil)
+        #expect(songs[3]?.content == .converted(.cueTrack(cue, encoding: .opus160)))
+        #expect(!plan.writes.contains { $0.entry.kind == .cueSheet })
+
+        // A player that cannot decode the format gets FLAC instead.
+        let player = DeviceSync.Player(decodes: ["flac", "mp3"])
+        let playerPlan = DeviceSync.plan(tracks: [flac], playlists: [], profile: profile, manifest: DeviceManifest(), mode: .sync,
+                                         root: fixture.device, player: player)
+        #expect(playerPlan.writes.first { $0.entry.trackId == 1 }?.content == .file(flac.url))
+    }
+
+    @Test func songsRemovedFromTheDeviceLeaveItAndStayOff() throws {
+        let fixture = try Fixture()
+        let one = try fixture.addTrack(1, "One", artist: "Band", album: "LP", number: 1)
+        let two = try fixture.addTrack(2, "Two", artist: "Band", album: "LP", number: 2)
+        let sent = try fixture.addTrack(3, "Sent", artist: "Other", album: "Single", number: 1)
+        // The album synced and a song sent to the device.
+        let first = DeviceSync.plan(syncing: ([one, two], []), sending: ([sent], []), profile: DeviceProfile(), manifest: DeviceManifest(),
+                                    root: fixture.device) { _ in false }
+        var manifest = DeviceManifest()
+        for write in first.writes { manifest.entries[write.path] = write.entry }
+        let onePath = try #require(first.writes.first { $0.entry.trackId == 1 }?.path)
+        let sentPath = try #require(first.writes.first { $0.entry.trackId == 3 }?.path)
+        #expect(manifest.entries[sentPath]?.synced == false)
+        // Removed on the device: the album's first song and the sent one. Still chosen (the album), they leave anyway.
+        let excluded: Set<Int64> = [1, 3]
+        let next = DeviceSync.plan(syncing: ([one, two], []), sending: ([], []), profile: DeviceProfile(), manifest: manifest,
+                                   root: fixture.device, excluded: excluded) { _ in true }
+        #expect(Set(next.deletions) == [onePath, sentPath])
+        #expect(next.writes.isEmpty && next.unchanged.keys.contains { $0.hasSuffix("02 Two.flac") })
+
+        // Removing and adding change only the selection: removing an album leaves its songs out, adding brings them back.
+        var selection = DeviceSelection()
+        selection.everything = true
+        let songs: (TransferRequest.Kind, String) -> [Int64] = { kind, key in kind == .album && key == "lp" ? [1, 2] : kind == .song ? [Int64(key)!] : [] }
+        let removed = selection.applying([TransferRequest(id: "1", action: .remove, kind: .album, key: "lp")], songs: songs)
+        #expect(removed.excludedTrackIds == [1, 2] && removed.everything)
+        let back = removed.applying([TransferRequest(id: "2", action: .add, kind: .song, key: "2")], songs: songs)
+        #expect(back.excludedTrackIds == [1] && back.trackIds == [2])
+    }
+
+    @Test func selectionsSavedBeforeSongsCouldBeChosenStillRead() throws {
+        let old = Data(#"{"everything":false,"lovedSongs":true,"playlistIds":[],"artists":["Radiohead"],"albumKeys":[],"genres":[]}"#.utf8)
+        let selection = try JSONDecoder().decode(DeviceSelection.self, from: old)
+        #expect(selection.lovedSongs && selection.artists == ["Radiohead"] && selection.trackIds.isEmpty)
+        var chosen = DeviceSelection()
+        chosen.trackIds = [7]
+        #expect(!chosen.isEmpty)
+        #expect(try JSONDecoder().decode(DeviceSelection.self, from: JSONEncoder().encode(chosen)) == chosen)
     }
 
     @Test func convertsToFLACKeepingTheResolution() throws {
@@ -196,6 +275,70 @@ struct DeviceSyncTests {
         }
         cache.prune(keeping: [alac.path])
         #expect(try FileManager.default.contentsOfDirectory(atPath: cache.folder.path).count == 1)
+    }
+
+    @Test func convertsWavPackAndSplitsCueSongs() throws {
+        let base = FileManager.default.temporaryDirectory.appendingPathComponent("groovelight-cue-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: base) }
+        // A 16-bit 44.1 kHz album file (Ping is about 1.5 seconds), as WavPack.
+        let aiff = base.appendingPathComponent("album.aiff")
+        let wavPack = base.appendingPathComponent("album.wv")
+        try run("/usr/bin/afconvert", ["-f", "AIFF", "-d", "BEI16@44100", "-c", "2", "/System/Library/Sounds/Ping.aiff", aiff.path])
+        try AudioConverter.convert(aiff, to: wavPack)
+        let total = try #require(AudioFile(readingPropertiesAndMetadataFrom: aiff).properties.frameLength)
+
+        let cache = ConversionCache(folder: base.appendingPathComponent("cache"))
+        let whole = try cache.flac(for: wavPack, fingerprint: "whole")
+        #expect(try TagReader.read(whole).format == "FLAC")
+        #expect(try AudioFile(readingPropertiesAndMetadataFrom: whole).properties.frameLength == total)
+
+        // Two songs of a CUE album in that file: split at 0.5 s, each with its own tags, and not a sample lost.
+        var first = LibraryDatabaseTests.makeTrack(rootId: 1, "Intro", artist: "Band", album: "Live", number: 1)
+        first.path = base.path + "/album.cue#01"
+        first.audioPath = wavPack.path
+        first.startTime = 0
+        first.endTime = 0.5
+        var second = LibraryDatabaseTests.makeTrack(rootId: 1, "Outro", artist: "Band", album: "Live", number: 2)
+        second.path = base.path + "/album.cue#02"
+        second.audioPath = wavPack.path
+        second.startTime = 0.5
+        let one = try cache.flac(for: .cueTrack(first), fingerprint: "1")
+        let two = try cache.flac(for: .cueTrack(second), fingerprint: "2")
+        #expect(try AudioFile(readingPropertiesAndMetadataFrom: one).properties.frameLength == 22_050)
+        #expect(try AudioFile(readingPropertiesAndMetadataFrom: two).properties.frameLength == total - 22_050)
+        let tags = try TagReader.read(two)
+        #expect(tags.title == "Outro" && tags.trackNumber == 2 && tags.album == "Live")
+    }
+
+    @Test func encodesLosslessSongsToEachLossyFormat() throws {
+        let base = FileManager.default.temporaryDirectory.appendingPathComponent("groovelight-encode-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: base) }
+        // A hi-res song (24-bit 96 kHz) with tags.
+        let aiff = base.appendingPathComponent("tone.aiff")
+        let flac = base.appendingPathComponent("tone.flac")
+        try run("/usr/bin/afconvert", ["-f", "AIFF", "-d", "BEI24@96000", "-c", "2", "/System/Library/Sounds/Ping.aiff", aiff.path])
+        try FormatConverter.convertToFLAC(aiff, to: flac)
+        try TagWriter.write(TrackMetadata(title: "Ping", artist: "Mac", album: "Sounds", trackNumber: 3), to: flac)
+
+        let cache = ConversionCache(folder: base.appendingPathComponent("cache"))
+        let expected: [LossyEncoding: (format: String, rate: Double)] = [.opus160: ("Ogg Opus", 48_000), .aac192: ("AAC", 48_000), .mp3_320: ("MP3", 48_000)]
+        for encoding in LossyEncoding.allCases {
+            let file = try cache.flac(for: FormatConverter.Source(url: flac, encoding: encoding), fingerprint: encoding.rawValue)
+            #expect(file.pathExtension == encoding.fileExtension)
+            let tags = try TagReader.read(file)
+            #expect(tags.format?.hasSuffix(expected[encoding]!.format) == true || AudioSpec.Codec(formatName: tags.format).rawValue == encoding.codec,
+                    "\(encoding): \(tags.format ?? "?")")
+            #expect(tags.sampleRate == expected[encoding]!.rate, "\(encoding): \(tags.sampleRate ?? 0)")
+            #expect(tags.title == "Ping" && tags.trackNumber == 3, "\(encoding) tags")
+            // Much smaller than the FLAC, about its bitrate (Ping is about 1.5 seconds).
+            let size = try file.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+            let original = try flac.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+            #expect(size > 0 && size < original)
+        }
+        #expect(LossyEncoding.applies(to: .alac) && !LossyEncoding.applies(to: .mp3))
+        #expect(LossyEncoding.mp3_320.outputRate(for: 88_200) == 44_100 && LossyEncoding.aac192.outputRate(for: 44_100) == 44_100)
     }
 
     private func run(_ path: String, _ arguments: [String]) throws {

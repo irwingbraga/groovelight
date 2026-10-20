@@ -214,7 +214,9 @@ struct WirelessSyncTests {
         #expect(try TLSIdentity.load(label: label).fingerprint == tls.fingerprint)
 
         let key = SymmetricKey(size: .bits256)
-        final class Seen: @unchecked Sendable { var snapshot: [Int64: String] = [:]; var codecs: [Int64: String] = [:] }
+        final class Seen: @unchecked Sendable {
+            var snapshot: [Int64: String] = [:]; var codecs: [Int64: String] = [:]; var selection = DeviceSelection()
+        }
         let seen = Seen()
         let backend = WirelessSyncServer.Backend(
             info: { WirelessProtocol.Info(id: "mac-1", name: "Test Mac") },
@@ -230,13 +232,18 @@ struct WirelessSyncTests {
             finished: { _, _ in },
             status: { _ in WirelessProtocol.Status(syncRequested: false, pendingSends: 0) },
             flac: { source, fingerprint in
-                #expect(source == alacSource && fingerprint.hasSuffix("|flac"))
+                #expect(source.url == alacSource && fingerprint.hasSuffix("|flac"))
                 return converted
             },
             snapshot: { _, paths, codecs in
                 seen.snapshot = paths
                 seen.codecs = codecs
                 return Data("{\"songs\":2}".utf8)
+            },
+            catalog: { id in Data("{\"songs\":[],\"device\":\"\(id)\"}".utf8) },
+            requests: { _, requests in
+                seen.selection = seen.selection.applying(requests)
+                return DeviceCatalog.Chosen(seen.selection)
             })
         let server = WirelessSyncServer(backend: backend)
         let port: UInt16 = try await withCheckedThrowingContinuation { continuation in
@@ -264,7 +271,11 @@ struct WirelessSyncTests {
             }
         }
         let pinning = Pinning()
-        let session = URLSession(configuration: .ephemeral, delegate: pinning, delegateQueue: nil)
+        // No cache: a 304 (catalog unchanged) reaches the test as it is.
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.urlCache = nil
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        let session = URLSession(configuration: configuration, delegate: pinning, delegateQueue: nil)
         func call(_ method: String, _ path: String, query: String = "", body: Data = Data(), signed: Bool = true, secure: Bool = true,
                   headers: [String: String] = [:]) async throws -> (Data, HTTPURLResponse) {
             var request = URLRequest(url: URL(string: secure ? "https://127.0.0.1:\(tlsPort)\(path)\(query)" : "http://127.0.0.1:\(port)\(path)\(query)")!)
@@ -312,6 +323,28 @@ struct WirelessSyncTests {
         #expect(String(data: snapshot, encoding: .utf8) == "{\"songs\":2}")
         #expect(seen.snapshot == [1: "Music/Band/LP (1969)/01 One.flac", 2: "Music/Band/LP (1969)/02 Two.flac"])
         #expect(seen.codecs == [2: "flac"])
+
+        // The whole library: deflated, its SHA-256 as the ETag, nothing again while it has not changed, HTTPS only.
+        let (catalogData, catalogResponse) = try await call("GET", "/catalog")
+        #expect(catalogResponse.value(forHTTPHeaderField: WirelessProtocol.Header.encoding) == "deflate")
+        let catalogJSON = try (catalogData as NSData).decompressed(using: .zlib) as Data
+        #expect(String(data: catalogJSON, encoding: .utf8) == "{\"songs\":[],\"device\":\"phone-1\"}")
+        let tag = try #require(catalogResponse.value(forHTTPHeaderField: "ETag"))
+        #expect(tag == WirelessSyncServer.sha256(catalogJSON))
+        #expect(try await call("GET", "/catalog", headers: ["If-None-Match": tag]).1.statusCode == 304)
+        #expect(try await call("GET", "/catalog", secure: false).1.statusCode == 403)
+        #expect(try await call("GET", "/catalog/artwork/abc").1.statusCode == 200)
+        // Requests change the selection; asking again changes nothing.
+        let requests = try WirelessProtocol.encoder.encode(WirelessProtocol.Requests(requests: [
+            TransferRequest(id: "1", action: .add, kind: .album, key: "band|lp"),
+            TransferRequest(id: "2", action: .add, kind: .song, key: "42"),
+            TransferRequest(id: "3", action: .add, kind: .artist, key: "Band"),
+            TransferRequest(id: "4", action: .remove, kind: .artist, key: "Band"),
+        ]))
+        for _ in 0..<2 {
+            let chosen = try WirelessProtocol.decoder.decode(DeviceCatalog.Chosen.self, from: try await call("POST", "/requests", body: requests).0)
+            #expect(chosen.albumKeys == ["band|lp"] && chosen.trackIds == [42] && chosen.artists.isEmpty)
+        }
         // The token is refused in plain HTTP, and a wrong one over TLS.
         #expect(try await call("GET", "/sync/\(plan.session)/file/0", signed: false, secure: false,
                                headers: [WirelessProtocol.Header.token: token]).1.statusCode == 401)

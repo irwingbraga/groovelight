@@ -21,6 +21,8 @@ public struct DeviceProfile: Codable, Hashable, Sendable {
     public var coverSize = 600
     /// Synced lyrics as .lrc files beside the songs.
     public var writesLyrics = true
+    /// Lossless songs go to the device in this lossy format (nil: as they are, or FLAC for players that need it).
+    public var encoding: LossyEncoding?
 
     public static let coverSizes = [300, 500, 600, 1000, 0]
 
@@ -37,11 +39,32 @@ public struct DeviceSelection: Codable, Hashable, Sendable {
     public var artists: Set<String> = []
     public var albumKeys: Set<String> = []
     public var genres: Set<String> = []
+    /// Songs chosen one by one (from the Android app's view of the whole library).
+    public var trackIds: Set<Int64> = []
+    /// Songs removed from this device (from the Android app): left out whatever brings them (an album, an artist, a
+    /// playlist, all music, a send), and their files deleted from the device. Only the device changes: the library
+    /// keeps them. Adding them again (their album, artist or the song) brings them back.
+    public var excludedTrackIds: Set<Int64> = []
 
     public init() {}
 
     public var isEmpty: Bool {
-        !everything && !lovedSongs && playlistIds.isEmpty && artists.isEmpty && albumKeys.isEmpty && genres.isEmpty
+        !everything && !lovedSongs && playlistIds.isEmpty && artists.isEmpty && albumKeys.isEmpty && genres.isEmpty && trackIds.isEmpty
+    }
+
+    private enum CodingKeys: String, CodingKey { case everything, lovedSongs, playlistIds, artists, albumKeys, genres, trackIds, excludedTrackIds }
+
+    // Selections saved before a field existed decode with it empty.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        everything = try container.decodeIfPresent(Bool.self, forKey: .everything) ?? false
+        lovedSongs = try container.decodeIfPresent(Bool.self, forKey: .lovedSongs) ?? false
+        playlistIds = try container.decodeIfPresent(Set<Int64>.self, forKey: .playlistIds) ?? []
+        artists = try container.decodeIfPresent(Set<String>.self, forKey: .artists) ?? []
+        albumKeys = try container.decodeIfPresent(Set<String>.self, forKey: .albumKeys) ?? []
+        genres = try container.decodeIfPresent(Set<String>.self, forKey: .genres) ?? []
+        trackIds = try container.decodeIfPresent(Set<Int64>.self, forKey: .trackIds) ?? []
+        excludedTrackIds = try container.decodeIfPresent(Set<Int64>.self, forKey: .excludedTrackIds) ?? []
     }
 }
 
@@ -82,9 +105,13 @@ extension LibraryDatabase {
             for genre in selection.genres.sorted() {
                 tracks += try Track.fetchAll(db, sql: "SELECT * FROM track WHERE TRIM(genre) = ? COLLATE NOCASE", arguments: [genre])
             }
+            tracks += try Track.fetchAll(db, keys: Array(selection.trackIds)).sorted { $0.path < $1.path }
         }
         var seen = Set<Int64>()
-        tracks = tracks.filter { seen.insert($0.id ?? -1).inserted }
+        // Songs removed from the device stay off it, and out of its playlists.
+        let excluded = selection.excludedTrackIds
+        tracks = tracks.filter { !excluded.contains($0.id ?? -1) && seen.insert($0.id ?? -1).inserted }
+        if !excluded.isEmpty { playlists = playlists.map { DevicePlaylist(name: $0.name, tracks: $0.tracks.filter { !excluded.contains($0.id ?? -1) }) } }
         return (tracks, playlists)
     }
 }
@@ -153,8 +180,9 @@ public struct DeviceSyncPlan: Sendable {
         /// Made when written: cover.jpg from the artwork cache.
         case cover(hash: String)
         case data(Data)
-        /// The song at the URL, converted to FLAC (for a player that cannot decode its format).
-        case flac(URL)
+        /// The song converted: to FLAC (for a player that cannot decode its format, or a song of a CUE album), or to
+        /// the device's lossy format.
+        case converted(FormatConverter.Source)
     }
 
     public struct Write: Hashable, Sendable {
@@ -180,6 +208,14 @@ public struct DeviceSyncPlan: Sendable {
 }
 
 public enum DeviceSync {
+    /// The codec a converted song has on the device, from its manifest fingerprint ("|flac", "|opus160"...); nil for a
+    /// song copied as it is.
+    public static func convertedCodec(fingerprint: String) -> String? {
+        guard let suffix = fingerprint.split(separator: "|").last.map(String.init) else { return nil }
+        if suffix == "flac" { return "flac" }
+        return LossyEncoding(rawValue: suffix)?.codec
+    }
+
     /// A device where Groovelight itself plays the music (Groovelight for Android in Player mode): it gets the songs
     /// only (their covers, lyrics and playlists come with the library snapshot), and songs in formats it cannot decode
     /// are converted to FLAC.
@@ -223,8 +259,9 @@ public enum DeviceSync {
     /// taken by a file Groovelight did not write (another file with that name is then used); `fat32` enforces the
     /// 4 GB file limit.
     public static func plan(tracks: [Track], playlists: [DevicePlaylist], profile: DeviceProfile, manifest: DeviceManifest,
-                            mode: Mode, root: URL, fat32: Bool = false, player: Player? = nil,
+                            mode: Mode, root: URL, fat32: Bool = false, player: Player? = nil, excluded: Set<Int64> = [],
                             existing: (String) -> Bool = { _ in false }) -> DeviceSyncPlan {
+        let tracks = excluded.isEmpty ? tracks : tracks.filter { !excluded.contains($0.id ?? -1) }
         var plan = DeviceSyncPlan()
         var desired: [String: (DeviceSyncPlan.Content, DeviceManifest.Entry)] = [:]
         /// Lowercased paths in use (FAT and exFAT ignore case).
@@ -260,6 +297,12 @@ public enum DeviceSync {
         func songFingerprint(_ track: Track) -> String {
             "\(track.audioPath ?? track.path)|\(track.fileSize)|\(Int(track.modifiedAt.timeIntervalSince1970))"
         }
+        // A CUE song's share of its album's file, by duration (its FLAC's size is known once converted).
+        let cueDurations = Dictionary(grouping: tracks.filter(\.isCueTrack), by: \.url.path).mapValues { $0.reduce(0) { $0 + $1.duration } }
+        func cueSize(_ track: Track) -> Int64 {
+            guard let total = cueDurations[track.url.path], total > 0 else { return track.fileSize }
+            return Int64(Double(track.fileSize) * min(track.duration / total, 1))
+        }
 
         // Where each song was put last time (looked up once per song: a full device holds tens of thousands).
         var previousPaths: [Int64: String] = [:]
@@ -268,19 +311,30 @@ public enum DeviceSync {
         }
         // Songs, each in its template path. The planned order is stable so names numbered for collisions stay put.
         var covers: [String: String] = [:]
-        for track in tracks.filter({ !$0.isCueTrack }).sorted(by: { $0.path < $1.path }) {
+        // A player device, or one set to a lossy format, gets each song of a CUE album as a file of its own.
+        let splitsCue = player != nil || profile.encoding != nil
+        for track in tracks.filter({ !$0.isCueTrack || splitsCue }).sorted(by: { $0.path < $1.path }) {
             guard let id = track.id else { continue }
             if fat32, track.fileSize > fat32Limit {
                 plan.skipped.append((track.title, "larger than 4 GB, which FAT32 cards cannot hold"))
                 continue
             }
-            let delivery = player?.delivery(of: track) ?? .asIs
+            var delivery = track.isCueTrack ? .flac : player?.delivery(of: track) ?? .asIs
             if case .skip(let reason) = delivery {
                 plan.skipped.append((track.title, reason))
                 continue
             }
+            // The device's lossy format for lossless songs (a player that cannot decode it gets FLAC instead).
+            let codec = AudioSpec.Codec(formatName: track.format)
+            var encoding: LossyEncoding?
+            if let lossy = profile.encoding, LossyEncoding.applies(to: codec) || track.isCueTrack,
+               player.map({ $0.decodes.contains(lossy.codec) }) ?? true {
+                encoding = lossy
+                delivery = .flac
+            }
             let converted = delivery == .flac
-            let relative = inMusic(FileNaming.relativePath(for: NamingFields(track), fileExtension: converted ? "flac" : track.url.pathExtension,
+            let source = track.isCueTrack ? FormatConverter.Source.cueTrack(track, encoding: encoding) : FormatConverter.Source(url: track.url, encoding: encoding)
+            let relative = inMusic(FileNaming.relativePath(for: NamingFields(track), fileExtension: converted ? source.fileExtension : track.url.pathExtension,
                                                            options: naming))
             // A song keeps the name it already has on the device (a numbered one too) while its intended name is the same.
             let final: String
@@ -292,8 +346,13 @@ public enum DeviceSync {
                 final = claim(relative)
             }
             // A converted song's size is known once converted: the source's is close enough for planning space.
-            add(final, converted ? .flac(track.url) : .file(track.url), kind: .song, trackId: id,
-                fingerprint: songFingerprint(track) + (converted ? "|flac" : ""), size: track.fileSize)
+            // A converted song's fingerprint ends in "|flac" or the lossy format (the server tells the device's codec from it).
+            let region = track.isCueTrack ? "|\(track.startTime ?? 0)-\(track.endTime ?? -1)" : ""
+            let suffix = converted ? "|" + (encoding?.rawValue ?? "flac") : ""
+            // An encoded song's size is about its bitrate times its length.
+            let size = encoding.map { Int64($0.kbps * 125) * Int64(track.duration.rounded(.up)) } ?? (track.isCueTrack ? cueSize(track) : track.fileSize)
+            add(final, converted ? .converted(source) : .file(track.url), kind: .song, trackId: id,
+                fingerprint: songFingerprint(track) + region + suffix, size: size)
             placed[id] = final
             plan.songCount += 1
             let folder = (final as NSString).deletingLastPathComponent
@@ -308,15 +367,9 @@ public enum DeviceSync {
             }
         }
 
-        // CUE albums: the audio file and its sheet, under their own names, in the album's folder. A player device gets
-        // them once they can be split into songs (planned).
-        if player != nil {
-            for (_, songs) in Dictionary(grouping: tracks.filter(\.isCueTrack), by: \.url.path) {
-                let first = songs.min { ($0.trackNumber ?? 0) < ($1.trackNumber ?? 0) }!
-                plan.skipped.append((first.album ?? first.url.lastPathComponent, "albums with a CUE sheet are not supported in the player yet"))
-            }
-        }
-        for (audioPath, songs) in Dictionary(grouping: tracks.filter(\.isCueTrack), by: \.url.path).sorted(by: { $0.key < $1.key }) where player == nil {
+        // CUE albums (not for a player device: it got their songs above): the audio file and its sheet, under their
+        // own names, in the album's folder.
+        for (audioPath, songs) in Dictionary(grouping: tracks.filter(\.isCueTrack), by: \.url.path).sorted(by: { $0.key < $1.key }) where !splitsCue {
             let first = songs.min { ($0.trackNumber ?? 0) < ($1.trackNumber ?? 0) }!
             let audio = URL(fileURLWithPath: audioPath)
             let size = (try? audio.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init) ?? first.fileSize
@@ -380,13 +433,14 @@ public enum DeviceSync {
                 plan.writes.append(DeviceSyncPlan.Write(path: path, content: content, entry: entry))
             }
         }
-        if mode == .sync {
-            for (path, entry) in manifest.entries where desired[path] == nil && entry.synced {
-                plan.deletions.append(path)
-                plan.bytesToFree += entry.size
-            }
-            plan.deletions.sort()
+        // Groovelight's files no longer wanted: in a sync, the ones it synced; in any plan, songs removed from the
+        // device (and their lyrics), even sent ones.
+        for (path, entry) in manifest.entries where desired[path] == nil &&
+            ((mode == .sync && entry.synced) || entry.trackId.map(excluded.contains) == true) {
+            plan.deletions.append(path)
+            plan.bytesToFree += entry.size
         }
+        plan.deletions.sort()
         return plan
     }
 
@@ -394,9 +448,10 @@ public enum DeviceSync {
     /// when it next connects). Sent songs are added without making them part of the sync.
     public static func plan(syncing: (tracks: [Track], playlists: [DevicePlaylist]), sending: (tracks: [Track], playlists: [DevicePlaylist]),
                             profile: DeviceProfile, manifest: DeviceManifest, root: URL, fat32: Bool = false, player: Player? = nil,
-                            existing: (String) -> Bool) -> DeviceSyncPlan {
+                            excluded: Set<Int64> = [], existing: (String) -> Bool) -> DeviceSyncPlan {
         var plan = plan(tracks: syncing.tracks, playlists: syncing.playlists, profile: profile, manifest: manifest, mode: .sync,
-                        root: root, fat32: fat32, player: player, existing: existing)
+                        root: root, fat32: fat32, player: player, excluded: excluded, existing: existing)
+        let sending = (tracks: sending.tracks.filter { !excluded.contains($0.id ?? -1) }, playlists: sending.playlists)
         guard !sending.tracks.isEmpty || !sending.playlists.isEmpty else { return plan }
         // The device as the sync leaves it (files it would remove are still there), then the sends on top.
         var after = manifest
@@ -452,8 +507,8 @@ public enum DeviceSync {
                 try fileManager.copyItem(at: source, to: partial)
             case .data(let data):
                 try data.write(to: partial)
-            case .flac(let source):
-                try FormatConverter.convertToFLAC(source, to: partial)
+            case .converted(let source):
+                try FormatConverter.convert(source, to: partial)
                 entry.size = (try? partial.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init) ?? entry.size
             case .cover(let hash):
                 guard let data = cover(hash, profile.coverSize) else { continue }
