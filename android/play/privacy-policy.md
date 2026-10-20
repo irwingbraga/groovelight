@@ -22,7 +22,8 @@ Nothing is sent to its developer or to any third party.
 ## Permissions
 
 Network access (to reach your Mac on the local network), notifications (sync progress and playback controls),
-foreground services (syncing and playing with the screen off) and starting after a restart (automatic syncs).
+foreground services (syncing and playing with the screen off), starting after a restart (automatic syncs) and audio
+settings (to play bit-perfect to a USB DAC, when turned on).
 
 ## Contact
 

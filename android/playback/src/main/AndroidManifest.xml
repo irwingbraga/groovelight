@@ -6,6 +6,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <!-- Keeps the CPU running while playing with the screen off. -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Bit-perfect output (Android 14 and later): sets a USB DAC's mixer to the song's format. Granted at install. -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 
     <application>
         <!-- Exported so the system, headsets and (later) Android Auto can find the media session. -->

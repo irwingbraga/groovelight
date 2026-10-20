@@ -75,6 +75,8 @@ class SyncEngine(private val context: Context, private val prefs: Prefs) {
     suspend fun run(progress: (Progress) -> Unit): String {
         val tree = prefs.folder?.let(Uri::parse) ?: throw MacError("Choose a music folder first")
         val client = connect()
+        // Requests made on the device first, so this sync brings what they asked for.
+        if (prefs.mode == Prefs.Mode.PLAYER && prefs.tlsPort != 0) runCatching { Transfers.send(context, client) }
         val folder = DeviceFolder(context, tree)
         progress(Progress(0, 0, "Looking at the music folder…"))
         val files = folder.scan().filter { !it.endsWith(".partial") && it != MANIFEST }
@@ -144,6 +146,8 @@ class SyncEngine(private val context: Context, private val prefs: Prefs) {
             progress(Progress(writes.length(), writes.length(), "Updating the library…"))
             updateLibrary(client, session, token, failedPaths = failed.map { it.substringBefore(": ") }.toSet())
         }
+        // The Mac's whole library, for browsing it here (only when it changed).
+        if (player && prefs.tlsPort != 0) runCatching { Transfers.refreshCatalog(context, client, prefs) }
         folder.scanMedia(touched)
         progress(Progress(writes.length(), writes.length(), "Finishing…"))
 
@@ -171,8 +175,9 @@ class SyncEngine(private val context: Context, private val prefs: Prefs) {
         // Songs that could not be written are left out (their playlist entries too).
         val tracks = full.tracks.filter { it.path !in failedPaths }
         val ids = tracks.map { it.id }.toSet()
-        val snapshot = Snapshot(full.albums.filter { album -> tracks.any { it.albumKey == album.key } }, tracks, full.playlists,
-            full.items.filter { it.trackId in ids })
+        val keys = tracks.map { it.albumKey }.toSet()
+        val snapshot = Snapshot(full.albums.filter { it.key in keys }, tracks, full.playlists, full.items.filter { it.trackId in ids },
+            full.credits.filter { it.albumKey in keys && (it.trackId == null || it.trackId in ids) }, full.equalizer)
         val artwork = ArtworkStore(context)
         for (cover in snapshot.artworkHashes.filter { !artwork.has(it) }) {
             runCatching {

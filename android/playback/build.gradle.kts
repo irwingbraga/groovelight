@@ -18,5 +18,7 @@ dependencies {
     api(libs.media3.exoplayer)
     api(libs.media3.session)
     api(libs.coroutines.android)
+    implementation(libs.core.ktx)
     testImplementation(libs.junit)
+    testImplementation(libs.json)
 }

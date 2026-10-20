@@ -8,6 +8,7 @@ import android.os.Build
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
 import java.io.InputStream
@@ -50,6 +51,8 @@ class Prefs(context: Context) {
         get() = prefs.getBoolean("charging", false)
         set(value) = prefs.edit().putBoolean("charging", value).apply()
     var lastResult: String? by stringPref("lastResult")
+    /** The version (ETag) of the Mac's catalog the device holds. */
+    var catalogTag: String? by stringPref("catalogTag")
     var lastSync: Long
         get() = prefs.getLong("lastSync", 0)
         set(value) = prefs.edit().putLong("lastSync", value).apply()
@@ -226,6 +229,48 @@ class MacClient(private val host: String, private val port: Int, private val dev
 
     /** A cover (600 pixels, JPEG) the snapshot refers to (v2). */
     fun artwork(session: String, token: String, hash: String): Pair<ByteArray, String?> = bytes("/sync/$session/artwork/$hash", token)
+
+    /**
+     * The Mac's whole library (v2, HTTPS): its JSON and version, or null when the Mac's is still `tag` (nothing sent).
+     * Arrives deflated; checked against its SHA-256 and, once inflated, against the version.
+     */
+    fun catalog(tag: String?): Pair<ByteArray, String>? {
+        val connection = open("GET", "/catalog", ByteArray(0), signed = true, timeout = 120_000)
+        try {
+            if (tag != null) connection.setRequestProperty("If-None-Match", tag)
+            val status = connection.responseCode
+            if (status == 304) return null
+            if (status == 404) throw MacError("Update Groovelight on the Mac to see its whole library here.", status)
+            if (status != 200) throw MacError("The Mac's library could not be read ($status)", status)
+            val body = connection.inputStream.use { it.readBytes() }
+            if (connection.getHeaderField("X-GL-SHA256")?.let { it != hex(body) } == true) throw MacError("The Mac's library arrived damaged")
+            val json = if (connection.getHeaderField("X-GL-Encoding") == "deflate") {
+                java.util.zip.InflaterInputStream(body.inputStream(), java.util.zip.Inflater(true)).use { it.readBytes() }
+            } else body
+            val version = connection.getHeaderField("ETag") ?: hex(json)
+            if (version != hex(json)) throw MacError("The Mac's library arrived damaged")
+            return json to version
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    /** A small cover (300 pixels, JPEG) of the catalog, checked against its SHA-256. */
+    fun catalogArtwork(hash: String): ByteArray? {
+        val connection = open("GET", "/catalog/artwork/$hash", ByteArray(0), signed = true, timeout = 30_000)
+        try {
+            if (connection.responseCode != 200) return null
+            val data = connection.inputStream.use { it.readBytes() }
+            return data.takeIf { it.isNotEmpty() && connection.getHeaderField("X-GL-SHA256") == hex(it) }
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    /** Sends requests for the selection (`[{id, action, kind, key}]`); answers what the selection holds then. */
+    fun requests(requests: JSONArray): JSONObject = json("POST", "/requests", JSONObject().put("requests", requests))
+
+    private fun hex(data: ByteArray) = Pairing.hexString(MessageDigest.getInstance("SHA-256").digest(data))
 
     private fun bytes(path: String, token: String): Pair<ByteArray, String?> {
         val (input, connection) = get(path, 0, token)

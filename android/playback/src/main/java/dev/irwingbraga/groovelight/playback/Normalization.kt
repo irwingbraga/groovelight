@@ -13,13 +13,32 @@ import kotlin.math.pow
 object Normalization {
     /** Extra of a media item's metadata: its gain in dB. */
     const val GAIN = "dev.irwingbraga.groovelight.gain"
+    /** Its album's ReplayGain (dB), for the Album setting. */
+    const val ALBUM_GAIN = "dev.irwingbraga.groovelight.albumGain"
 
-    fun extras(gain: Double?): Bundle = Bundle().apply { if (gain != null) putDouble(GAIN, gain) }
+    fun extras(gain: Double?, albumGain: Double? = null): Bundle = Bundle().apply {
+        if (gain != null) putDouble(GAIN, gain)
+        if (albumGain != null) putDouble(ALBUM_GAIN, albumGain)
+    }
+
+    /** The gain applied to an item (dB) with the current setting, or null for none. */
+    fun gain(item: MediaItem?, mode: PlaybackSettings.Normalization = PlaybackSettings.normalization.value): Double? {
+        val extras = item?.mediaMetadata?.extras ?: return null
+        return when (mode) {
+            PlaybackSettings.Normalization.OFF -> null
+            // Album gain when the song has one, else its own (as Sound Check falls back on the Mac).
+            PlaybackSettings.Normalization.ALBUM -> if (extras.containsKey(ALBUM_GAIN)) extras.getDouble(ALBUM_GAIN) else gainOf(extras)
+            PlaybackSettings.Normalization.TRACK -> gainOf(extras)
+        }
+    }
+
+    private fun gainOf(extras: Bundle): Double? = if (extras.containsKey(GAIN)) extras.getDouble(GAIN) else null
 
     fun volume(item: MediaItem?): Float {
-        val extras = item?.mediaMetadata?.extras ?: return 1f
-        if (!extras.containsKey(GAIN)) return 1f
-        return 10.0.pow(extras.getDouble(GAIN) / 20).toFloat().coerceIn(0f, 1f)
+        // Bit-perfect output takes the samples as they are.
+        if (PlaybackSettings.bitPerfectActive.value) return 1f
+        val gain = gain(item) ?: return 1f
+        return 10.0.pow(gain / 20).toFloat().coerceIn(0f, 1f)
     }
 
     internal fun listener(player: Player) = object : Player.Listener {

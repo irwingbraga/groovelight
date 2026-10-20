@@ -143,6 +143,7 @@ androidComponents {
                 "android.permission.POST_NOTIFICATIONS", // sync progress and the player's notification
                 "android.permission.WAKE_LOCK", // playing and syncing with the screen off
                 "android.permission.RECEIVE_BOOT_COMPLETED", // WorkManager: automatic syncs after a restart
+                "android.permission.MODIFY_AUDIO_SETTINGS", // bit-perfect output: the USB DAC's mixer set to the song's format
             ))
         }
     }

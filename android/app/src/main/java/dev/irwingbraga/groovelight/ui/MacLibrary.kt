@@ -1,0 +1,463 @@
+package dev.irwingbraga.groovelight.ui
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.PrimaryScrollableTabRow
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Tab
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dev.irwingbraga.groovelight.R
+import dev.irwingbraga.groovelight.library.Availability
+import dev.irwingbraga.groovelight.library.CatalogAlbum
+import dev.irwingbraga.groovelight.library.CatalogTrack
+import dev.irwingbraga.groovelight.library.TransferRequest
+import dev.irwingbraga.groovelight.sync.Transfers
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+
+// The Mac's whole library, browsed on the device: what is not here can be asked for (an album, an artist, a song), and
+// what is here can be let go. Requests wait on the device until the Mac is reachable, then a sync brings the music.
+
+/** "This Device" or "On the Mac", at the top of the Library tab. */
+@Composable
+fun SourceSwitch(modifier: Modifier = Modifier) {
+    val library = LocalActions.current.library
+    val source by library.source.collectAsStateWithLifecycle()
+    val narrow = LocalWindowShape.current.narrow
+    SingleChoiceSegmentedButtonRow(modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+        LibraryModel.Source.entries.forEachIndexed { index, option ->
+            SegmentedButton(selected = source == option, onClick = { library.setSource(option) },
+                shape = SegmentedButtonDefaults.itemShape(index, LibraryModel.Source.entries.size),
+                icon = { Icon(painterResource(if (option == LibraryModel.Source.DEVICE) R.drawable.ic_phone else R.drawable.ic_laptop), null,
+                    Modifier.size(18.dp)) }) {
+                // Short labels in a narrow window, where the long ones would be cut.
+                Text(if (option == LibraryModel.Source.DEVICE) (if (narrow) "Device" else "This Device") else (if (narrow) "Mac" else "On the Mac"), maxLines = 1)
+            }
+        }
+    }
+}
+
+private enum class MacSection(val title: String) { ALBUMS("Albums"), ARTISTS("Artists"), SONGS("Songs") }
+
+/** The Library tab showing the Mac's library: Albums, Artists and Songs, each marked with where it stands here. */
+@Composable
+fun MacLibraryContent() {
+    val library = LocalActions.current.library
+    val albums by library.catalogAlbums.collectAsStateWithLifecycle()
+    val state by library.catalogState.collectAsStateWithLifecycle()
+    val holdings by library.holdings.collectAsStateWithLifecycle()
+    val reachable by Transfers.reachable.collectAsStateWithLifecycle()
+    // Now, and again when the Mac comes back.
+    LaunchedEffect(reachable == true) { library.refreshCatalog() }
+    val pager = rememberPagerState { MacSection.entries.size }
+    val scope = rememberCoroutineScope()
+    Column(Modifier.fillMaxSize()) {
+        PrimaryScrollableTabRow(selectedTabIndex = pager.currentPage, edgePadding = 8.dp, containerColor = Color.Transparent, divider = {}) {
+            MacSection.entries.forEachIndexed { index, item ->
+                Tab(selected = pager.currentPage == index, onClick = { scope.launch { pager.animateScrollToPage(index) } }, text = { Text(item.title) },
+                    unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        CatalogNotice(state.copy(reachable = reachable ?: state.reachable), holdings.waiting, empty = albums.isNullOrEmpty())
+        when {
+            albums == null -> Loading()
+            albums?.isEmpty() == true -> EmptyState(R.drawable.ic_laptop, if (state.loading) "Reading the Mac's library…" else "The Mac's library is not here yet",
+                when {
+                    state.loading -> "This takes a moment the first time."
+                    // Why it could not be read: the Mac away, without its secure connection, or an older Groovelight there.
+                    state.error != null -> state.error.orEmpty()
+                    else -> "Open Groovelight on the Mac, on the same Wi-Fi: its whole library shows here."
+                },
+                Modifier.padding(bottom = LocalBottomInset.current)) {
+                if (!state.loading) Button(onClick = library::refreshCatalog) { Text("Try Again") }
+            }
+            else -> HorizontalPager(pager, Modifier.fillMaxSize(), key = { it }) { page ->
+                when (MacSection.entries[page]) {
+                    MacSection.ALBUMS -> CatalogAlbumGrid(albums.orEmpty())
+                    MacSection.ARTISTS -> CatalogArtists()
+                    MacSection.SONGS -> CatalogSongs()
+                }
+            }
+        }
+    }
+}
+
+/** The Mac away, or requests waiting for it. */
+@Composable
+private fun CatalogNotice(state: LibraryModel.CatalogState, waiting: Int, empty: Boolean) {
+    val text = when {
+        state.error != null && state.reachable != false && !empty -> state.error
+        state.reachable == false && !empty -> "The Mac is not reachable: this is its library as of the last time." +
+            if (waiting > 0) " ${requests(waiting)} will be sent when it is." else ""
+        waiting > 0 && state.loading -> "Sending ${requests(waiting).lowercase()} to the Mac…"
+        waiting > 0 -> "${requests(waiting)} waiting for the Mac."
+        else -> null
+    } ?: return
+    Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(12.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(painterResource(R.drawable.ic_schedule), null, Modifier.size(20.dp))
+            Spacer(Modifier.width(12.dp))
+            Text(text, style = MaterialTheme.typography.bodyMedium)
+        }
+    }
+}
+
+private fun requests(count: Int) = if (count == 1) "1 request" else "$count requests"
+
+/** A cover of the Mac's library: the device's copy, else a small one fetched from the Mac when shown. */
+@Composable
+fun CatalogCover(hash: String?, modifier: Modifier, round: Boolean = false, corner: androidx.compose.ui.unit.Dp = 8.dp) {
+    val library = LocalActions.current.library
+    var version by remember(hash) { mutableIntStateOf(0) }
+    val file = remember(hash, version) { library.catalogCover(hash) }
+    LaunchedEffect(hash, file) { if (hash != null && file == null && library.fetchCatalogCover(hash)) version++ }
+    Cover(file, modifier, round = round, corner = corner)
+}
+
+/** A small mark of where an album or song stands: here, coming, waiting for the Mac, or leaving. */
+@Composable
+fun AvailabilityMark(availability: Availability, modifier: Modifier = Modifier) {
+    val (icon, label) = when (availability) {
+        Availability.ON_DEVICE -> R.drawable.ic_check_circle to "On this device"
+        Availability.ARRIVING -> R.drawable.ic_download to "Arrives at the next sync"
+        Availability.WAITING -> R.drawable.ic_schedule to "Waiting for the Mac"
+        Availability.LEAVING -> R.drawable.ic_remove_circle to "Leaves at the next sync"
+        Availability.ON_MAC -> return
+    }
+    Icon(painterResource(icon), contentDescription = label, modifier = modifier.size(18.dp),
+        tint = if (availability == Availability.LEAVING) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+}
+
+private fun availabilityText(availability: Availability): String = when (availability) {
+    Availability.ON_DEVICE -> "On this device"
+    Availability.ARRIVING -> "Arrives at the next sync"
+    Availability.WAITING -> "Waiting for the Mac"
+    Availability.LEAVING -> "Leaves at the next sync"
+    Availability.ON_MAC -> "On the Mac"
+}
+
+@Composable
+private fun CatalogAlbumGrid(albums: List<CatalogAlbum>, header: (androidx.compose.foundation.lazy.grid.LazyGridScope.() -> Unit)? = null) {
+    val actions = LocalActions.current
+    val holdings by actions.library.holdings.collectAsStateWithLifecycle()
+    val size by actions.library.gridSize.collectAsStateWithLifecycle()
+    LazyVerticalGrid(GridCells.Adaptive(if (LocalWindowShape.current.narrow) minOf(size, 128f).dp else size.dp), Modifier.fillMaxSize().pinchToResize { actions.library.setGridSize(size * it) },
+        state = rememberLazyGridState(),
+        contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 16.dp + LocalBottomInset.current),
+        horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        header?.invoke(this)
+        items(albums, key = { it.key }) { album ->
+            val availability = holdings.of(album)
+            Column(Modifier.clip(RoundedCornerShape(10.dp)).clickable(onClickLabel = "Open album") { actions.open(Route.MacAlbumPage(album.key)) }
+                .padding(4.dp).semantics(mergeDescendants = true) {}) {
+                Box {
+                    CatalogCover(album.artworkHash, Modifier.sharedCover("macalbum:${album.key}").fillMaxWidth())
+                    if (availability != Availability.ON_MAC) {
+                        Box(Modifier.align(Alignment.BottomEnd).padding(6.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surface)
+                            .padding(3.dp)) { AvailabilityMark(availability) }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                Text(album.title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(album.artist, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+    }
+}
+
+@Composable
+private fun CatalogArtists() {
+    val actions = LocalActions.current
+    val artists by actions.library.catalogArtists.collectAsStateWithLifecycle()
+    val holdings by actions.library.holdings.collectAsStateWithLifecycle()
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 16.dp + LocalBottomInset.current)) {
+        items(artists.orEmpty(), key = { it.name }) { artist ->
+            ListItem(
+                headlineContent = { Text(artist.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                supportingContent = { Text(if (artist.albums == 1) "1 album" else "${artist.albums} albums") },
+                leadingContent = { CatalogCover(artist.artworkHash, Modifier.sharedCover("macartist:${artist.name}").size(52.dp), round = true) },
+                trailingContent = {
+                    if (holdings.after.everything || artist.name in holdings.after.artists) {
+                        AvailabilityMark(if (artist.name in holdings.chosen.artists || holdings.chosen.everything) Availability.ON_DEVICE else Availability.WAITING)
+                    }
+                },
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                modifier = Modifier.clickable { actions.open(Route.MacArtistPage(artist.name)) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun CatalogSongs() {
+    val actions = LocalActions.current
+    val tracks by actions.library.catalogTracks.collectAsStateWithLifecycle()
+    val albums by actions.library.catalogAlbumsByKey.collectAsStateWithLifecycle()
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 16.dp + LocalBottomInset.current)) {
+        items(tracks.orEmpty(), key = { it.id }) { track ->
+            CatalogSongRow(track, albums[track.albumKey], showCover = true)
+        }
+    }
+}
+
+/** A song of the Mac's library: plays when it is here; otherwise a button asks for it. */
+@Composable
+private fun CatalogSongRow(track: CatalogTrack, album: CatalogAlbum?, showCover: Boolean) {
+    val actions = LocalActions.current
+    val holdings by actions.library.holdings.collectAsStateWithLifecycle()
+    val availability = holdings.of(track, album)
+    val scope = rememberCoroutineScope()
+    ListItem(
+        headlineContent = { Text(track.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        supportingContent = {
+            Text(listOfNotNull(if (showCover) track.artist else track.artist.takeIf { it != album?.artist }, if (showCover) album?.title else null,
+                availabilityText(availability).takeIf { availability != Availability.ON_MAC }).joinToString(" · "),
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
+        },
+        leadingContent = {
+            if (showCover) CatalogCover(track.artworkHash ?: album?.artworkHash, Modifier.size(48.dp), corner = 6.dp)
+            else Text(track.trackNumber?.toString() ?: "", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center, modifier = Modifier.width(28.dp))
+        },
+        trailingContent = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (!showCover) Text(duration(track.durationMs), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                when {
+                    availability == Availability.ON_MAC || availability == Availability.LEAVING -> IconButton(onClick = {
+                        actions.library.request(TransferRequest.ADD, TransferRequest.SONG, track.id.toString())
+                        actions.notify("\"${track.title}\" will come to this device")
+                    }) { Icon(painterResource(R.drawable.ic_add_circle), contentDescription = "Add ${track.title} to this device") }
+                    holdings.canRemove(track) -> IconButton(onClick = {
+                        actions.library.request(TransferRequest.REMOVE, TransferRequest.SONG, track.id.toString())
+                    }) { AvailabilityMark(availability) }
+                    else -> Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) { AvailabilityMark(availability) }
+                }
+            }
+        },
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+        modifier = Modifier.clickable {
+            if (track.id in holdings.trackIds) scope.launch {
+                // Here: played from the device's copy, with the rest of the album that is here.
+                val local = actions.library.tracksOfAlbum(track.albumKey).first()
+                val start = local.indexOfFirst { it.id == track.id }.coerceAtLeast(0)
+                actions.player.play(actions.library.mediaItems(local, "Album · ${album?.title ?: ""}"), start, null)
+            } else actions.notify("Add it to this device to play it")
+        },
+    )
+}
+
+/** An album of the Mac's library: add it to this device (or let it go), or open it when it is here. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun MacAlbumPage(key: String) {
+    val actions = LocalActions.current
+    val known = remember(key) { actions.library.catalogAlbums.value?.firstOrNull { it.key == key } }
+    val album by remember(key) { actions.library.catalogAlbum(key) }.collectAsStateWithLifecycle(known)
+    val tracks by remember(key) { actions.library.catalogTracksOfAlbum(key) }.collectAsStateWithLifecycle(emptyList())
+    val holdings by actions.library.holdings.collectAsStateWithLifecycle()
+    val current = album ?: return Column(Modifier.fillMaxSize()) { CatalogBar(""); Loading() }
+    val availability = holdings.of(current)
+    val list = rememberLazyListState()
+    val scrolled by remember { derivedStateOf { list.firstVisibleItemIndex > 0 } }
+    val here = tracks.count { it.id in holdings.trackIds }
+    Column(Modifier.fillMaxSize()) {
+        CatalogBar(if (scrolled) current.title else "")
+        LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = 24.dp + LocalBottomInset.current)) {
+            item(key = "header") {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    CatalogCover(current.artworkHash, Modifier.sharedCover("macalbum:$key").widthIn(max = if (LocalWindowShape.current.short) 120.dp else 240.dp)
+                        .fillMaxWidth(0.65f), corner = 10.dp)
+                    Spacer(Modifier.height(16.dp))
+                    Text(current.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center,
+                        modifier = Modifier.semantics { heading() })
+                    Text(current.artist, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.clip(RoundedCornerShape(4.dp)).clickable(enabled = !current.isCompilation) {
+                            actions.open(Route.MacArtistPage(current.artist))
+                        }.padding(4.dp))
+                    Text(listOfNotNull(current.year?.toString(), songCount(tracks.size), catalogQuality(tracks)).joinToString(" · "),
+                        style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(12.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        AvailabilityMark(availability)
+                        if (availability != Availability.ON_MAC) Spacer(Modifier.width(6.dp))
+                        Text(when {
+                            availability == Availability.ON_DEVICE && here in 1 until tracks.size -> "$here of ${tracks.size} songs on this device"
+                            else -> availabilityText(availability)
+                        }, style = MaterialTheme.typography.labelLarge)
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    AlbumTransferButtons(current, availability, holdings)
+                    Spacer(Modifier.height(8.dp))
+                }
+            }
+            items(tracks, key = { it.id }) { track -> CatalogSongRow(track, current, showCover = false) }
+        }
+    }
+}
+
+@Composable
+private fun AlbumTransferButtons(album: CatalogAlbum, availability: Availability, holdings: LibraryModel.Holdings) {
+    val actions = LocalActions.current
+    val add = {
+        actions.library.request(TransferRequest.ADD, TransferRequest.ALBUM, album.key)
+        actions.notify("\"${album.title}\" will come to this device")
+    }
+    val remove = {
+        actions.library.request(TransferRequest.REMOVE, TransferRequest.ALBUM, album.key)
+        actions.notify("\"${album.title}\" will leave this device at the next sync")
+    }
+    Row(Modifier.widthIn(max = 420.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        when (availability) {
+            Availability.ON_MAC, Availability.LEAVING -> Button(onClick = add, modifier = Modifier.weight(1f)) {
+                Icon(painterResource(R.drawable.ic_download), null, Modifier.size(20.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(if (availability == Availability.LEAVING) "Keep on This Device" else "Add to This Device")
+            }
+            else -> {
+                if (album.key in holdings.albumKeys) FilledTonalButton(onClick = { actions.open(Route.AlbumPage(album.key)) }, modifier = Modifier.weight(1f)) {
+                    Icon(painterResource(R.drawable.ic_play), null, Modifier.size(20.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Open")
+                }
+                if (holdings.canRemove(album)) OutlinedButton(onClick = remove, modifier = Modifier.weight(1f)) {
+                    Text(if (availability == Availability.ON_DEVICE) "Remove" else "Cancel")
+                }
+            }
+        }
+    }
+    // Here, but not as an album or artist chosen here: a playlist or genre on the Mac brings it.
+    if (availability == Availability.ON_DEVICE && !holdings.canRemove(album) && !holdings.after.everything) {
+        Text("It is here through a playlist or genre chosen on the Mac.", style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 8.dp))
+    }
+}
+
+/** An artist of the Mac's library: all their albums to this device at once, or album by album. */
+@Composable
+fun MacArtistPage(name: String) {
+    val actions = LocalActions.current
+    val albums by remember(name) { actions.library.catalogAlbumsOf(name) }.collectAsStateWithLifecycle(emptyList())
+    val holdings by actions.library.holdings.collectAsStateWithLifecycle()
+    val chosen = holdings.after.everything || name in holdings.after.artists
+    val waiting = (name in holdings.after.artists) != (name in holdings.chosen.artists)
+    Column(Modifier.fillMaxSize()) {
+        CatalogBar("")
+        CatalogAlbumGrid(albums) {
+            item(key = "header", span = { GridItemSpan(maxLineSpan) }) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    CatalogCover(albums.firstOrNull()?.artworkHash, Modifier.sharedCover("macartist:$name").widthIn(max = 200.dp).fillMaxWidth(0.5f), round = true)
+                    Spacer(Modifier.height(16.dp))
+                    Text(name, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center,
+                        modifier = Modifier.semantics { heading() })
+                    Text(if (albums.size == 1) "1 album" else "${albums.size} albums", style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(12.dp))
+                    if (!holdings.after.everything) {
+                        if (chosen) OutlinedButton(onClick = {
+                            actions.library.request(TransferRequest.REMOVE, TransferRequest.ARTIST, name)
+                            actions.notify("$name will leave this device at the next sync (albums chosen one by one stay)")
+                        }) { Text(if (waiting) "Cancel" else "Remove Artist from This Device") }
+                        else Button(onClick = {
+                            actions.library.request(TransferRequest.ADD, TransferRequest.ARTIST, name)
+                            actions.notify("$name will come to this device, with albums added on the Mac later")
+                        }) {
+                            Icon(painterResource(R.drawable.ic_download), null, Modifier.size(20.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Add Artist to This Device")
+                        }
+                    }
+                    if (waiting) Text("Waiting for the Mac", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(top = 8.dp))
+                    Spacer(Modifier.height(8.dp))
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CatalogBar(title: String) {
+    val back = LocalBack.current
+    TopAppBar(
+        title = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        navigationIcon = { IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_back), contentDescription = "Back") } },
+        actions = {
+            Icon(painterResource(R.drawable.ic_laptop), contentDescription = "From the Mac's library", tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(end = 16.dp))
+        },
+        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
+    )
+}
+
+private fun songCount(count: Int) = if (count == 1) "1 song" else "$count songs"
+
+/** "Hi-Res Lossless" or "Lossless" for an album of the Mac's library, as its badge there. */
+private fun catalogQuality(tracks: List<CatalogTrack>): String? {
+    val lossless = setOf("flac", "alac", "wav", "aiff", "wavPack", "monkeysAudio", "trueAudio", "oggFLAC")
+    if (tracks.isEmpty() || tracks.any { it.codec !in lossless }) return null
+    return if (tracks.all { (it.bitDepth ?: 16) > 16 || (it.sampleRate ?: 44_100) > 48_000 }) "Hi-Res Lossless" else "Lossless"
+}

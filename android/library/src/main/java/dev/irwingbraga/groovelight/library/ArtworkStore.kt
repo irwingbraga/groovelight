@@ -4,8 +4,8 @@ import android.content.Context
 import java.io.File
 
 /** Covers from the Mac (600 pixels, JPEG), by content hash, in the app's own storage. */
-class ArtworkStore(context: Context) {
-    val folder = File(context.filesDir, "artwork").apply { mkdirs() }
+class ArtworkStore(context: Context, name: String = "artwork") {
+    val folder = File(context.filesDir, name).apply { mkdirs() }
 
     fun file(hash: String): File = File(folder, "$hash.jpg")
 

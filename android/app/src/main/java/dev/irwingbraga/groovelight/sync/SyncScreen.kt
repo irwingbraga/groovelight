@@ -104,9 +104,14 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
         polling = viewModelScope.launch(Dispatchers.IO) {
             while (true) {
                 if (prefs.isPaired) {
-                    val status = runCatching { SyncEngine(getApplication(), prefs).connect().status() }.getOrNull()
+                    val client = runCatching { SyncEngine(getApplication(), prefs).connect() }.getOrNull()
+                    val status = client?.let { runCatching { it.status() }.getOrNull() }
+                    if (status != null && reachable.value != true) Transfers.retryCovers()
                     reachable.value = status != null
-                    if (status?.optBoolean("syncRequested") == true && prefs.folder != null) SyncWorker.syncNow(getApplication())
+                    Transfers.reachable.value = status != null
+                    // Requests made while the Mac was away go as soon as it answers, and a sync brings the music.
+                    val requested = client != null && status != null && runCatching { Transfers.send(getApplication(), client) }.getOrDefault(false)
+                    if ((requested || status?.optBoolean("syncRequested") == true) && prefs.folder != null) SyncWorker.syncNow(getApplication())
                 }
                 delay(5_000)
             }
@@ -241,11 +246,12 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
  * (and the setup before the first sync). `listening` is a card for switching modes, shown once paired.
  */
 @Composable
-fun SyncScreen(title: String, model: SyncViewModel = viewModel(), listening: (@Composable () -> Unit)? = null) {
+fun SyncScreen(title: String?, model: SyncViewModel = viewModel(), listening: (@Composable () -> Unit)? = null) {
     val paired by model.paired.collectAsState()
-    Column(Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text(title, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+    // Without a title it is a page under a bar (the player's Settings), which takes care of the top inset.
+    Column(Modifier.fillMaxSize().then(if (title != null) Modifier.safeDrawingPadding() else Modifier).verticalScroll(rememberScrollState())
+        .padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        if (title != null) Text(title, fontSize = 28.sp, fontWeight = FontWeight.Bold)
         if (paired) PairedScreen(model, listening) else PairScreen(model)
     }
 }

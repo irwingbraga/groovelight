@@ -10,12 +10,31 @@ import java.time.Instant
  * The Mac's library snapshot (`DeviceSnapshot` on the Mac, version 1): read as a stream, since a large library's is
  * several megabytes.
  */
-class Snapshot(val albums: List<Album>, val tracks: List<Track>, val playlists: List<Playlist>, val items: List<PlaylistItem>) {
+class Snapshot(
+    val albums: List<Album>,
+    val tracks: List<Track>,
+    val playlists: List<Playlist>,
+    val items: List<PlaylistItem>,
+    val credits: List<Credit> = emptyList(),
+    val equalizer: List<MacEqPreset> = emptyList(),
+) {
     /** Every cover it refers to. */
-    val artworkHashes: Set<String> get() = (albums.mapNotNull { it.artworkHash } + tracks.mapNotNull { it.artworkHash }).toSet()
+    val artworkHashes: Set<String> get() =
+        (albums.mapNotNull { it.artworkHash } + tracks.mapNotNull { it.artworkHash } + playlists.mapNotNull { it.coverHash }).toSet()
 
     /** Replaces the device's library with this one. */
-    suspend fun importInto(database: LibraryDatabase) = database.library().replace(albums, tracks, playlists, items)
+    suspend fun importInto(database: LibraryDatabase) = database.library().replace(this)
+
+    /** The search index rows: each song's words, with the names credited on it (or on its whole album). */
+    fun searchEntries(): List<SearchEntry> {
+        val albumTitles = albums.associate { it.key to it.title }
+        val albumCredits = credits.filter { it.trackId == null }.groupBy { it.albumKey }
+        val songCredits = credits.filter { it.trackId != null }.groupBy { it.trackId }
+        return tracks.map { track ->
+            val names = (albumCredits[track.albumKey].orEmpty() + songCredits[track.id].orEmpty()).map { it.name }.distinct()
+            SearchEntry(track.id, track.title, track.artist, albumTitles[track.albumKey].orEmpty(), names.joinToString(" "))
+        }
+    }
 
     companion object {
         fun read(input: InputStream): Snapshot = JsonReader(InputStreamReader(input, Charsets.UTF_8)).use { reader ->
@@ -23,6 +42,8 @@ class Snapshot(val albums: List<Album>, val tracks: List<Track>, val playlists: 
             val tracks = mutableListOf<Track>()
             val playlists = mutableListOf<Playlist>()
             val items = mutableListOf<PlaylistItem>()
+            val credits = mutableListOf<Credit>()
+            val equalizer = mutableListOf<MacEqPreset>()
             reader.beginObject()
             while (reader.hasNext()) {
                 when (reader.nextName()) {
@@ -33,6 +54,8 @@ class Snapshot(val albums: List<Album>, val tracks: List<Track>, val playlists: 
                         playlists += playlist
                         songIds.forEachIndexed { index, id -> items += PlaylistItem(playlist.id, index, id) }
                     }
+                    "credits" -> if (!reader.isNull()) reader.array { credits += credit(reader) }
+                    "equalizer" -> if (!reader.isNull()) equalizer += equalizer(reader)
                     "version" -> require(reader.nextInt() <= 1) { "This library comes from a newer Groovelight: update the app" }
                     else -> reader.skipValue()
                 }
@@ -42,7 +65,8 @@ class Snapshot(val albums: List<Album>, val tracks: List<Track>, val playlists: 
             val keys = albums.map { it.key }.toSet()
             val kept = tracks.filter { it.albumKey in keys }
             val ids = kept.map { it.id }.toSet()
-            Snapshot(albums, kept, playlists, items.filter { it.trackId in ids })
+            Snapshot(albums, kept, playlists, items.filter { it.trackId in ids },
+                credits.filter { it.albumKey in keys && (it.trackId == null || it.trackId in ids) }, equalizer)
         }
 
         private fun album(reader: JsonReader): Album {
@@ -99,18 +123,81 @@ class Snapshot(val albums: List<Album>, val tracks: List<Track>, val playlists: 
                 trackGain, albumGain, loudness, loved, lovedAt, rating, plays, lastPlayed, added, lyrics, artwork)
         }
 
-        private fun playlist(reader: JsonReader): Pair<Playlist, List<Long>> {
-            var id = 0L; var name = ""; var smart = false; val songs = mutableListOf<Long>()
+        private fun credit(reader: JsonReader): Credit {
+            var name = ""; val roles = mutableListOf<String>(); var albumKey = ""; var trackId: Long? = null; var whole = false
             reader.obj { field ->
                 when (field) {
-                    "id" -> id = reader.nextLong()
                     "name" -> name = reader.nextString()
-                    "isSmart" -> smart = reader.nextBoolean()
-                    "songIds" -> reader.array { songs += reader.nextLong() }
+                    "roles" -> reader.array { roles += reader.nextString() }
+                    "albumKey" -> albumKey = reader.nextString()
+                    "trackId" -> trackId = if (reader.isNull()) null else reader.nextLong()
+                    "wholeRelease" -> whole = reader.nextBoolean()
                     else -> reader.skipValue()
                 }
             }
-            return Playlist(id, name, smart) to songs
+            return Credit(name = name, roles = roles.joinToString("\n"), albumKey = albumKey, trackId = trackId, wholeRelease = whole)
+        }
+
+        /** The Mac's saved presets and its current curve (bands kept as JSON, read by the player's equalizer). */
+        private fun equalizer(reader: JsonReader): List<MacEqPreset> {
+            val presets = mutableListOf<MacEqPreset>(); var current: MacEqPreset? = null; var enabled = false
+            reader.obj { field ->
+                when (field) {
+                    "presets" -> reader.array { presets += eqPreset(reader, isCurrent = false) }
+                    "current" -> current = if (reader.isNull()) null else eqPreset(reader, isCurrent = true)
+                    "isEnabled" -> enabled = reader.nextBoolean()
+                    else -> reader.skipValue()
+                }
+            }
+            return presets.distinctBy { it.name } + listOfNotNull(current?.copy(enabled = enabled))
+        }
+
+        private fun eqPreset(reader: JsonReader, isCurrent: Boolean): MacEqPreset {
+            var name = ""; var preamp = 0.0; val bands = org.json.JSONArray()
+            reader.obj { field ->
+                when (field) {
+                    "name" -> name = reader.nextString()
+                    "preamp" -> preamp = reader.nextDouble()
+                    "bands" -> reader.array {
+                        val band = org.json.JSONObject()
+                        reader.obj { key ->
+                            when (key) {
+                                "isEnabled" -> band.put(key, reader.nextBoolean())
+                                "type" -> band.put(key, reader.nextString())
+                                "frequency", "gain", "q" -> band.put(key, reader.nextDouble())
+                                else -> reader.skipValue()
+                            }
+                        }
+                        bands.put(band)
+                    }
+                    else -> reader.skipValue()
+                }
+            }
+            return MacEqPreset(name, isCurrent, preamp, bands.toString())
+        }
+
+        private fun playlist(reader: JsonReader): Pair<Playlist, List<Long>> {
+            var playlist = Playlist(0, ""); val songs = mutableListOf<Long>()
+            reader.obj { field ->
+                when (field) {
+                    "id" -> playlist = playlist.copy(id = reader.nextLong())
+                    "name" -> playlist = playlist.copy(name = reader.nextString())
+                    "isSmart" -> playlist = playlist.copy(isSmart = reader.nextBoolean())
+                    "songIds" -> reader.array { songs += reader.nextLong() }
+                    "cover" -> if (!reader.isNull()) reader.obj { key ->
+                        when (key) {
+                            "style" -> playlist = playlist.copy(coverStyle = reader.nextString())
+                            "palette" -> playlist = playlist.copy(coverPalette = reader.stringOrNull())
+                            "pattern" -> playlist = playlist.copy(coverPattern = reader.stringOrNull())
+                            "imageHash" -> playlist = playlist.copy(coverHash = reader.stringOrNull())
+                            "showsTitle" -> playlist = playlist.copy(coverShowsTitle = reader.nextBoolean())
+                            else -> reader.skipValue()
+                        }
+                    }
+                    else -> reader.skipValue()
+                }
+            }
+            return playlist to songs
         }
 
         private inline fun JsonReader.array(each: () -> Unit) {

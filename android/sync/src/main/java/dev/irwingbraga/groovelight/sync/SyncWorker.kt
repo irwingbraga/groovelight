@@ -66,8 +66,11 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
         val engine = SyncEngine(applicationContext, prefs)
         if (inputData.getBoolean(PERIODIC, false)) {
             val due = runCatching {
-                val status = engine.connect().status()
-                status.optBoolean("syncRequested") || status.optInt("pendingSends") > 0 ||
+                val client = engine.connect()
+                // Albums, artists or songs asked for while the Mac was away go first.
+                val requested = Transfers.send(applicationContext, client)
+                val status = client.status()
+                requested || status.optBoolean("syncRequested") || status.optInt("pendingSends") > 0 ||
                     System.currentTimeMillis() - prefs.lastSync > TimeUnit.HOURS.toMillis(6)
             }.getOrDefault(false)
             if (!due) return Result.success()

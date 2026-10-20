@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The covers Share may hand to another app: the Mac's (synced) and the small ones of its whole library. -->
+<paths>
+    <files-path name="covers" path="artwork/" />
+    <files-path name="catalog-covers" path="catalog-artwork/" />
+</paths>

@@ -1,0 +1,81 @@
+{
+  "albums" : [
+    {
+      "artist" : "Radiohead",
+      "artworkHash" : "abc",
+      "isCompilation" : false,
+      "key" : "radiohead|ok computer",
+      "title" : "OK Computer",
+      "year" : 1997
+    },
+    {
+      "artist" : "Radiohead",
+      "isCompilation" : false,
+      "key" : "radiohead|kid a",
+      "title" : "Kid A",
+      "year" : 2000
+    },
+    {
+      "artist" : "Various Artists",
+      "isCompilation" : true,
+      "key" : "compilation|hits",
+      "title" : "Hits"
+    }
+  ],
+  "chosen" : {
+    "albumKeys" : [
+      "radiohead|ok computer"
+    ],
+    "artists" : [
+
+    ],
+    "everything" : false,
+    "excludedTrackIds" : [
+      201
+    ],
+    "hasOthers" : false,
+    "trackIds" : [
+      301
+    ]
+  },
+  "songs" : [
+    {
+      "albumKey" : "radiohead|ok computer",
+      "artist" : "Radiohead",
+      "artworkHash" : "abc",
+      "bitDepth" : 24,
+      "codec" : "flac",
+      "discNumber" : 1,
+      "duration" : 284.5,
+      "genre" : "Alternative",
+      "id" : 101,
+      "sampleRate" : 96000,
+      "title" : "Airbag",
+      "trackNumber" : 1,
+      "year" : 1997
+    },
+    {
+      "albumKey" : "radiohead|kid a",
+      "artist" : "Radiohead",
+      "bitDepth" : 16,
+      "codec" : "alac",
+      "duration" : 309,
+      "id" : 201,
+      "sampleRate" : 44100,
+      "title" : "Idioteque",
+      "trackNumber" : 8,
+      "year" : 2000
+    },
+    {
+      "albumKey" : "compilation|hits",
+      "artist" : "Someone",
+      "codec" : "mp3",
+      "duration" : 200,
+      "genre" : "Pop",
+      "id" : 301,
+      "sampleRate" : 44100,
+      "title" : "Song"
+    }
+  ],
+  "version" : 1
+}

@@ -16,8 +16,25 @@ import dev.irwingbraga.groovelight.library.LibraryDatabase
 import dev.irwingbraga.groovelight.library.Playlist
 import dev.irwingbraga.groovelight.library.PlaylistSummary
 import dev.irwingbraga.groovelight.library.Track
+import dev.irwingbraga.groovelight.library.Availability
+import dev.irwingbraga.groovelight.library.CatalogAlbum
+import dev.irwingbraga.groovelight.library.CatalogArtist
+import dev.irwingbraga.groovelight.library.CatalogTrack
+import dev.irwingbraga.groovelight.library.Choice
+import dev.irwingbraga.groovelight.library.Credit
+import dev.irwingbraga.groovelight.library.TransferRequest
+import dev.irwingbraga.groovelight.sync.MacError
+import dev.irwingbraga.groovelight.sync.SyncEngine
+import dev.irwingbraga.groovelight.sync.SyncWorker
+import dev.irwingbraga.groovelight.sync.Transfers
+import kotlinx.coroutines.Dispatchers
+import dev.irwingbraga.groovelight.library.PersonSummary
+import dev.irwingbraga.groovelight.library.ftsQuery
 import dev.irwingbraga.groovelight.library.likePattern
+import dev.irwingbraga.groovelight.playback.EqPreset
 import dev.irwingbraga.groovelight.playback.Normalization
+import kotlinx.coroutines.launch
+import org.json.JSONArray
 import dev.irwingbraga.groovelight.sync.DeviceFolder
 import dev.irwingbraga.groovelight.sync.Prefs
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -40,9 +57,21 @@ class LibraryModel(application: Application) : AndroidViewModel(application) {
     enum class AlbumOrder(val label: String) { ARTIST("Artist"), TITLE("Title"), YEAR("Year"), RECENT("Recently added") }
     enum class SongOrder(val label: String) { TITLE("Title"), ARTIST("Artist"), ALBUM("Album"), RECENT("Recently added") }
 
-    data class SearchResults(val query: String, val artists: List<ArtistSummary>, val albums: List<Album>, val songs: List<Track>) {
-        val isEmpty get() = artists.isEmpty() && albums.isEmpty() && songs.isEmpty()
+    data class SearchResults(
+        val query: String,
+        val artists: List<ArtistSummary>,
+        val albums: List<Album>,
+        val songs: List<Track>,
+        val people: List<PersonSummary> = emptyList(),
+    ) {
+        val isEmpty get() = artists.isEmpty() && albums.isEmpty() && songs.isEmpty() && people.isEmpty()
     }
+
+    /** What a person did: albums credited to them (with their roles there) and songs (album by album). */
+    data class PersonPage(val albums: List<Pair<Album, List<String>>>, val songs: List<Pair<Track, List<String>>>, val roles: List<String>)
+
+    /** An equalizer curve from the Mac: one it saved, or the one it uses ([isCurrent]). */
+    data class MacPreset(val preset: EqPreset, val isCurrent: Boolean, val enabled: Boolean)
 
     private val library = LibraryDatabase.get(application).library()
     val artwork = ArtworkStore(application)
@@ -103,6 +132,172 @@ class LibraryModel(application: Application) : AndroidViewModel(application) {
     fun tracksOfPlaylist(id: Long): Flow<List<Track>> = library.tracksOfPlaylist(id)
     fun lovedTracks(): Flow<List<Track>> = library.lovedTracks()
     fun track(id: Long): Flow<Track?> = library.track(id)
+    fun creditsOfAlbum(key: String): Flow<List<Credit>> = library.creditsOfAlbum(key)
+
+    fun person(name: String): Flow<PersonPage> = library.creditsOf(name).map { credits ->
+        val albumRoles = LinkedHashMap<String, MutableList<String>>()
+        val songRoles = LinkedHashMap<Long, MutableList<String>>()
+        val wholeAlbums = mutableSetOf<String>()
+        val counts = mutableMapOf<String, Int>()
+        for (credit in credits) {
+            val roles = credit.roles.split('\n').filter { it.isNotBlank() }
+            roles.forEach { counts[it] = (counts[it] ?: 0) + 1 }
+            if (credit.trackId == null) albumRoles.getOrPut(credit.albumKey) { mutableListOf() }.addAll(roles)
+            else {
+                songRoles.getOrPut(credit.trackId!!) { mutableListOf() }.addAll(roles)
+                wholeAlbums += credit.albumKey
+            }
+        }
+        val albums = library.albumsWithKeys((albumRoles.keys + wholeAlbums).toList())
+        val songs = library.tracksWithIds(songRoles.keys.toList()).sortedWith(compareBy<Track> { albums.indexOfFirst { a -> a.key == it.albumKey } }
+            .thenBy { it.discNumber ?: 1 }.thenBy { it.trackNumber ?: 0 })
+        PersonPage(albums.map { it to (albumRoles[it.key]?.distinct() ?: songs.filter { s -> s.albumKey == it.key }.flatMap { s -> songRoles[s.id].orEmpty() }.distinct()) },
+            songs.map { it to songRoles[it.id].orEmpty().distinct() }, counts.entries.sortedByDescending { it.value }.map { it.key })
+    }
+
+    fun setLoved(id: Long, loved: Boolean) { viewModelScope.launch { library.setLoved(id, loved) } }
+    fun setRating(id: Long, stars: Int) { viewModelScope.launch { library.setRating(id, stars) } }
+
+    /** The Mac's equalizer curves: the one it uses first, then its saved presets. */
+    val macPresets: StateFlow<List<MacPreset>> = library.macEqPresets().map { rows ->
+        rows.map { row ->
+            val bands = runCatching { EqPreset.bands(JSONArray(row.bands)) }.getOrDefault(EqPreset.FLAT.bands)
+            MacPreset(EqPreset(row.name, row.preamp, bands), row.isCurrent, row.enabled)
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** How to draw a playlist's cover (with its songs' covers, read when needed). */
+    suspend fun playlistArt(playlist: Playlist): PlaylistArt = PlaylistArt(
+        playlist.id, playlist.name, playlist.coverStyle, playlist.coverPalette, playlist.coverPattern, cover(playlist.coverHash),
+        playlist.coverShowsTitle, library.playlistCovers(playlist.id).mapNotNull { cover(it) })
+
+    suspend fun playlistArt(summary: PlaylistSummary): PlaylistArt = PlaylistArt(
+        summary.id, summary.name, summary.coverStyle, summary.coverPalette, summary.coverPattern, cover(summary.coverHash),
+        summary.coverShowsTitle, library.playlistCovers(summary.id).mapNotNull { cover(it) })
+
+    // MARK: The Mac's whole library
+
+    /** Which library the Library tab shows: this device's, or the Mac's whole one. */
+    enum class Source { DEVICE, MAC }
+
+    val source = MutableStateFlow(settings.getString("source", null)?.let { runCatching { Source.valueOf(it) }.getOrNull() } ?: Source.DEVICE)
+
+    fun setSource(value: Source) {
+        source.value = value
+        settings.edit { putString("source", value.name) }
+        if (value == Source.MAC) refreshCatalog()
+    }
+
+    private val catalog = LibraryDatabase.get(application).catalog()
+    val catalogAlbums: StateFlow<List<CatalogAlbum>?> = catalog.albums().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+    val catalogArtists: StateFlow<List<CatalogArtist>?> = catalog.artists().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+    val catalogTracks: StateFlow<List<CatalogTrack>?> = catalog.tracks().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+    fun catalogAlbum(key: String): Flow<CatalogAlbum?> = catalog.album(key)
+    fun catalogTracksOfAlbum(key: String): Flow<List<CatalogTrack>> = catalog.tracksOfAlbum(key)
+    fun catalogAlbumsOf(artist: String): Flow<List<CatalogAlbum>> = catalog.albumsOf(artist)
+    val catalogAlbumsByKey: StateFlow<Map<String, CatalogAlbum>> = catalog.albums().map { albums -> albums.associateBy { it.key } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+
+    /**
+     * What this device holds and will hold: its albums and songs, the selection on the Mac as last known, and the same
+     * with the requests not sent yet. Each album's or song's [Availability] comes from it.
+     */
+    data class Holdings(
+        val albumKeys: Set<String> = emptySet(),
+        val trackIds: Set<Long> = emptySet(),
+        val chosen: Choice = Choice(),
+        val after: Choice = Choice(),
+        val waiting: Int = 0,
+        /** The Mac's songs of each album, to tell an album whose songs were all removed. */
+        val albumSongs: Map<String, Set<Long>> = emptyMap(),
+    ) {
+        fun of(album: CatalogAlbum): Availability {
+            val songs = albumSongs[album.key].orEmpty()
+            return Availability.of(album.key in albumKeys, chosen.holdsAlbum(album, songs), after.holdsAlbum(album, songs), chosen.hasOthers,
+                removed = songs.isNotEmpty() && after.excludedTrackIds.containsAll(songs))
+        }
+        fun of(track: CatalogTrack, album: CatalogAlbum?) =
+            Availability.of(track.id in trackIds, chosen.holdsSong(track, album), after.holdsSong(track, album), chosen.hasOthers,
+                removed = after.excludes(track.id))
+        /** Whether removing the album from here would do anything: it is chosen as an album (or all its artist's). */
+        fun canRemove(album: CatalogAlbum) = !after.everything && (album.key in after.albumKeys || album.artist in after.artists)
+        fun canRemove(track: CatalogTrack) = !after.everything && track.id in after.trackIds
+    }
+
+    val holdings: StateFlow<Holdings> = combine(library.albums(), library.tracks(), catalog.chosen(), catalog.pending(), catalog.tracks()) {
+            albums, tracks, chosen, pending, catalogTracks ->
+        val choice = Choice.of(chosen)
+        val albumSongs = catalogTracks.groupBy { it.albumKey }.mapValues { (_, songs) -> songs.map { it.id }.toSet() }
+        // Waiting removals and additions of albums, artists and songs stand for their songs, as on the Mac (playlists
+        // are not shown there: the Mac works theirs out).
+        val songs = { kind: String, key: String ->
+            when (kind) {
+                TransferRequest.ALBUM -> albumSongs[key].orEmpty()
+                TransferRequest.ARTIST -> catalogTracks.filter { it.artist == key }.map { it.id }.toSet() + albumsOfArtist(key, albumSongs)
+                TransferRequest.SONG -> setOfNotNull(key.toLongOrNull())
+                else -> emptySet()
+            }
+        }
+        Holdings(albums.map { it.key }.toSet(), tracks.map { it.id }.toSet(), choice, choice.applying(pending, songs), pending.size, albumSongs)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), Holdings())
+
+    private val catalogAlbumArtists = catalog.albums().map { albums -> albums.associate { it.key to it.artist } }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
+
+    private fun albumsOfArtist(artist: String, albumSongs: Map<String, Set<Long>>): Set<Long> =
+        catalogAlbumArtists.value.filterValues { it == artist }.keys.flatMap { albumSongs[it].orEmpty() }.toSet()
+
+    /** Whether the Mac's library is being fetched, and whether the Mac answered the last time. */
+    data class CatalogState(val loading: Boolean = false, val reachable: Boolean? = null, val error: String? = null)
+
+    val catalogState = MutableStateFlow(CatalogState())
+
+    /** Fetches the Mac's library when it changed (and sends waiting requests while connected). */
+    fun refreshCatalog() {
+        if (catalogState.value.loading) return
+        catalogState.value = catalogState.value.copy(loading = true)
+        viewModelScope.launch(Dispatchers.IO) {
+            val app = getApplication<Application>()
+            val result = runCatching {
+                val client = SyncEngine(app, prefs).connect()
+                // The Mac's library only travels over HTTPS (it describes the whole library).
+                if (prefs.tlsPort == 0) throw IllegalStateException(NO_TLS)
+                if (Transfers.send(app, client) && prefs.folder != null) SyncWorker.syncNow(app)
+                Transfers.refreshCatalog(app, client, prefs)
+            }
+            if (result.isSuccess) Transfers.retryCovers()
+            // The Mac answered, even when its library could not be read.
+            val answered = result.isSuccess || result.exceptionOrNull() is IllegalStateException ||
+                (result.exceptionOrNull() as? MacError)?.status?.let { it > 0 } == true
+            Transfers.reachable.value = answered
+            catalogState.value = CatalogState(loading = false, reachable = answered, error = result.exceptionOrNull()?.message)
+        }
+    }
+
+    private companion object {
+        const val NO_TLS = "Groovelight on the Mac is not offering its secure connection, which its library needs here. If macOS asks " +
+            "on the Mac whether Groovelight may use its key, choose Always Allow; otherwise quit Groovelight there and open it again."
+    }
+
+    /** Asks for an album, artist or song on this device (or to remove it); sent now or when the Mac is reachable. */
+    fun request(action: String, kind: String, key: String) {
+        viewModelScope.launch { Transfers.request(getApplication(), action, kind, key) }
+    }
+
+    private val catalogCovers = Transfers.covers(application)
+
+    /** A cover for the Mac's library: the device's when it has it, else the small one fetched from the Mac. */
+    fun catalogCover(hash: String?): File? = hash?.let { cover(it) ?: catalogCovers.file(it).takeIf { file -> file.length() > 0 } }
+
+    suspend fun fetchCatalogCover(hash: String): Boolean = Transfers.fetchCover(getApplication(), hash)
+
+    /** Cover size in the Albums grid (dp), changed by pinching. */
+    val gridSize = MutableStateFlow(settings.getFloat("gridSize", 160f))
+
+    fun setGridSize(size: Float) {
+        gridSize.value = size.coerceIn(96f, 280f)
+        settings.edit { putFloat("gridSize", gridSize.value) }
+    }
 
     /** The search field's text; results follow it, a moment after typing stops. */
     val query = MutableStateFlow("")
@@ -110,10 +305,14 @@ class LibraryModel(application: Application) : AndroidViewModel(application) {
         flow {
             if (text.isBlank()) emit(null) else {
                 val pattern = likePattern(text)
-                emit(SearchResults(text, library.searchArtists(pattern, 5), library.searchAlbums(pattern, 12), library.searchTracks(pattern, 50)))
+                val songs = ftsQuery(text)?.let { library.searchTracks(it, 50) }.orEmpty()
+                emit(SearchResults(text, library.searchArtists(pattern, 5), library.searchAlbums(pattern, 12), songs, library.searchPeople(pattern, 5)))
             }
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** A song's file in the music folder, to share it. */
+    fun fileUri(track: Track): Uri? = prefs.folder?.toUri()?.let { DeviceFolder.documentUri(it, track.path) }
 
     /** A cover file, when the Mac sent one. */
     fun cover(hash: String?): File? = hash?.let { artwork.file(it) }?.takeIf { it.exists() }
@@ -128,7 +327,7 @@ class LibraryModel(application: Application) : AndroidViewModel(application) {
         val albums = albumsByKey.value
         return tracks.map { track ->
             val album = albums[track.albumKey]
-            val extras = Normalization.extras(track.normalizationGain).apply {
+            val extras = Normalization.extras(track.normalizationGain, track.albumGain).apply {
                 putString(PlayerModel.ALBUM_KEY, track.albumKey)
                 if (source != null) putString(PlayerModel.SOURCE, source)
             }

@@ -16,8 +16,72 @@
     }
   ],
   "createdAt" : "2027-01-15T08:00:00Z",
+  "credits" : [
+    {
+      "albumKey" : "radiohead|ok computer",
+      "name" : "Nigel Godrich",
+      "roles" : [
+        "producer",
+        "engineer"
+      ],
+      "wholeRelease" : false
+    },
+    {
+      "albumKey" : "radiohead|ok computer",
+      "name" : "Jonny Greenwood",
+      "roles" : [
+        "guitar"
+      ],
+      "trackId" : 102,
+      "wholeRelease" : false
+    }
+  ],
+  "equalizer" : {
+    "current" : {
+      "bands" : [
+        {
+          "frequency" : 63,
+          "gain" : 6,
+          "isEnabled" : true,
+          "q" : 2.15,
+          "type" : "peak"
+        }
+      ],
+      "name" : "Bass",
+      "preamp" : -6
+    },
+    "isEnabled" : true,
+    "presets" : [
+      {
+        "bands" : [
+          {
+            "frequency" : 105,
+            "gain" : 5.5,
+            "isEnabled" : true,
+            "q" : 0.7,
+            "type" : "lowShelf"
+          },
+          {
+            "frequency" : 2500,
+            "gain" : -2,
+            "isEnabled" : false,
+            "q" : 1.41,
+            "type" : "peak"
+          }
+        ],
+        "name" : "Headphones",
+        "preamp" : -3.5
+      }
+    ]
+  },
   "playlists" : [
     {
+      "cover" : {
+        "palette" : "ocean",
+        "pattern" : "vinyl",
+        "showsTitle" : true,
+        "style" : "generated"
+      },
       "id" : 7,
       "isSmart" : false,
       "name" : "Mix",

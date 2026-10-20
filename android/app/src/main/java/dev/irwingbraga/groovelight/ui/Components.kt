@@ -1,5 +1,15 @@
 package dev.irwingbraga.groovelight.ui
 
+import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.FilledIconButton
+import androidx.compose.runtime.Immutable
+import dev.irwingbraga.groovelight.library.TransferRequest
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.AlertDialog
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
@@ -58,6 +68,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -126,7 +138,9 @@ fun Cover(file: File?, modifier: Modifier, round: Boolean = false, corner: Dp = 
     Box(modifier.aspectRatio(1f).clip(shape).background(MaterialTheme.colorScheme.surfaceContainerHighest), contentAlignment = Alignment.Center) {
         if (file != null) {
             AsyncImage(
-                model = ImageRequest.Builder(LocalContext.current).data(file).crossfade(true).build(),
+                // One memory cache entry per cover, whatever its size: a page shows the image its list had at once.
+                model = ImageRequest.Builder(LocalContext.current).data(file).memoryCacheKey(file.path).placeholderMemoryCacheKey(file.path)
+                    .crossfade(true).build(),
                 contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
             )
         } else {
@@ -222,7 +236,7 @@ fun SongRow(
                             tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     SongMenu(listOf(track), expanded = menu, onDismiss = { menu = false },
-                        albumKey = track.albumKey.takeIf { showAlbumLink }, artist = track.artist)
+                        albumKey = track.albumKey.takeIf { showAlbumLink }, artist = track.artist, subject = MenuSubject.Song(track))
                 }
             }
         },
@@ -234,10 +248,25 @@ fun SongRow(
     )
 }
 
-/** Play Next, Add to Queue, and going to the album or artist (when given). */
+/** What a menu is about, for Share and Remove from This Device. */
+sealed interface MenuSubject {
+    data class Song(val track: Track) : MenuSubject
+    data class AlbumOf(val album: Album) : MenuSubject
+    data class Artist(val name: String) : MenuSubject
+    data class PlaylistOf(val id: Long, val name: String) : MenuSubject
+}
+
+/**
+ * Play Next, Add to Queue, going to the album or artist (when given), and for `subject`: Share (songs and albums),
+ * Share File (a song) and Remove from This Device, which asks first. Removing deletes the songs from this device only:
+ * the Mac's library keeps them.
+ */
 @Composable
-fun SongMenu(tracks: List<Track>, expanded: Boolean, onDismiss: () -> Unit, albumKey: String? = null, artist: String? = null) {
+fun SongMenu(tracks: List<Track>, expanded: Boolean, onDismiss: () -> Unit, albumKey: String? = null, artist: String? = null,
+             subject: MenuSubject? = null) {
     val actions = LocalActions.current
+    val context = LocalContext.current
+    var removing by remember { mutableStateOf(false) }
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
         DropdownMenuItem(text = { Text("Play Next") }, leadingIcon = { Icon(painterResource(R.drawable.ic_play_next), null) },
             onClick = { onDismiss(); actions.playNext(tracks) })
@@ -251,7 +280,66 @@ fun SongMenu(tracks: List<Track>, expanded: Boolean, onDismiss: () -> Unit, albu
             DropdownMenuItem(text = { Text("Go to Artist") }, leadingIcon = { Icon(painterResource(R.drawable.ic_person), null) },
                 onClick = { onDismiss(); actions.open(Route.ArtistPage(artist)) })
         }
+        when (subject) {
+            is MenuSubject.Song -> {
+                val track = subject.track
+                DropdownMenuItem(text = { Text("Share") }, leadingIcon = { Icon(painterResource(R.drawable.ic_share), null) }, onClick = {
+                    onDismiss()
+                    val album = actions.library.albumsByKey.value[track.albumKey]
+                    shareText(context, track.title, songShareText(track.title, track.artist, album?.title, track.year ?: album?.year),
+                        actions.library.cover(track.artworkHash ?: album?.artworkHash))
+                })
+                actions.library.fileUri(track)?.let { uri ->
+                    DropdownMenuItem(text = { Text("Share File") }, leadingIcon = { Icon(painterResource(R.drawable.ic_file), null) }, onClick = {
+                        onDismiss()
+                        shareFile(context, track.title, uri, audioMimeType(track.codec))
+                    })
+                }
+            }
+            is MenuSubject.AlbumOf -> {
+                val album = subject.album
+                DropdownMenuItem(text = { Text("Share") }, leadingIcon = { Icon(painterResource(R.drawable.ic_share), null) }, onClick = {
+                    onDismiss()
+                    shareText(context, album.title, albumShareText(album.title, album.artist, album.year), actions.library.cover(album.artworkHash))
+                })
+            }
+            else -> {}
+        }
+        if (subject != null) {
+            HorizontalDivider()
+            DropdownMenuItem(text = { Text("Remove from This Device") }, leadingIcon = { Icon(painterResource(R.drawable.ic_delete), null) },
+                onClick = { onDismiss(); removing = true })
+        }
     }
+    if (removing && subject != null) RemoveDialog(subject, tracks.size) { removing = false }
+}
+
+/** Asks before removing an album, artist, song or playlist from this device (the Mac keeps it). */
+@Composable
+private fun RemoveDialog(subject: MenuSubject, songs: Int, onDone: () -> Unit) {
+    val actions = LocalActions.current
+    val (kind, key, name, what) = when (subject) {
+        is MenuSubject.Song -> listOf(TransferRequest.SONG, subject.track.id.toString(), subject.track.title, "This song")
+        is MenuSubject.AlbumOf -> listOf(TransferRequest.ALBUM, subject.album.key, subject.album.title, if (songs == 1) "Its song" else "Its $songs songs")
+        is MenuSubject.Artist -> listOf(TransferRequest.ARTIST, subject.name, subject.name, "Their songs")
+        is MenuSubject.PlaylistOf -> listOf(TransferRequest.PLAYLIST, subject.id.toString(), subject.name, "The playlist and its songs")
+    }
+    AlertDialog(
+        onDismissRequest = onDone,
+        title = { Text("Remove “$name” from This Device?") },
+        text = {
+            Text("$what will be deleted from this device at the next sync, to free its space. Your Mac's library keeps everything; " +
+                "add it again from Library, On the Mac.")
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                actions.library.request(TransferRequest.REMOVE, kind, key)
+                actions.notify("“$name” will be removed from this device")
+                onDone()
+            }) { Text("Remove", color = MaterialTheme.colorScheme.error) }
+        },
+        dismissButton = { TextButton(onClick = onDone) { Text("Cancel") } },
+    )
 }
 
 /** An album in a grid: cover, title and artist; long press offers the album's menu. */
@@ -266,14 +354,27 @@ fun AlbumCard(album: Album, subtitle: String = album.artist, onOpen: () -> Unit)
         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
         menu = true
     }, onLongClickLabel = "More actions").padding(4.dp)) {
-        Cover(actions.library.cover(album.artworkHash), Modifier.fillMaxWidth())
+        Cover(actions.library.cover(album.artworkHash), Modifier.sharedCover("album:${album.key}").fillMaxWidth())
         Spacer(Modifier.height(8.dp))
         Text(album.title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1, overflow = TextOverflow.Ellipsis)
         LaunchedEffect(menu) { if (menu) tracks = actions.library.tracksOfAlbum(album.key).first() }
         Box { SongMenu(tracks, expanded = menu && tracks.isNotEmpty(), onDismiss = { menu = false },
-            artist = album.artist.takeUnless { album.isCompilation }) }
+            artist = album.artist.takeUnless { album.isCompilation }, subject = MenuSubject.AlbumOf(album)) }
+    }
+}
+
+/** Play and Shuffle side by side, small, for headers in short windows. */
+@Composable
+fun CompactPlayButtons(onPlay: () -> Unit, onShuffle: () -> Unit, modifier: Modifier = Modifier) {
+    Row(modifier, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FilledIconButton(onClick = onPlay, modifier = Modifier.size(44.dp)) {
+            Icon(painterResource(R.drawable.ic_play), contentDescription = "Play")
+        }
+        FilledTonalIconButton(onClick = onShuffle, modifier = Modifier.size(44.dp)) {
+            Icon(painterResource(R.drawable.ic_shuffle), contentDescription = "Shuffle")
+        }
     }
 }
 
@@ -405,11 +506,72 @@ fun duration(milliseconds: Long): String {
 /** "12 songs, 48 minutes" (hours past one). */
 fun songsSummary(tracks: List<Track>): String {
     val songs = if (tracks.size == 1) "1 song" else "${tracks.size} songs"
-    val minutes = (tracks.sumOf { it.durationMs } / 60_000).toInt()
+    val seconds = (tracks.sumOf { it.durationMs } / 1_000).toInt()
+    // To the nearest minute; under a minute, in seconds.
+    val minutes = (seconds + 30) / 60
     val length = when {
+        seconds < 60 -> if (seconds == 1) "1 second" else "$seconds seconds"
         minutes >= 60 -> "${minutes / 60} hr ${minutes % 60} min"
         minutes == 1 -> "1 minute"
         else -> "$minutes minutes"
     }
     return "$songs, $length"
 }
+
+/**
+ * Two fingers pinching: `onZoom` gets how much they spread (above 1) or closed (below 1) since the last call. One
+ * finger is left alone, so lists under it still scroll.
+ */
+fun Modifier.pinchToResize(onZoom: (Float) -> Unit): Modifier = pointerInput(Unit) {
+    awaitEachGesture {
+        var previous: Float? = null
+        do {
+            val event = awaitPointerEvent(PointerEventPass.Initial)
+            val pressed = event.changes.filter { it.pressed }
+            if (pressed.size >= 2) {
+                val distance = (pressed[0].position - pressed[1].position).getDistance()
+                previous?.let { if (it > 0f) onZoom(distance / it) }
+                previous = distance
+                event.changes.forEach { it.consume() }
+            } else previous = null
+        } while (pressed.isNotEmpty())
+    }
+}
+
+/** The shared transition of the player's pages (covers moving between a list and their page). */
+val LocalSharedTransition = staticCompositionLocalOf<SharedTransitionScope?> { null }
+
+/** The animation of the page being shown, for its shared elements (null outside pages, as in Now Playing). */
+val LocalPageScope = staticCompositionLocalOf<AnimatedVisibilityScope?> { null }
+
+/**
+ * Links a cover to the same one on another page (`key`: "album:<key>", "artist:<name>", "playlist:<id>"...): opening
+ * the page, the tapped cover grows into the page's cover, and Back puts it back. Nothing outside pages.
+ */
+@Composable
+fun Modifier.sharedCover(key: String): Modifier {
+    val shared = LocalSharedTransition.current ?: return this
+    val page = LocalPageScope.current ?: return this
+    return with(shared) {
+        this@sharedCover.sharedElement(rememberSharedContentState("cover:$key"), animatedVisibilityScope = page,
+            boundsTransform = { _, _ -> tween(340, easing = FastOutSlowInEasing) })
+    }
+}
+
+/**
+ * How small the app's window is: `short` under 480 dp tall (a phone in landscape, or split screen beside a map in a
+ * car), `narrow` under 480 dp wide (a half or a third of a landscape screen). Screens trade decoration for content there.
+ */
+@Immutable
+data class WindowShape(val short: Boolean = false, val narrow: Boolean = false) {
+    val compact: Boolean get() = short || narrow
+
+    companion object {
+        fun of(window: androidx.window.core.layout.WindowSizeClass) = WindowShape(
+            short = !window.isHeightAtLeastBreakpoint(androidx.window.core.layout.WindowSizeClass.HEIGHT_DP_MEDIUM_LOWER_BOUND),
+            narrow = !window.isWidthAtLeastBreakpoint(480),
+        )
+    }
+}
+
+val LocalWindowShape = staticCompositionLocalOf { WindowShape() }

@@ -44,7 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.irwingbraga.groovelight.R
 
-/** Search across the library: artists, albums and songs matching the words typed (titles and names). */
+/** Search across the library: artists, albums, songs and the people credited, matching the words typed. */
 @Composable
 fun SearchScreen() {
     val actions = LocalActions.current
@@ -59,7 +59,7 @@ fun SearchScreen() {
         TextField(
             value = query,
             onValueChange = { actions.library.query.value = it },
-            placeholder = { Text("Artists, albums and songs") },
+            placeholder = { Text("Artists, albums, songs and credits") },
             leadingIcon = { Icon(painterResource(R.drawable.ic_search), contentDescription = null) },
             trailingIcon = {
                 if (query.isNotEmpty()) IconButton(onClick = { actions.library.query.value = ""; runCatching { focus.requestFocus() } }) {
@@ -87,7 +87,7 @@ fun SearchScreen() {
                         ListItem(
                             headlineContent = { Text(artist.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                             supportingContent = { Text("Artist") },
-                            leadingContent = { Cover(actions.library.cover(artist.artworkHash), Modifier.size(48.dp), round = true) },
+                            leadingContent = { Cover(actions.library.cover(artist.artworkHash), Modifier.sharedCover("artist:${artist.name}").size(48.dp), round = true) },
                             colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                             modifier = Modifier.clickable { focusManager.clearFocus(); actions.open(Route.ArtistPage(artist.name)) },
                         )
@@ -103,6 +103,18 @@ fun SearchScreen() {
                                 }
                             }
                         }
+                    }
+                }
+                if (found.people.isNotEmpty()) {
+                    item(key = "people") { SectionTitle("People") }
+                    items(found.people, key = { "person:${it.name}" }) { person ->
+                        ListItem(
+                            headlineContent = { Text(person.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                            supportingContent = { Text(if (person.albums == 1) "Credited on 1 album" else "Credited on ${person.albums} albums") },
+                            leadingContent = { Cover(null, Modifier.size(48.dp), round = true) },
+                            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                            modifier = Modifier.clickable { focusManager.clearFocus(); actions.open(Route.PersonPage(person.name)) },
+                        )
                     }
                 }
                 if (found.songs.isNotEmpty()) {

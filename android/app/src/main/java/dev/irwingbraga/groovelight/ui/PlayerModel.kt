@@ -16,6 +16,7 @@ import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import dev.irwingbraga.groovelight.playback.AudioPathReport
 import dev.irwingbraga.groovelight.playback.PlaybackService
+import dev.irwingbraga.groovelight.playback.SleepTimer
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -66,6 +67,10 @@ class PlayerModel(application: Application) : AndroidViewModel(application) {
     private val shuffling = MutableStateFlow(prefs.getBoolean("shuffle", false))
     val shuffle: StateFlow<Boolean> = shuffling.asStateFlow()
     val audioPath = AudioPathReport.current
+    private val speeds = MutableStateFlow(1f)
+    /** Playback speed (1 is normal; the pitch is kept). */
+    val speed: StateFlow<Float> = speeds.asStateFlow()
+    val sleepTimer = SleepTimer.state
 
     private var controller: MediaController? = null
     private val listener = object : Player.Listener {
@@ -76,6 +81,7 @@ class PlayerModel(application: Application) : AndroidViewModel(application) {
                 if (!shuffling.value) toggleShuffle()
             }
             update(player)
+            if (events.contains(Player.EVENT_PLAYBACK_PARAMETERS_CHANGED)) speeds.value = player.playbackParameters.speed
             if (events.containsAny(Player.EVENT_TIMELINE_CHANGED, Player.EVENT_MEDIA_ITEM_TRANSITION)) updateQueue(player)
         }
     }
@@ -89,6 +95,7 @@ class PlayerModel(application: Application) : AndroidViewModel(application) {
                 connected.addListener(listener)
                 update(connected)
                 updateQueue(connected)
+                speeds.value = connected.playbackParameters.speed
             }
         }, ContextCompat.getMainExecutor(application))
     }
@@ -267,6 +274,17 @@ class PlayerModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun next() { controller?.seekToNext() }
+
+    fun setSpeed(speed: Float) { controller?.setPlaybackSpeed(speed) }
+
+    /** Pauses after `minutes`, or at the end of the song playing (null); 0 cancels. */
+    fun sleepIn(minutes: Int?) {
+        when (minutes) {
+            null -> SleepTimer.endOfSong()
+            0 -> SleepTimer.cancel()
+            else -> SleepTimer.start(minutes)
+        }
+    }
 
     /** The previous song, or the start of this one after its first seconds. */
     fun previous() { controller?.seekToPrevious() }

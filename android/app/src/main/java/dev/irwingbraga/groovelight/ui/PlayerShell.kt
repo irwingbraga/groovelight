@@ -1,6 +1,16 @@
 package dev.irwingbraga.groovelight.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.ContentTransform
+import androidx.compose.animation.SharedTransitionLayout
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
+import androidx.navigation3.ui.LocalNavAnimatedContentScope
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -71,22 +81,38 @@ import kotlin.math.abs
 sealed interface Route {
     data object Library : Route
     data object Search : Route
+    data object Shelf : Route
+    data object Settings : Route
     data object Sync : Route
+    data object Equalizer : Route
     data class AlbumPage(val key: String) : Route
     data class ArtistPage(val name: String) : Route
     data class PlaylistPage(val id: Long) : Route
+    data class PersonPage(val name: String) : Route
+    data class MacAlbumPage(val key: String) : Route
+    data class MacArtistPage(val name: String) : Route
     data object LovedSongs : Route
+
+    /** A page of the library (it opens in the Library tab when asked from Settings). */
+    val isLibraryPage: Boolean get() = this is AlbumPage || this is ArtistPage || this is PlaylistPage || this is PersonPage || this == LovedSongs ||
+        this is MacAlbumPage || this is MacArtistPage
 
     companion object {
         /** As text, for saving the tabs' screens across process death. */
         fun encode(route: Route): String = when (route) {
             Library -> "library"
             Search -> "search"
+            Shelf -> "shelf"
+            Settings -> "settings"
             Sync -> "sync"
+            Equalizer -> "equalizer"
             LovedSongs -> "loved"
             is AlbumPage -> "album:${route.key}"
             is ArtistPage -> "artist:${route.name}"
             is PlaylistPage -> "playlist:${route.id}"
+            is PersonPage -> "person:${route.name}"
+            is MacAlbumPage -> "macalbum:${route.key}"
+            is MacArtistPage -> "macartist:${route.name}"
         }
 
         fun decode(text: String): Route? {
@@ -95,10 +121,16 @@ sealed interface Route {
             return when (kind) {
                 "library" -> Library
                 "search" -> Search
+                "shelf" -> Shelf
+                "settings" -> Settings
                 "sync" -> Sync
+                "equalizer" -> Equalizer
                 "loved" -> LovedSongs
                 "album" -> AlbumPage(value)
                 "artist" -> ArtistPage(value)
+                "person" -> PersonPage(value)
+                "macalbum" -> MacAlbumPage(value)
+                "macartist" -> MacArtistPage(value)
                 "playlist" -> value.toLongOrNull()?.let(::PlaylistPage)
                 else -> null
             }
@@ -109,7 +141,8 @@ sealed interface Route {
 enum class Tab(val label: String, val icon: Int, val root: Route) {
     LIBRARY("Library", R.drawable.ic_library, Route.Library),
     SEARCH("Search", R.drawable.ic_search, Route.Search),
-    SYNC("Sync", R.drawable.ic_sync, Route.Sync),
+    SHELF("Shelf", R.drawable.ic_shelf, Route.Shelf),
+    SETTINGS("Settings", R.drawable.ic_settings, Route.Settings),
 }
 
 private val stackSaver = listSaver<SnapshotStateList<Route>, String>(
@@ -118,7 +151,7 @@ private val stackSaver = listSaver<SnapshotStateList<Route>, String>(
 )
 
 /**
- * Player mode: Library, Search and Sync, each keeping its own pages (Back and the predictive back gesture return,
+ * Player mode: Library, Search, Shelf and Settings (with Sync), each keeping its own pages (Back and the predictive back gesture return,
  * tapping the current tab again goes to its first screen); a bar on phones, a rail on wider screens and in landscape.
  * The mini player sits above the navigation, and Now Playing opens over everything.
  */
@@ -133,26 +166,45 @@ fun PlayerShell(sync: SyncViewModel, player: PlayerModel = viewModel(), library:
     val scope = rememberCoroutineScope()
     val tabStates = rememberSaveableStateHolder()
 
+    // While the player is on screen, the Mac is asked every few seconds whether it is there (requests made while it was
+    // away go out as soon as it is) and whether its Sync button was pressed.
+    androidx.lifecycle.compose.LifecycleStartEffect(sync) {
+        sync.startPolling()
+        onStopOrDispose { sync.stopPolling() }
+    }
+
     val actions = remember(library, player) {
         Actions(library, player, snackbar, scope, open = { route ->
             expanded = false
-            if (tab == Tab.SYNC) tab = Tab.LIBRARY
+            // Library pages asked from Settings open in the Library; Settings' own pages in Settings.
+            if (tab == Tab.SETTINGS && route.isLibraryPage) tab = Tab.LIBRARY
+            if (route == Route.Equalizer || route == Route.Sync) tab = Tab.SETTINGS
             val stack = stacks.getValue(tab)
             if (stack.lastOrNull() != route) stack.add(route)
         }, showTab = { tab = it })
     }
 
     // A rail on wide windows, and on short ones (phones and players in landscape), where a bar takes too much height.
+    // A rail on wide windows, and on short ones (phones and players in landscape), where a bar takes too much height;
+    // a slim bar in narrow windows (split screen beside a map), where a rail takes too much width.
     val window = currentWindowAdaptiveInfoV2().windowSizeClass
-    val layout = if (window.isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_MEDIUM_LOWER_BOUND) ||
-        !window.isHeightAtLeastBreakpoint(WindowSizeClass.HEIGHT_DP_MEDIUM_LOWER_BOUND)) NavigationSuiteType.NavigationRail
-        else NavigationSuiteType.NavigationBar
-    val showMini = nowPlaying != null
+    val compact = WindowShape.of(window)
+    val layout = when {
+        compact.narrow -> NavigationSuiteType.ShortNavigationBarCompact
+        window.isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_MEDIUM_LOWER_BOUND) || compact.short -> NavigationSuiteType.NavigationRail
+        else -> NavigationSuiteType.NavigationBar
+    }
+    val bar = layout == NavigationSuiteType.NavigationBar || layout == NavigationSuiteType.ShortNavigationBarCompact
+    // The Shelf fills a short (landscape) screen, as Cover Flow did: no mini player over it.
+    val shelfFullScreen = tab == Tab.SHELF && stacks.getValue(Tab.SHELF).lastOrNull() == Route.Shelf &&
+        !window.isHeightAtLeastBreakpoint(WindowSizeClass.HEIGHT_DP_MEDIUM_LOWER_BOUND)
+    val showMini = nowPlaying != null && !shelfFullScreen
     // A rail leaves the gesture bar to the content.
-    val systemBottom = if (layout == NavigationSuiteType.NavigationBar) 0.dp else WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    val bottomInset = systemBottom + if (showMini) 80.dp else 0.dp
+    val systemBottom = if (bar) 0.dp else WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val bottomInset = systemBottom + if (showMini) (if (compact.short) 64.dp else 80.dp) else 0.dp
 
-    CompositionLocalProvider(LocalActions provides actions, LocalNowPlaying provides nowPlaying, LocalBottomInset provides bottomInset) {
+    CompositionLocalProvider(LocalActions provides actions, LocalNowPlaying provides nowPlaying, LocalBottomInset provides bottomInset,
+        LocalWindowShape provides compact) {
         Box(Modifier.fillMaxSize()) {
             NavigationSuiteScaffold(
                 layoutType = layout,
@@ -163,8 +215,9 @@ fun PlayerShell(sync: SyncViewModel, player: PlayerModel = viewModel(), library:
                             onClick = {
                                 if (tab == item) stacks.getValue(item).run { while (size > 1) removeAt(lastIndex) } else tab = item
                             },
-                            icon = { Icon(painterResource(item.icon), contentDescription = null) },
-                            label = { Text(item.label) },
+                            icon = { Icon(painterResource(item.icon), contentDescription = if (compact.short) item.label else null) },
+                            // Icons alone in a short window, where every row counts (the icon is then read out by its name).
+                            label = if (compact.short) null else ({ Text(item.label) }),
                         )
                     }
                 },
@@ -172,21 +225,39 @@ fun PlayerShell(sync: SyncViewModel, player: PlayerModel = viewModel(), library:
                 Box(Modifier.fillMaxSize()) {
                     // Back from another tab's first screen goes to the Library before leaving the app.
                     BackHandler(enabled = tab != Tab.LIBRARY && stacks.getValue(tab).size == 1) { tab = Tab.LIBRARY }
-                    tabStates.SaveableStateProvider(tab.name) {
-                        val stack = stacks.getValue(tab)
+                    // Covers move between a list and their page (shared elements); tabs fade through.
+                    SharedTransitionLayout {
+                    CompositionLocalProvider(LocalSharedTransition provides this) {
+                    AnimatedContent(tab, transitionSpec = { fadeThrough() }, label = "tab") { shownTab ->
+                    tabStates.SaveableStateProvider(shownTab.name) {
+                        val stack = stacks.getValue(shownTab)
                         NavDisplay(
                             backStack = stack,
                             onBack = { if (stack.size > 1) stack.removeAt(stack.lastIndex) },
                             entryDecorators = listOf(rememberSaveableStateHolderNavEntryDecorator()),
+                            sharedTransitionScope = this@SharedTransitionLayout,
+                            transitionSpec = { pageOpens() },
+                            popTransitionSpec = { pageCloses() },
+                            predictivePopTransitionSpec = { pageCloses() },
                             entryProvider = { route ->
                                 NavEntry(route, contentKey = Route.encode(route)) {
-                                    CompositionLocalProvider(LocalBack provides { if (stack.size > 1) stack.removeAt(stack.lastIndex) }) {
+                                    CompositionLocalProvider(LocalBack provides { if (stack.size > 1) stack.removeAt(stack.lastIndex) },
+                                        LocalPageScope provides LocalNavAnimatedContentScope.current) {
                                     when (it) {
                                         Route.Library -> LibraryHome()
                                         Route.Search -> SearchScreen()
-                                        Route.Sync -> Box(Modifier.padding(bottom = bottomInset)) {
-                                            SyncScreen("Sync", sync) { mode?.let { current -> ListeningCard(current, sync::setMode) } }
+                                        Route.Shelf -> ShelfScreen()
+                                        Route.Settings -> SettingsScreen(sync)
+                                        Route.Equalizer -> EqualizerScreen()
+                                        Route.Sync -> Column(Modifier.fillMaxSize()) {
+                                            SettingsBar("Sync")
+                                            Box(Modifier.padding(bottom = bottomInset)) {
+                                                SyncScreen(null, sync) { mode?.let { current -> ListeningCard(current, sync::setMode) } }
+                                            }
                                         }
+                                        is Route.PersonPage -> PersonPage(it.name)
+                                        is Route.MacAlbumPage -> MacAlbumPage(it.key)
+                                        is Route.MacArtistPage -> MacArtistPage(it.name)
                                         is Route.AlbumPage -> AlbumPage(it.key)
                                         is Route.ArtistPage -> ArtistPage(it.name)
                                         is Route.PlaylistPage -> PlaylistPage(it.id)
@@ -196,6 +267,9 @@ fun PlayerShell(sync: SyncViewModel, player: PlayerModel = viewModel(), library:
                                 }
                             },
                         )
+                    }
+                    }
+                    }
                     }
                     Column(Modifier.align(Alignment.BottomCenter).padding(bottom = systemBottom)) {
                         SnackbarHost(snackbar)
@@ -224,7 +298,8 @@ private fun MiniPlayer(song: PlayerModel.NowPlaying, player: PlayerModel, onOpen
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         tonalElevation = 3.dp,
         shadowElevation = 6.dp,
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp).height(64.dp)
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = if (LocalWindowShape.current.short) 4.dp else 8.dp)
+            .height(if (LocalWindowShape.current.short) 56.dp else 64.dp)
             .clip(RoundedCornerShape(16.dp))
             .clickable(onClick = onOpen, onClickLabel = "Open Now Playing")
             .pointerInput(Unit) {
@@ -268,3 +343,16 @@ private fun MiniPlayer(song: PlayerModel.NowPlaying, player: PlayerModel, onOpen
         }
     }
 }
+
+/** A page opening: it fades and grows slightly into place while its cover moves from the list (shared element). */
+private fun <T> AnimatedContentTransitionScope<T>.pageOpens(): ContentTransform =
+    (fadeIn(tween(260, delayMillis = 60)) + scaleIn(tween(300, easing = FastOutSlowInEasing), initialScale = 0.96f))
+        .togetherWith(fadeOut(tween(160)))
+
+/** Back: the page fades and shrinks slightly while its cover returns to the list. */
+private fun <T> AnimatedContentTransitionScope<T>.pageCloses(): ContentTransform =
+    fadeIn(tween(220, delayMillis = 40)).togetherWith(fadeOut(tween(180)) + scaleOut(tween(260, easing = FastOutSlowInEasing), targetScale = 0.96f))
+
+/** Material's fade through, for tabs: the old one fades out, then the new one fades in growing from 92%. */
+private fun <T> AnimatedContentTransitionScope<T>.fadeThrough(): ContentTransform =
+    (fadeIn(tween(210, delayMillis = 90)) + scaleIn(tween(210, delayMillis = 90), initialScale = 0.92f)).togetherWith(fadeOut(tween(90)))

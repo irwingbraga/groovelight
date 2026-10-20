@@ -1,6 +1,7 @@
 package dev.irwingbraga.groovelight.playback
 
 import android.app.PendingIntent
+import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.os.Handler
 import android.os.Looper
@@ -11,10 +12,15 @@ import androidx.annotation.OptIn
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.util.EventLogger
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.google.common.util.concurrent.Futures
+import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.launch
 import com.google.common.util.concurrent.ListenableFuture
 
 /**
@@ -24,6 +30,8 @@ import com.google.common.util.concurrent.ListenableFuture
  */
 class PlaybackService : MediaSessionService() {
     private var session: MediaSession? = null
+    private lateinit var bitPerfect: BitPerfect
+    private val scope = MainScope()
     private lateinit var queue: QueueStore
     private val handler = Handler(Looper.getMainLooper())
 
@@ -31,9 +39,16 @@ class PlaybackService : MediaSessionService() {
     override fun onCreate() {
         super.onCreate()
         val music = AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build()
+        PlaybackSettings.init(this)
+        bitPerfect = BitPerfect(this)
         // Decoders hand over 32-bit float instead of 16-bit PCM: 24-bit files keep their resolution (float holds 24 bits
-        // exactly), where the default would cut them to 16 bits before Android's mixer.
-        val renderers = DefaultRenderersFactory(this).setEnableAudioFloatOutput(true)
+        // exactly), where the default would cut them to 16 bits before Android's mixer. The equalizer runs in the sink
+        // (Media3 skips audio processors for float output), and speed is the audio output's, which keeps the pitch.
+        val renderers = object : DefaultRenderersFactory(this) {
+            override fun buildAudioSink(context: Context, enableFloatOutput: Boolean, enableAudioOutputPlaybackParams: Boolean): AudioSink =
+                EqualizerSink(super.buildAudioSink(context, enableFloatOutput, enableAudioOutputPlaybackParams)!!,
+                    settings = { PlaybackSettings.activeCurve }, bitPerfect = bitPerfect::prepare)
+        }.setEnableAudioFloatOutput(true).setEnableAudioOutputPlaybackParameters(true)
         val player = ExoPlayer.Builder(this, renderers)
             .setAudioAttributes(music, /* handleAudioFocus = */ true)
             // Headphones unplugged or Bluetooth disconnected: pause instead of playing out loud.
@@ -52,6 +67,13 @@ class PlaybackService : MediaSessionService() {
             player.repeatMode = saved.repeatMode
         }
         player.addListener(saving(player))
+        SleepTimer.attach(player)
+        // The normalization setting, or bit-perfect output starting or ending, changes the song's volume at once.
+        scope.launch {
+            combine(PlaybackSettings.normalization, PlaybackSettings.bitPerfectActive) { _, _ -> }.collect {
+                if (SleepTimer.state.value !is SleepTimer.State.At) player.volume = Normalization.volume(player.currentMediaItem)
+            }
+        }
         val builder = MediaSession.Builder(this, player).setCallback(Resumption())
         // Tapping the notification opens the app.
         packageManager.getLaunchIntentForPackage(packageName)?.let { launch ->
@@ -95,6 +117,9 @@ class PlaybackService : MediaSessionService() {
 
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
+        bitPerfect.release()
+        SleepTimer.detach()
+        scope.cancel()
         session?.run {
             queue.save(player)
             player.release()
