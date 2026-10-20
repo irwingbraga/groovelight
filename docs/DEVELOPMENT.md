@@ -6,11 +6,11 @@ Requirements: Xcode 26+ (developed with Xcode 27), [XcodeGen](https://github.com
 
 - `GroovelightKit/`: Swift package shared with the future iOS app
   - `PlayerCore`: SFBAudioEngine playback, gapless queue, 15-band `AVAudioUnitEQ`, FFT spectrum analyzer
-  - `LibraryKit`: GRDB (SQLite + FTS5) library, tag reader, artwork cache, folder scanner and watcher
+  - `LibraryKit`: GRDB (SQLite + FTS5) library, tag reader, artwork cache, folder scanner and watcher; device sync plans, and `FormatConverter` (lossless FLAC for players that cannot decode a format, one file per song of a CUE album, and `LossyEncoding`: Opus 160, AAC 192 or MP3 320 for devices set to it)
   - `Visualizers`: Metal visualizers (Bars & Waves, Lights, Ambience, Magnetosphere), shaders compiled at runtime
   - `MetadataKit`: MusicBrainz, Cover Art Archive, iTunes Search and LRCLIB clients, release matching, LRC parser
   - `Scrobbler`: Last.fm client (desktop auth, now playing, scrobbles, loves) and the sender of the offline queue
-  - `WirelessSync`: wireless sync with the Android app: protocol (X25519 pairing, signed requests; v2 adds HTTPS with a certificate the device pins from a proof made with the pairing key, download tokens, per-file SHA-256, the library snapshot for Player mode), local HTTP/HTTPS server with Bonjour, `TLSIdentity` (self-signed certificate in the login keychain)
+  - `WirelessSync`: wireless sync with the Android app: protocol (X25519 pairing, signed requests; v2 adds HTTPS with a certificate the device pins from a proof made with the pairing key, download tokens, per-file SHA-256, the library snapshot for Player mode with credits, playlist covers and the equalizer's presets, the whole library's catalog and the device's requests for albums, artists and songs), local HTTP/HTTPS server with Bonjour, `TLSIdentity` (self-signed certificate in the login keychain)
   - `ControlKit`: the command line tool talking to the app: requests and replies (JSON), the client and the app's server,
     the MCP server, and `ImportPaths` (the places imports may not read from, checked by the tool and the app)
 - `App/`: the macOS app (SwiftUI views, app model, Now Playing / media keys); `App/Sources/Control/ControlService.swift` runs the tool's commands
@@ -152,7 +152,7 @@ APP=build/DebugUnsandboxed/Build/Products/Debug/Groovelight.app/Contents/MacOS/G
 "$APP" -GLDebugTour /tmp/tour -GLDebugTourHold playlist-files   # exports a playlist in every format, imports each back (PLAYLISTS), then leaves an import report open (WINDOW, READY); deletes what it made
 "$APP" -GLDebugTour /tmp/tour -GLDebugTourHold lyrics   # synced lyrics in the side panel and Now Playing, at the start and at 1:00 (WINDOW, WINDOWID for screencapture -l, READY-0 to READY-3); temporary lyrics are put back
 "$APP" -GLDebugTour /tmp/tour -GLDebugTourHold devices -GLDebugDevice GLCARD   # sync, re-sync, removal, send and eject on a mounted drive (make one: hdiutil create -size 200m -fs "MS-DOS FAT32" -volname GLCARD card.dmg; hdiutil attach card.dmg, not -nobrowse); writes DEVICES, WINDOWID, READY-n
-"$APP" -GLDebugTour /tmp/tour -GLDebugTourHold wireless -GLDebugAutoPair YES [-GLDebugSyncEverything YES]   # wireless sync on, pairing allowed at once (first 3 albums selected, or the whole library), PORT written; up for -GLDebugSeconds (120) or until a STOP file; then WIRELESS, unpairs, turns it off. Pair with android/ MacIntegrationTest
+"$APP" -GLDebugTour /tmp/tour -GLDebugTourHold wireless -GLDebugAutoPair YES [-GLDebugSyncEverything YES] [-GLDebugEncoding opus160]   # wireless sync on, pairing allowed at once (first 3 albums selected, or the whole library; every device in that lossy format), PORT written; up for -GLDebugSeconds (120) or until a STOP file; then WIRELESS, unpairs, turns it off. Pair with android/ MacIntegrationTest
 "$APP" -GLDebugTour /tmp/tour -GLDebugTourHold empty-playlist-panel   # empty playlists and Loved Songs with the lyrics and Up Next panels at several widths (PANELS; a layout loop crashes); -GLDebugPanelsAllPages YES for every page
 "$APP" -GLDebugTour /tmp/tour -GLDebugTourHold sidebar-covers   # playlists with each kind of cover for the sidebar icons (WINDOWID, READY); deleted after
 "$APP" -GLDebugTour /tmp/tour -GLDebugTourHold min-artists   # minimum window with the lyrics panel open, then Artists, Genres, Albums (WINDOWID, READY-n, LAYOUT with the split view column widths; -GLDebugWindowWidth to try others)
