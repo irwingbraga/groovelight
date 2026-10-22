@@ -28,10 +28,15 @@ class CatalogTest {
         assertEquals(setOf("OK Computer", "Kid A", "Hits"), catalog.albums.map { it.title }.toSet())
         assertEquals(listOf(101L, 201L, 301L), catalog.tracks.map { it.id })
         assertEquals(284_500L, catalog.tracks.first().durationMs)
-        assertEquals(Choice(albumKeys = setOf("radiohead|ok computer"), trackIds = setOf(301), excludedTrackIds = setOf(201)), catalog.choice)
+        assertEquals(Choice(albumKeys = setOf("radiohead|ok computer"), trackIds = setOf(301), excludedTrackIds = setOf(201),
+            encodings = mapOf("album:radiohead|kid a" to "opus160")), catalog.choice)
+        assertEquals("opus160", catalog.choice.encodingOf(CatalogAlbum("radiohead|kid a", "Kid A", "Radiohead")))
         catalog.importInto(database)
         val dao = database.catalog()
         assertEquals(listOf("Radiohead"), dao.artists().first().map { it.name })
+        // The artist's photo on the Mac, over their covers.
+        assertEquals("face01", dao.artists().first().first().artworkHash)
+        assertEquals("face01", dao.artistPhoto("Radiohead").first())
         assertEquals(listOf("Idioteque"), dao.tracksOfAlbum("radiohead|kid a").first().map { it.title })
         assertEquals(catalog.choice, Choice.of(dao.chosen().first()))
         assertEquals(listOf("Kid A"), dao.searchAlbums(likePattern("kid"), 5).map { it.title })
@@ -73,6 +78,10 @@ class CatalogTest {
         assertEquals(Availability.WAITING, Availability.of(true, everything.holdsAlbum(album, setOf(1, 2)), removed.holdsAlbum(album, setOf(1, 2)), false))
         // Once the Mac has it: here until the next sync, leaving.
         assertEquals(Availability.LEAVING, Availability.of(onDevice = true, chosen = false, chosenAfter = false, others = true, removed = true))
+        // An album asked for in a format: chosen at once here, with that format; added again plainly, the device's.
+        val opus = everything.applying(listOf(TransferRequest(action = TransferRequest.ADD, kind = TransferRequest.ALBUM, key = "band|lp", encoding = "opus160")), songs)
+        assertEquals("opus160", opus.encodingOf(album))
+        assertEquals(null, opus.applying(listOf(TransferRequest(action = TransferRequest.ADD, kind = TransferRequest.ALBUM, key = "band|lp")), songs).encodingOf(album))
         // Adding the song again brings it back.
         val back = removed.applying(listOf(TransferRequest(action = TransferRequest.ADD, kind = TransferRequest.SONG, key = "1")), songs)
         assertTrue(back.holdsSong(one, album))

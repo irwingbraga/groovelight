@@ -73,6 +73,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import dev.irwingbraga.groovelight.R
 import dev.irwingbraga.groovelight.library.Album
 import dev.irwingbraga.groovelight.library.Credit
+import dev.irwingbraga.groovelight.sync.Transfers
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.unit.Dp
@@ -95,36 +96,44 @@ fun LibraryHome() {
     val pager = rememberPagerState { Section.entries.size }
     val scope = rememberCoroutineScope()
     val section = Section.entries[pager.currentPage]
-    Column(Modifier.fillMaxSize()) {
-        val source by library.source.collectAsStateWithLifecycle()
-        val sortable = source == LibraryModel.Source.DEVICE && (section == Section.ALBUMS || section == Section.SONGS)
-        // A short window: no title bar, the switch and sorting on one row.
+    val source by library.source.collectAsStateWithLifecycle()
+    val merged = source == LibraryModel.Source.MAC
+    val sortable = section == Section.ALBUMS || section == Section.SONGS
+    // The title, the sections and (with the Mac's music) its notice float over the lists as glass.
+    GlassTop(bar = { Column {
+        // A short window: no title bar, the filter and sorting on one row.
         if (LocalWindowShape.current.short) {
-            Row(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.statusBars).padding(end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                SourceSwitch(Modifier.weight(1f))
+            Row(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.statusBars).padding(start = 16.dp, end = 4.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                DownloadedFilter()
+                Spacer(Modifier.weight(1f))
                 if (sortable) SortMenu(section)
             }
         } else {
             TopAppBar(
                 title = { Text("Library", fontWeight = FontWeight.SemiBold) },
-                actions = { if (sortable) SortMenu(section) },
+                actions = {
+                    DownloadedFilter()
+                    if (sortable) SortMenu(section)
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent, scrolledContainerColor = Color.Transparent),
             )
-            SourceSwitch()
         }
-        if (source == LibraryModel.Source.MAC) return@Column MacLibraryContent()
         PrimaryScrollableTabRow(selectedTabIndex = pager.currentPage, edgePadding = 8.dp, containerColor = Color.Transparent, divider = {}) {
             Section.entries.forEachIndexed { index, item ->
                 Tab(selected = pager.currentPage == index, onClick = { scope.launch { pager.animateScrollToPage(index) } }, text = { Text(item.title) },
                     unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
-        when {
+        if (merged) MergedNotice()
+    } }) {
+        // With the Mac's music: its whole library, what is here marked (a check), what is not added from its page.
+        if (merged) MergedLibrary(pager) else when {
             albums == null -> Loading()
             albums?.isEmpty() == true -> EmptyState(R.drawable.ic_library, "No music yet",
-                "Choose what this device gets on your Mac (Groovelight, Devices), then sync.",
-                Modifier.padding(bottom = LocalBottomInset.current)) {
-                val actions = LocalActions.current
-                Button(onClick = { actions.open(Route.Sync) }) { Text("Go to Sync") }
+                "Turn off Downloaded to see your Mac's library and add music from it, or choose what this device gets on your Mac.",
+                Modifier.padding(top = LocalTopInset.current, bottom = LocalBottomInset.current)) {
+                Button(onClick = { library.setSource(LibraryModel.Source.MAC) }) { Text("Show the Mac's Music") }
             }
             else -> HorizontalPager(pager, Modifier.fillMaxSize(), key = { it }) { page ->
                 when (Section.entries[page]) {
@@ -136,6 +145,35 @@ fun LibraryHome() {
             }
         }
     }
+}
+
+/** The library with the Mac's music: its albums, artists and songs with this device's, and this device's playlists. */
+@Composable
+private fun MergedLibrary(pager: androidx.compose.foundation.pager.PagerState) {
+    val library = LocalActions.current.library
+    val albums by library.mergedAlbums.collectAsStateWithLifecycle()
+    val reachable by Transfers.reachable.collectAsStateWithLifecycle()
+    // Now, and again when the Mac comes back.
+    LaunchedEffect(reachable == true) { library.refreshCatalog() }
+    HorizontalPager(pager, Modifier.fillMaxSize(), key = { it }) { page ->
+        when (Section.entries[page]) {
+            Section.ALBUMS -> CatalogAlbumGrid(albums.orEmpty())
+            Section.ARTISTS -> CatalogArtists()
+            Section.SONGS -> CatalogSongs()
+            Section.PLAYLISTS -> PlaylistsSection()
+        }
+    }
+}
+
+/** Under the sections, with the Mac's music: whether the Mac is reachable, and requests waiting for it. */
+@Composable
+private fun MergedNotice() {
+    val library = LocalActions.current.library
+    val albums by library.mergedAlbums.collectAsStateWithLifecycle()
+    val state by library.catalogState.collectAsStateWithLifecycle()
+    val holdings by library.holdings.collectAsStateWithLifecycle()
+    val reachable by Transfers.reachable.collectAsStateWithLifecycle()
+    CatalogNotice(state.copy(reachable = reachable ?: state.reachable), holdings.waiting, empty = albums.isNullOrEmpty())
 }
 
 @Composable
@@ -188,7 +226,7 @@ private fun AlbumsSection(albums: List<Album>) {
                     }
                 }
             },
-            modifier = Modifier.align(Alignment.TopEnd).padding(bottom = LocalBottomInset.current),
+            modifier = Modifier.align(Alignment.TopEnd).padding(top = LocalTopInset.current, bottom = LocalBottomInset.current),
         )
     }
 }
@@ -205,7 +243,7 @@ private fun AlbumGrid(
 ) {
     LazyVerticalGrid(
         GridCells.Adaptive(minSize), Modifier.fillMaxSize(), state = grid,
-        contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 16.dp + LocalBottomInset.current),
+        contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 8.dp + LocalTopInset.current, bottom = 16.dp + LocalBottomInset.current),
         horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         header?.invoke(this)
@@ -221,7 +259,7 @@ private fun ArtistsSection() {
     val list = rememberLazyListState()
     val all = artists.orEmpty()
     Box(Modifier.fillMaxSize()) {
-        LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = 16.dp + LocalBottomInset.current)) {
+        LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(top = LocalTopInset.current, bottom = 16.dp + LocalBottomInset.current)) {
             items(all, key = { it.name }) { artist ->
                 ListItem(
                     headlineContent = { Text(artist.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
@@ -235,7 +273,7 @@ private fun ArtistsSection() {
         val first by remember { derivedStateOf { list.firstVisibleItemIndex } }
         val visible by remember { derivedStateOf { list.layoutInfo.visibleItemsInfo.size } }
         FastScroller(all.size, first, visible, list.isScrollInProgress, { list.scrollToItem(it) },
-            { all.getOrNull(it)?.name?.let(::indexLetter) }, Modifier.align(Alignment.TopEnd).padding(bottom = LocalBottomInset.current))
+            { all.getOrNull(it)?.name?.let(::indexLetter) }, Modifier.align(Alignment.TopEnd).padding(top = LocalTopInset.current, bottom = LocalBottomInset.current))
     }
 }
 
@@ -250,7 +288,7 @@ private fun SongsSection() {
     val all = tracks.orEmpty()
     val play = { start: Int, shuffle: Boolean? -> actions.player.play(actions.library.mediaItems(all, "Songs"), start, shuffle) }
     Box(Modifier.fillMaxSize()) {
-        LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = 16.dp + LocalBottomInset.current)) {
+        LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(top = LocalTopInset.current, bottom = 16.dp + LocalBottomInset.current)) {
             item(key = "buttons") {
                 PlayButtons(onPlay = { play(0, false) }, onShuffle = { play(0, true) }, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
             }
@@ -270,7 +308,7 @@ private fun SongsSection() {
                         LibraryModel.SongOrder.RECENT -> null
                     }
                 }
-            }, Modifier.align(Alignment.TopEnd).padding(bottom = LocalBottomInset.current))
+            }, Modifier.align(Alignment.TopEnd).padding(top = LocalTopInset.current, bottom = LocalBottomInset.current))
     }
 }
 
@@ -278,7 +316,7 @@ private fun SongsSection() {
 private fun PlaylistsSection() {
     val actions = LocalActions.current
     val playlists by actions.library.playlists.collectAsStateWithLifecycle()
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 16.dp + LocalBottomInset.current)) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = LocalTopInset.current, bottom = 16.dp + LocalBottomInset.current)) {
         item(key = "loved") {
             ListItem(
                 headlineContent = { Text("Loved Songs") },
@@ -287,6 +325,23 @@ private fun PlaylistsSection() {
                 colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                 modifier = Modifier.clickable { actions.open(Route.LovedSongs) },
             )
+        }
+        item(key = "new") {
+            var naming by remember { mutableStateOf(false) }
+            ListItem(
+                headlineContent = { Text("New Playlist…") },
+                leadingContent = {
+                    Box(Modifier.size(56.dp).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                        contentAlignment = Alignment.Center) {
+                        Icon(painterResource(R.drawable.ic_add_circle), contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    }
+                },
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                modifier = Modifier.clickable { naming = true },
+            )
+            if (naming) PlaylistNameDialog("New Playlist", "", "Create", onDismiss = { naming = false }) { name ->
+                actions.library.createPlaylist(name) { id -> actions.open(Route.PlaylistPage(id)) }
+            }
         }
         items(playlists.orEmpty(), key = { it.id }) { playlist ->
             val art = rememberPlaylistArt(playlist) { actions.library.playlistArt(playlist) }
@@ -324,7 +379,8 @@ private fun PageBar(title: String, showTitle: Boolean, actions: @Composable () -
         title = { if (showTitle) Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
         navigationIcon = { IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_back), contentDescription = "Back") } },
         actions = { actions() },
-        colors = TopAppBarDefaults.topAppBarColors(containerColor = if (showTitle) MaterialTheme.colorScheme.surfaceContainer else Color.Transparent),
+        // Clear: the page's glass ([GlassTop]) shows once the header has scrolled away.
+        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent, scrolledContainerColor = Color.Transparent),
     )
 }
 
@@ -399,8 +455,9 @@ private fun coverWash(cover: File?): Brush {
 
 @Composable
 private fun PageLoading() {
-    Column(Modifier.fillMaxSize()) {
+    GlassTop(glassVisible = false, bar = {
         PageBar("", false)
+    }) {
         Loading()
     }
 }
@@ -425,7 +482,7 @@ fun AlbumPage(key: String) {
     val people = remember(credits) { albumCredits(credits) }
     val producers = remember(people) { people.filter { (_, roles) -> roles.any { it == "producer" || it == "co-producer" } }.take(3).map { it.first } }
     val scope = rememberCoroutineScope()
-    Column(Modifier.fillMaxSize().background(coverWash(coverFile))) {
+    GlassTop(modifier = Modifier.background(coverWash(coverFile)), glassVisible = scrolled, bar = {
         PageBar(current.title, scrolled) {
             var menu by remember { mutableStateOf(false) }
             Box {
@@ -434,7 +491,8 @@ fun AlbumPage(key: String) {
                     subject = MenuSubject.AlbumOf(current))
             }
         }
-        LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = 24.dp + LocalBottomInset.current)) {
+    }) {
+        LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(top = LocalTopInset.current, bottom = 24.dp + LocalBottomInset.current)) {
             item(key = "header") {
                 PageHeader(
                     cover = { Cover(coverFile, Modifier.sharedCover("album:$key").then(it), corner = 10.dp) },
@@ -505,9 +563,10 @@ fun PersonPage(name: String) {
     val list = rememberLazyListState()
     val scrolled by remember { derivedStateOf { list.firstVisibleItemIndex > 0 } }
     val coverFile = actions.library.cover(person.albums.firstOrNull()?.first?.artworkHash)
-    Column(Modifier.fillMaxSize().background(coverWash(coverFile))) {
+    GlassTop(modifier = Modifier.background(coverWash(coverFile)), glassVisible = scrolled, bar = {
         PageBar(name, scrolled)
-        LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = 24.dp + LocalBottomInset.current)) {
+    }) {
+        LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(top = LocalTopInset.current, bottom = 24.dp + LocalBottomInset.current)) {
             item(key = "header") {
                 PageHeader(
                     cover = { Cover(null, it, round = true) }, title = name,
@@ -554,8 +613,11 @@ fun ArtistPage(name: String) {
     val play = { shuffle: Boolean -> actions.player.play(actions.library.mediaItems(tracks, "Artist · $name"), 0, shuffle) }
     val grid = rememberLazyGridState()
     val scrolled by remember { derivedStateOf { grid.firstVisibleItemIndex > 0 } }
-    val coverFile = actions.library.cover(own.firstOrNull()?.artworkHash ?: appearsOn.firstOrNull()?.artworkHash)
-    Column(Modifier.fillMaxSize().background(coverWash(coverFile))) {
+    // The artist's photo from the Mac (as the list shows it, at once), or one of their covers.
+    val listed = remember(name) { actions.library.artists.value?.firstOrNull { it.name == name }?.artworkHash }
+    val photo by remember(name) { actions.library.artistPhoto(name) }.collectAsStateWithLifecycle(null)
+    val coverFile = actions.library.cover(photo ?: listed ?: own.firstOrNull()?.artworkHash ?: appearsOn.firstOrNull()?.artworkHash)
+    GlassTop(modifier = Modifier.background(coverWash(coverFile)), glassVisible = scrolled, bar = {
         PageBar(name, scrolled) {
             var menu by remember { mutableStateOf(false) }
             Box {
@@ -563,6 +625,7 @@ fun ArtistPage(name: String) {
                 SongMenu(tracks, menu && tracks.isNotEmpty(), onDismiss = { menu = false }, subject = MenuSubject.Artist(name))
             }
         }
+    }) {
         AlbumGrid(
             own, grid = grid, subtitle = { it.year?.toString() ?: "" },
             header = {
@@ -605,16 +668,18 @@ fun PlaylistPage(id: Long?) {
     val scrolled by remember { derivedStateOf { list.firstVisibleItemIndex > 0 } }
     val covers = remember(songs) { songs.mapNotNull { it.artworkHash }.distinct().take(4).mapNotNull { actions.library.cover(it) } }
     val art = playlist?.let { current -> rememberPlaylistArt(current to songs.size) { actions.library.playlistArt(current) } }
-    Column(Modifier.fillMaxSize().background(coverWash(covers.firstOrNull()))) {
+    GlassTop(modifier = Modifier.background(coverWash(covers.firstOrNull())), glassVisible = scrolled, bar = {
         PageBar(name, scrolled) {
             var menu by remember { mutableStateOf(false) }
             Box {
                 IconButton(onClick = { menu = true }) { Icon(painterResource(R.drawable.ic_more), contentDescription = "More") }
-                SongMenu(songs, menu && songs.isNotEmpty(), onDismiss = { menu = false },
-                    subject = id?.let { MenuSubject.PlaylistOf(it, name) })
+                val editable = playlist?.isSmart == false
+                SongMenu(songs, menu && (songs.isNotEmpty() || editable), onDismiss = { menu = false },
+                    subject = id?.let { MenuSubject.PlaylistOf(it, name, editable) })
             }
         }
-        LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = 24.dp + LocalBottomInset.current)) {
+    }) {
+        LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(top = LocalTopInset.current, bottom = 24.dp + LocalBottomInset.current)) {
             item(key = "header") {
                 PageHeader(
                     cover = { base ->
@@ -632,11 +697,16 @@ fun PlaylistPage(id: Long?) {
                 )
             }
             if (songs.isEmpty()) item(key = "empty") {
-                Text(if (id == null) "Tap the heart in Now Playing, or love songs on the Mac: they show here." else "None of this playlist's songs are on this device.",
+                Text(when {
+                    id == null -> "Tap the heart in Now Playing, or love songs on the Mac: they show here."
+                    playlist?.isSmart == false -> "Add songs with Add to Playlist, in the menu of any song or album."
+                    else -> "None of this playlist's songs are on this device."
+                },
                     color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(32.dp))
             }
             itemsIndexed(songs, key = { index, track -> "$index:${track.id}" }) { index, track ->
-                SongRow(track, listOfNotNull(track.artist, albums[track.albumKey]?.title).joinToString(" · "), onClick = { play(index, null) })
+                SongRow(track, listOfNotNull(track.artist, albums[track.albumKey]?.title).joinToString(" · "), onClick = { play(index, null) },
+                    playlistId = id?.takeIf { playlist?.isSmart == false })
             }
         }
     }

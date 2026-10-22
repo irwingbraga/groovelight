@@ -24,6 +24,8 @@ import dev.irwingbraga.groovelight.library.Choice
 import dev.irwingbraga.groovelight.library.Credit
 import dev.irwingbraga.groovelight.library.TransferRequest
 import dev.irwingbraga.groovelight.sync.MacError
+import dev.irwingbraga.groovelight.sync.RequestWorker
+import dev.irwingbraga.groovelight.app.playerItems
 import dev.irwingbraga.groovelight.sync.SyncEngine
 import dev.irwingbraga.groovelight.sync.SyncWorker
 import dev.irwingbraga.groovelight.sync.Transfers
@@ -133,6 +135,10 @@ class LibraryModel(application: Application) : AndroidViewModel(application) {
     fun lovedTracks(): Flow<List<Track>> = library.lovedTracks()
     fun track(id: Long): Flow<Track?> = library.track(id)
     fun creditsOfAlbum(key: String): Flow<List<Credit>> = library.creditsOfAlbum(key)
+    /** The artist's photo from the Mac (a hash in the artwork store), when it has one. */
+    fun artistPhoto(name: String): Flow<String?> = library.artistPhoto(name)
+    /** The same in the Mac's whole library (fetched small when shown). */
+    fun catalogArtistPhoto(name: String): Flow<String?> = catalog.artistPhoto(name)
 
     fun person(name: String): Flow<PersonPage> = library.creditsOf(name).map { credits ->
         val albumRoles = LinkedHashMap<String, MutableList<String>>()
@@ -155,8 +161,23 @@ class LibraryModel(application: Application) : AndroidViewModel(application) {
             songs.map { it to songRoles[it.id].orEmpty().distinct() }, counts.entries.sortedByDescending { it.value }.map { it.key })
     }
 
-    fun setLoved(id: Long, loved: Boolean) { viewModelScope.launch { library.setLoved(id, loved) } }
-    fun setRating(id: Long, stars: Int) { viewModelScope.launch { library.setRating(id, stars) } }
+    // Loves and ratings change here at once, and go to the Mac (now, or when it is reachable).
+    fun setLoved(id: Long, loved: Boolean) { viewModelScope.launch { library.setLoved(id, loved); RequestWorker.schedule(getApplication()) } }
+    fun setRating(id: Long, stars: Int) { viewModelScope.launch { library.setRating(id, stars); RequestWorker.schedule(getApplication()) } }
+
+    // Playlists edited here change at once, and the edits go to the Mac the same way.
+    val editablePlaylists: StateFlow<List<Playlist>> = library.editablePlaylists().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    private fun editing(block: suspend () -> Unit) {
+        viewModelScope.launch { block(); RequestWorker.schedule(getApplication()) }
+    }
+
+    fun createPlaylist(name: String, tracks: List<Track> = emptyList(), then: (Long) -> Unit = {}) =
+        editing { then(library.createPlaylist(name, tracks.map { it.id })) }
+    fun addToPlaylist(id: Long, tracks: List<Track>) = editing { library.addToPlaylist(id, tracks.map { it.id }) }
+    fun removeFromPlaylist(id: Long, track: Track) = editing { library.removeFromPlaylist(id, listOf(track.id)) }
+    fun renamePlaylist(id: Long, name: String) = editing { library.renamePlaylist(id, name) }
+    fun deletePlaylist(id: Long) = editing { library.deletePlaylist(id) }
 
     /** The Mac's equalizer curves: the one it uses first, then its saved presets. */
     val macPresets: StateFlow<List<MacPreset>> = library.macEqPresets().map { rows ->
@@ -177,7 +198,7 @@ class LibraryModel(application: Application) : AndroidViewModel(application) {
 
     // MARK: The Mac's whole library
 
-    /** Which library the Library tab shows: this device's, or the Mac's whole one. */
+    /** What the Library tab shows: only what is on this device (DEVICE), or the Mac's whole library with it (MAC). */
     enum class Source { DEVICE, MAC }
 
     val source = MutableStateFlow(settings.getString("source", null)?.let { runCatching { Source.valueOf(it) }.getOrNull() } ?: Source.DEVICE)
@@ -280,8 +301,8 @@ class LibraryModel(application: Application) : AndroidViewModel(application) {
     }
 
     /** Asks for an album, artist or song on this device (or to remove it); sent now or when the Mac is reachable. */
-    fun request(action: String, kind: String, key: String) {
-        viewModelScope.launch { Transfers.request(getApplication(), action, kind, key) }
+    fun request(action: String, kind: String, key: String, encoding: String? = null) {
+        viewModelScope.launch { Transfers.request(getApplication(), action, kind, key, encoding) }
     }
 
     private val catalogCovers = Transfers.covers(application)
@@ -290,6 +311,67 @@ class LibraryModel(application: Application) : AndroidViewModel(application) {
     fun catalogCover(hash: String?): File? = hash?.let { cover(it) ?: catalogCovers.file(it).takeIf { file -> file.length() > 0 } }
 
     suspend fun fetchCatalogCover(hash: String): Boolean = Transfers.fetchCover(getApplication(), hash)
+
+    // MARK: The merged library (the Mac's and this device's together)
+
+    /** Every album: the Mac's, and this device's that the Mac's list does not have yet; in the albums' sort order. */
+    val mergedAlbums: StateFlow<List<CatalogAlbum>?> = combine(catalog.albums(), library.albums(), library.recentAlbums(), albumOrder) {
+            mac, here, recent, order ->
+        val known = mac.map { it.key }.toSet()
+        // An album here shows this device's cover (it may have come from the songs themselves).
+        val local = here.associateBy { it.key }
+        val all = mac.map { album -> local[album.key]?.artworkHash?.let { album.copy(artworkHash = it) } ?: album } +
+            here.filter { it.key !in known }.map { CatalogAlbum(it.key, it.title, it.artist, it.year, it.isCompilation, it.artworkHash) }
+        when (order) {
+            AlbumOrder.ARTIST -> all.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it: CatalogAlbum -> it.artist }.thenBy { it.year ?: 0 }
+                .thenBy(String.CASE_INSENSITIVE_ORDER) { it.title })
+            AlbumOrder.TITLE -> all.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.title })
+            AlbumOrder.YEAR -> all.sortedWith(compareByDescending<CatalogAlbum> { it.year ?: 0 }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.title })
+            // The ones here newest first (the Mac's list has no dates), then the rest by artist.
+            AlbumOrder.RECENT -> {
+                val rank = recent.withIndex().associate { it.value.key to it.index }
+                all.sortedWith(compareBy<CatalogAlbum> { rank[it.key] ?: Int.MAX_VALUE }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.artist })
+            }
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** Every artist, the Mac's and this device's. */
+    val mergedArtists: StateFlow<List<CatalogArtist>?> = combine(catalog.artists(), library.artists()) { mac, here ->
+        val known = mac.map { it.name }.toSet()
+        (mac + here.filter { it.name !in known }.map { CatalogArtist(it.name, it.albums, it.artworkHash) })
+            .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** Every song, the Mac's and this device's, in the songs' sort order. */
+    val mergedTracks: StateFlow<List<CatalogTrack>?> = combine(catalog.tracks(), library.tracks(), catalog.albums(), songOrder) { mac, here, albums, order ->
+        val known = mac.map { it.id }.toSet()
+        val local = here.associateBy { it.id }
+        val all = mac.map { track -> local[track.id]?.artworkHash?.let { track.copy(artworkHash = it) } ?: track } + here.filter { it.id !in known }.map {
+            CatalogTrack(it.id, it.title, it.artist, it.albumKey, it.discNumber, it.trackNumber, it.durationMs, it.codec, it.sampleRate, it.bitDepth,
+                it.genre, it.year, it.artworkHash)
+        }
+        val added = here.associate { it.id to it.dateAdded }
+        val titles = albums.associate { it.key to it.title }
+        when (order) {
+            SongOrder.TITLE -> all.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.title })
+            SongOrder.ARTIST -> all.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it: CatalogTrack -> it.artist }
+                .thenBy(String.CASE_INSENSITIVE_ORDER) { titles[it.albumKey] ?: "" }.thenBy { it.discNumber ?: 1 }.thenBy { it.trackNumber ?: 0 })
+            SongOrder.ALBUM -> all.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it: CatalogTrack -> titles[it.albumKey] ?: "" }
+                .thenBy { it.discNumber ?: 1 }.thenBy { it.trackNumber ?: 0 })
+            SongOrder.RECENT -> all.sortedByDescending { added[it.id] ?: 0 }
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** The format chosen here for lossless songs ("original", "opus160"...; null: the Mac's), and the Mac's. */
+    val encoding = MutableStateFlow(prefs.encoding)
+    val macEncoding: String? get() = prefs.macEncoding
+
+    fun setEncoding(value: String) {
+        prefs.encoding = value
+        encoding.value = value
+        val app = getApplication<Application>()
+        if (prefs.folder != null) SyncWorker.syncNow(app)
+    }
 
     /** Cover size in the Albums grid (dp), changed by pinching. */
     val gridSize = MutableStateFlow(settings.getFloat("gridSize", 160f))
@@ -317,38 +399,7 @@ class LibraryModel(application: Application) : AndroidViewModel(application) {
     /** A cover file, when the Mac sent one. */
     fun cover(hash: String?): File? = hash?.let { artwork.file(it) }?.takeIf { it.exists() }
 
-    /**
-     * The songs as player items: their file in the music folder (no listing needed), what the Mac knows about them
-     * (the files' own tags are not read), the cover, the normalization gain, and `source` (where they are played
-     * from, as Now Playing shows it).
-     */
-    fun mediaItems(tracks: List<Track>, source: String? = null): List<MediaItem> {
-        val tree = prefs.folder?.toUri() ?: return emptyList()
-        val albums = albumsByKey.value
-        return tracks.map { track ->
-            val album = albums[track.albumKey]
-            val extras = Normalization.extras(track.normalizationGain, track.albumGain).apply {
-                putString(PlayerModel.ALBUM_KEY, track.albumKey)
-                if (source != null) putString(PlayerModel.SOURCE, source)
-            }
-            val metadata = MediaMetadata.Builder()
-                .setTitle(track.title)
-                .setArtist(track.artist)
-                .setAlbumTitle(album?.title)
-                .setAlbumArtist(album?.artist)
-                .setTrackNumber(track.trackNumber)
-                .setDiscNumber(track.discNumber)
-                .setDurationMs(track.durationMs)
-                .setArtworkUri(cover(track.artworkHash)?.let(Uri::fromFile))
-                .setIsPlayable(true)
-                .setIsBrowsable(false)
-                .setExtras(extras)
-                .build()
-            MediaItem.Builder()
-                .setMediaId(track.id.toString())
-                .setUri(DeviceFolder.documentUri(tree, track.path))
-                .setMediaMetadata(metadata)
-                .build()
-        }
-    }
+    /** The songs as player items ([playerItems]): `source` is where they are played from, as Now Playing shows it. */
+    fun mediaItems(tracks: List<Track>, source: String? = null): List<MediaItem> =
+        playerItems(getApplication(), tracks, albumsByKey.value, source)
 }

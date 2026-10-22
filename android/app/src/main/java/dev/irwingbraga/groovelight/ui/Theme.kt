@@ -1,5 +1,17 @@
 package dev.irwingbraga.groovelight.ui
 
+import android.app.Activity
+import android.content.Context
+import android.content.SharedPreferences
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.platform.LocalView
+import androidx.core.content.edit
+import androidx.core.view.WindowCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
@@ -41,8 +53,72 @@ private val Dark = darkColorScheme(
     inverseSurface = Color(0xFFE3E2E9), inverseOnSurface = Color(0xFF2F3036), inversePrimary = Color(0xFF2A4CA0),
 )
 
-/** Light and dark follow the system. */
+/** Light or dark: the system's, unless chosen in Settings ([Appearance]). */
 @Composable
 fun GroovelightTheme(dark: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
     MaterialTheme(colorScheme = if (dark) Dark else Light, content = content)
+}
+
+/** The app's appearance, chosen in Settings as on the Mac: the system's, or always light or dark. The Shelf is always dark. */
+enum class AppTheme(val label: String) { SYSTEM("System"), LIGHT("Light"), DARK("Dark") }
+
+object Appearance {
+    private var prefs: SharedPreferences? = null
+    private val chosen = MutableStateFlow(AppTheme.SYSTEM)
+    val theme: StateFlow<AppTheme> = chosen
+
+    fun init(context: Context) {
+        if (prefs != null) return
+        prefs = context.getSharedPreferences("appearance", Context.MODE_PRIVATE).also { stored ->
+            chosen.value = stored.getString("theme", null)?.let { runCatching { AppTheme.valueOf(it) }.getOrNull() } ?: AppTheme.SYSTEM
+        }
+    }
+
+    fun set(theme: AppTheme) {
+        chosen.value = theme
+        prefs?.edit { putString("theme", theme.name) }
+    }
+
+    /** Whether the app is dark now. */
+    @Composable
+    fun isDark(): Boolean {
+        val theme by theme.collectAsStateWithLifecycle()
+        return when (theme) {
+            AppTheme.SYSTEM -> isSystemInDarkTheme()
+            AppTheme.LIGHT -> false
+            AppTheme.DARK -> true
+        }
+    }
+}
+
+/** The status and navigation bar icons for the app's theme: dark icons on the light theme, light ones on the dark. */
+@Composable
+fun SystemBarIcons(dark: Boolean) {
+    val view = LocalView.current
+    LaunchedEffect(view, dark) {
+        val window = (view.context as? Activity)?.window ?: return@LaunchedEffect
+        WindowCompat.getInsetsController(window, view).run {
+            isAppearanceLightStatusBars = !dark
+            isAppearanceLightNavigationBars = !dark
+        }
+    }
+}
+
+/** Light status and navigation bar icons while shown (over Now Playing's wash, and the Shelf), then as they were. */
+@Composable
+fun LightSystemBarIcons() {
+    val view = LocalView.current
+    DisposableEffect(view) {
+        val window = (view.context as? Activity)?.window
+        val controller = window?.let { WindowCompat.getInsetsController(it, view) }
+        val light = controller?.isAppearanceLightStatusBars
+        controller?.isAppearanceLightStatusBars = false
+        controller?.isAppearanceLightNavigationBars = false
+        onDispose {
+            if (light != null) {
+                controller.isAppearanceLightStatusBars = light
+                controller.isAppearanceLightNavigationBars = light
+            }
+        }
+    }
 }

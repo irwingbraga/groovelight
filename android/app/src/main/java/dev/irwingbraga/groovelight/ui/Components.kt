@@ -1,5 +1,7 @@
 package dev.irwingbraga.groovelight.ui
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.runtime.Immutable
@@ -7,6 +9,20 @@ import dev.irwingbraga.groovelight.library.TransferRequest
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.AlertDialog
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.AnimatedVisibilityScope
@@ -198,6 +214,8 @@ fun SongRow(
     leading: SongLeading = SongLeading.Artwork,
     showDuration: Boolean = false,
     showAlbumLink: Boolean = true,
+    /** The playlist the row is in (one that can be edited): its menu offers Remove from Playlist. */
+    playlistId: Long? = null,
 ) {
     val actions = LocalActions.current
     val playing = LocalNowPlaying.current?.takeIf { it.id == track.id }
@@ -236,7 +254,8 @@ fun SongRow(
                             tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     SongMenu(listOf(track), expanded = menu, onDismiss = { menu = false },
-                        albumKey = track.albumKey.takeIf { showAlbumLink }, artist = track.artist, subject = MenuSubject.Song(track))
+                        albumKey = track.albumKey.takeIf { showAlbumLink }, artist = track.artist, subject = MenuSubject.Song(track),
+                        fromPlaylist = playlistId)
                 }
             }
         },
@@ -253,25 +272,40 @@ sealed interface MenuSubject {
     data class Song(val track: Track) : MenuSubject
     data class AlbumOf(val album: Album) : MenuSubject
     data class Artist(val name: String) : MenuSubject
-    data class PlaylistOf(val id: Long, val name: String) : MenuSubject
+    /** `editable`: not smart, so it can be renamed and deleted here. */
+    data class PlaylistOf(val id: Long, val name: String, val editable: Boolean = false) : MenuSubject
 }
 
 /**
- * Play Next, Add to Queue, going to the album or artist (when given), and for `subject`: Share (songs and albums),
- * Share File (a song) and Remove from This Device, which asks first. Removing deletes the songs from this device only:
- * the Mac's library keeps them.
+ * Play Next, Add to Queue, Add to Playlist, going to the album or artist (when given), and for `subject`: Share (songs
+ * and albums), Share File (a song), Rename and Delete (playlists made by hand) and Remove from This Device, which asks
+ * first. Removing deletes the songs from this device only: the Mac's library keeps them. `fromPlaylist`: the playlist
+ * the song is shown in, for Remove from Playlist.
  */
 @Composable
 fun SongMenu(tracks: List<Track>, expanded: Boolean, onDismiss: () -> Unit, albumKey: String? = null, artist: String? = null,
-             subject: MenuSubject? = null) {
+             subject: MenuSubject? = null, fromPlaylist: Long? = null) {
     val actions = LocalActions.current
     val context = LocalContext.current
     var removing by remember { mutableStateOf(false) }
+    var adding by remember { mutableStateOf(false) }
+    var renaming by remember { mutableStateOf(false) }
+    var deleting by remember { mutableStateOf(false) }
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
         DropdownMenuItem(text = { Text("Play Next") }, leadingIcon = { Icon(painterResource(R.drawable.ic_play_next), null) },
             onClick = { onDismiss(); actions.playNext(tracks) })
         DropdownMenuItem(text = { Text("Add to Queue") }, leadingIcon = { Icon(painterResource(R.drawable.ic_queue_add), null) },
             onClick = { onDismiss(); actions.addToQueue(tracks) })
+        DropdownMenuItem(text = { Text("Add to Playlist…") }, leadingIcon = { Icon(painterResource(R.drawable.ic_library_add), null) },
+            onClick = { onDismiss(); adding = true })
+        if (fromPlaylist != null && tracks.size == 1) {
+            DropdownMenuItem(text = { Text("Remove from Playlist") }, leadingIcon = { Icon(painterResource(R.drawable.ic_remove_circle), null) },
+                onClick = {
+                    onDismiss()
+                    actions.library.removeFromPlaylist(fromPlaylist, tracks.first())
+                    actions.notify("Removed “${tracks.first().title}” from the playlist")
+                })
+        }
         if (albumKey != null) {
             DropdownMenuItem(text = { Text("Go to Album") }, leadingIcon = { Icon(painterResource(R.drawable.ic_album), null) },
                 onClick = { onDismiss(); actions.open(Route.AlbumPage(albumKey)) })
@@ -298,20 +332,125 @@ fun SongMenu(tracks: List<Track>, expanded: Boolean, onDismiss: () -> Unit, albu
             }
             is MenuSubject.AlbumOf -> {
                 val album = subject.album
+                // Its page on the Mac: its songs that are not here, and the format it comes in.
+                DropdownMenuItem(text = { Text("Format and Songs on the Mac") }, leadingIcon = { Icon(painterResource(R.drawable.ic_laptop), null) },
+                    onClick = { onDismiss(); actions.open(Route.MacAlbumPage(album.key)) })
                 DropdownMenuItem(text = { Text("Share") }, leadingIcon = { Icon(painterResource(R.drawable.ic_share), null) }, onClick = {
                     onDismiss()
                     shareText(context, album.title, albumShareText(album.title, album.artist, album.year), actions.library.cover(album.artworkHash))
                 })
             }
+            is MenuSubject.PlaylistOf -> if (subject.editable) {
+                DropdownMenuItem(text = { Text("Rename") }, leadingIcon = { Icon(painterResource(R.drawable.ic_edit), null) },
+                    onClick = { onDismiss(); renaming = true })
+                DropdownMenuItem(text = { Text("Delete Playlist") }, leadingIcon = { Icon(painterResource(R.drawable.ic_delete), null) },
+                    onClick = { onDismiss(); deleting = true })
+            }
             else -> {}
         }
-        if (subject != null) {
+        // A playlist made here is not on the Mac yet: there is nothing to remove from this device.
+        if (subject != null && !(subject is MenuSubject.PlaylistOf && subject.id < 0)) {
             HorizontalDivider()
             DropdownMenuItem(text = { Text("Remove from This Device") }, leadingIcon = { Icon(painterResource(R.drawable.ic_delete), null) },
                 onClick = { onDismiss(); removing = true })
         }
     }
     if (removing && subject != null) RemoveDialog(subject, tracks.size) { removing = false }
+    if (adding) AddToPlaylistDialog(tracks) { adding = false }
+    if (subject is MenuSubject.PlaylistOf) {
+        if (renaming) PlaylistNameDialog("Rename Playlist", subject.name, "Rename", onDismiss = { renaming = false }) { name ->
+            actions.library.renamePlaylist(subject.id, name)
+        }
+        if (deleting) DeletePlaylistDialog(subject) { deleting = false }
+    }
+}
+
+/** Chooses the playlist to add songs to, or makes a new one with them. */
+@Composable
+fun AddToPlaylistDialog(tracks: List<Track>, onDone: () -> Unit) {
+    val actions = LocalActions.current
+    val playlists by actions.library.editablePlaylists.collectAsStateWithLifecycle()
+    var naming by remember { mutableStateOf(false) }
+    val what = if (tracks.size == 1) "“${tracks.first().title}”" else "${tracks.size} songs"
+    if (naming) {
+        PlaylistNameDialog("New Playlist", "", "Create", onDismiss = onDone) { name ->
+            actions.library.createPlaylist(name, tracks)
+            actions.notify("Added $what to “$name”")
+        }
+        return
+    }
+    AlertDialog(
+        onDismissRequest = onDone,
+        title = { Text("Add to Playlist") },
+        text = {
+            LazyColumn(Modifier.heightIn(max = 360.dp)) {
+                item(key = "new") {
+                    ListItem(
+                        headlineContent = { Text("New Playlist…") },
+                        leadingContent = { Icon(painterResource(R.drawable.ic_add_circle), null) },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                        modifier = Modifier.clickable { naming = true },
+                    )
+                }
+                items(playlists, key = { it.id }) { playlist ->
+                    ListItem(
+                        headlineContent = { Text(playlist.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        leadingContent = { Icon(painterResource(R.drawable.ic_queue), null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                        modifier = Modifier.clickable {
+                            actions.library.addToPlaylist(playlist.id, tracks)
+                            actions.notify("Added $what to “${playlist.name}”")
+                            onDone()
+                        },
+                    )
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDone) { Text("Cancel") } },
+    )
+}
+
+/** Asks for a playlist's name (a new one, or renaming). */
+@Composable
+fun PlaylistNameDialog(title: String, initial: String, confirm: String, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
+    var name by remember { mutableStateOf(TextFieldValue(initial, TextRange(0, initial.length))) }
+    val focus = remember { FocusRequester() }
+    val done = { if (name.text.isNotBlank()) { onConfirm(name.text.trim()); onDismiss() } }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            OutlinedTextField(name, { name = it }, singleLine = true, label = { Text("Name") },
+                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { done() }),
+                modifier = Modifier.fillMaxWidth().focusRequester(focus))
+            LaunchedEffect(Unit) { focus.requestFocus() }
+        },
+        confirmButton = { TextButton(onClick = done, enabled = name.text.isNotBlank()) { Text(confirm) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+/** Asks before deleting a playlist: it goes on the Mac too (its songs stay). */
+@Composable
+private fun DeletePlaylistDialog(subject: MenuSubject.PlaylistOf, onDone: () -> Unit) {
+    val actions = LocalActions.current
+    val back = LocalBack.current
+    AlertDialog(
+        onDismissRequest = onDone,
+        title = { Text("Delete “${subject.name}”?") },
+        text = { Text("The playlist is deleted here and on your Mac. Its songs stay in your library and on this device.") },
+        confirmButton = {
+            TextButton(onClick = {
+                actions.library.deletePlaylist(subject.id)
+                actions.notify("Deleted “${subject.name}”")
+                onDone()
+                back()
+            }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+        },
+        dismissButton = { TextButton(onClick = onDone) { Text("Cancel") } },
+    )
 }
 
 /** Asks before removing an album, artist, song or playlist from this device (the Mac keeps it). */
@@ -552,24 +691,28 @@ val LocalPageScope = staticCompositionLocalOf<AnimatedVisibilityScope?> { null }
 fun Modifier.sharedCover(key: String): Modifier {
     val shared = LocalSharedTransition.current ?: return this
     val page = LocalPageScope.current ?: return this
+    // The player's cover moves linearly, with the finger that opens Now Playing ([PLAYER_MOTION_MS]).
+    val motion = if (key == PLAYER_COVER) tween<Rect>(PLAYER_MOTION_MS, easing = LinearEasing) else tween(340, easing = FastOutSlowInEasing)
     return with(shared) {
         this@sharedCover.sharedElement(rememberSharedContentState("cover:$key"), animatedVisibilityScope = page,
-            boundsTransform = { _, _ -> tween(340, easing = FastOutSlowInEasing) })
+            boundsTransform = { _, _ -> motion })
     }
 }
 
 /**
  * How small the app's window is: `short` under 480 dp tall (a phone in landscape, or split screen beside a map in a
- * car), `narrow` under 480 dp wide (a half or a third of a landscape screen). Screens trade decoration for content there.
+ * car), `narrow` under 360 dp wide (a third of a landscape screen; a phone held upright is wider). Screens trade
+ * decoration for content there.
  */
 @Immutable
 data class WindowShape(val short: Boolean = false, val narrow: Boolean = false) {
     val compact: Boolean get() = short || narrow
 
     companion object {
-        fun of(window: androidx.window.core.layout.WindowSizeClass) = WindowShape(
+        /** From the window's size class (short) and its actual width in dp (size classes only step at 600 dp). */
+        fun of(window: androidx.window.core.layout.WindowSizeClass, widthDp: Float) = WindowShape(
             short = !window.isHeightAtLeastBreakpoint(androidx.window.core.layout.WindowSizeClass.HEIGHT_DP_MEDIUM_LOWER_BOUND),
-            narrow = !window.isWidthAtLeastBreakpoint(480),
+            narrow = widthDp < 360f,
         )
     }
 }

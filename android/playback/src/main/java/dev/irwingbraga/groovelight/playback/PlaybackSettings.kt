@@ -26,6 +26,7 @@ object PlaybackSettings {
     private val _normalization = MutableStateFlow(Normalization.TRACK)
     private val _bitPerfect = MutableStateFlow(false)
     private val _bitPerfectActive = MutableStateFlow(false)
+    private val _crossfade = MutableStateFlow(0)
 
     val eqEnabled: StateFlow<Boolean> = _eqEnabled.asStateFlow()
     val curve: StateFlow<EqPreset> = _curve.asStateFlow()
@@ -37,6 +38,8 @@ object PlaybackSettings {
     val bitPerfect: StateFlow<Boolean> = _bitPerfect.asStateFlow()
     /** Whether the song playing goes out bit-perfect (the DAC accepted its format). */
     val bitPerfectActive: StateFlow<Boolean> = _bitPerfectActive.asStateFlow()
+    /** Seconds songs overlap, fading one into the next (0: none, songs follow gapless). */
+    val crossfade: StateFlow<Int> = _crossfade.asStateFlow()
 
     /** The curve the audio thread applies, or null when the equalizer is off. */
     @Volatile var activeCurve: EqPreset? = null
@@ -57,6 +60,7 @@ object PlaybackSettings {
         _normalization.value = preferences.getString("normalization", null)?.let { runCatching { Normalization.valueOf(it) }.getOrNull() }
             ?: Normalization.TRACK
         _bitPerfect.value = preferences.getBoolean("bitPerfect", false)
+        _crossfade.value = preferences.getInt("crossfade", 0)
         refresh()
     }
 
@@ -126,6 +130,11 @@ object PlaybackSettings {
         _bitPerfect.value = enabled
         preferences.edit { putBoolean("bitPerfect", enabled) }
         refresh()
+    }
+
+    fun setCrossfade(seconds: Int) {
+        _crossfade.value = seconds.coerceIn(0, 12)
+        preferences.edit { putInt("crossfade", _crossfade.value) }
     }
 
     internal fun setBitPerfectActive(active: Boolean) {

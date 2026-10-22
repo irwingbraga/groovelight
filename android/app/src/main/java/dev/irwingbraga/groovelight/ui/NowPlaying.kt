@@ -1,5 +1,15 @@
 package dev.irwingbraga.groovelight.ui
 
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.ui.unit.Dp
+import androidx.compose.animation.core.Transition
+import androidx.compose.animation.EnterExitState
+import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.animation.core.animateDp
+import androidx.compose.ui.layout.onSizeChanged
 import android.os.SystemClock
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.BlendMode
@@ -19,8 +29,6 @@ import androidx.compose.ui.text.style.TextAlign
 import dev.irwingbraga.groovelight.playback.PlaybackSettings
 import dev.irwingbraga.groovelight.playback.SleepTimer
 import kotlinx.coroutines.delay
-import android.app.Activity
-import android.content.res.Configuration
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -30,8 +38,6 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
@@ -40,7 +46,6 @@ import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -91,7 +96,6 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -111,10 +115,7 @@ import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalView
-import androidx.core.view.WindowCompat
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
@@ -130,7 +131,6 @@ import androidx.media3.common.Player
 import coil3.compose.AsyncImage
 import dev.irwingbraga.groovelight.R
 import dev.irwingbraga.groovelight.library.Track
-import dev.irwingbraga.groovelight.playback.AudioPath
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.flowOf
 import java.io.File
@@ -141,12 +141,15 @@ private enum class Panel { COVER, LYRICS, QUEUE }
  * Now Playing, over everything: the cover (or the lyrics, or Up Next) on the colors of the cover, the song, the seek
  * bar and the controls. Swipe down or Back (with the predictive gesture) closes it. In landscape, the cover sits beside
  * the controls.
+ *
+ * It grows out of the mini player and shrinks back into it ([sharedPlayer], with the cover flying between the two):
+ * `transition` is open (true) or at the mini player (false). Dragging it down reports how far toward the mini player
+ * to `onDrag` (null when let go), which moves the transition with the finger.
  */
 @Composable
-fun NowPlaying(visible: Boolean, player: PlayerModel, onClose: () -> Unit) {
+fun NowPlaying(transition: Transition<Boolean>, player: PlayerModel, onClose: () -> Unit, onDrag: (Float?) -> Unit) {
     var backProgress by remember { mutableFloatStateOf(0f) }
-    var dragOffset by remember { mutableFloatStateOf(0f) }
-    PredictiveBackHandler(enabled = visible) { events ->
+    PredictiveBackHandler(enabled = transition.currentState && transition.targetState) { events ->
         try {
             events.collect { backProgress = it.progress }
             onClose()
@@ -156,28 +159,77 @@ fun NowPlaying(visible: Boolean, player: PlayerModel, onClose: () -> Unit) {
             backProgress = 0f
         }
     }
-    val offset by animateFloatAsState(dragOffset, if (dragOffset == 0f) spring() else tween(0), label = "drag")
-    AnimatedVisibility(visible, enter = slideInVertically(tween(320)) { it } + fadeIn(), exit = slideOutVertically(tween(260)) { it } + fadeOut()) {
+    transition.AnimatedVisibility(visible = { it }, enter = EnterTransition.None, exit = ExitTransition.None) {
         val song = LocalNowPlaying.current ?: return@AnimatedVisibility
         val density = LocalDensity.current
-        val dismiss = rememberDraggableState { delta -> dragOffset = (dragOffset + delta).coerceAtLeast(0f) }
-        Box(
-            Modifier.fillMaxSize()
-                .graphicsLayer {
-                    val scale = 1f - backProgress * 0.08f
-                    scaleX = scale
-                    scaleY = scale
-                    translationY = offset
-                    shape = RoundedCornerShape((backProgress * 32).dp)
-                    clip = backProgress > 0f || offset > 0f
-                }
-                .draggable(dismiss, Orientation.Vertical, onDragStopped = { velocity ->
-                    if (dragOffset > with(density) { 140.dp.toPx() } || velocity > 2_000f) onClose()
-                    dragOffset = 0f
-                }),
-        ) {
-            NowPlayingContent(song, player, onClose)
+        var height by remember { mutableFloatStateOf(1f) }
+        // Swiping it down shrinks it toward the mini player with the finger; far or fast enough closes it from there.
+        var dragged by remember { mutableFloatStateOf(0f) }
+        val dismiss = rememberDraggableState { delta ->
+            dragged = (dragged + delta).coerceAtLeast(0f)
+            onDrag(dragged / (height * 0.7f))
         }
+        CompositionLocalProvider(LocalPageScope provides this) {
+            Box(
+                Modifier.fillMaxSize()
+                    .onSizeChanged { height = it.height.toFloat().coerceAtLeast(1f) }
+                    .sharedPlayer(open = true)
+                    .graphicsLayer {
+                        val scale = 1f - backProgress * 0.08f
+                        scaleX = scale
+                        scaleY = scale
+                        shape = RoundedCornerShape((backProgress * 32).dp)
+                        clip = backProgress > 0f
+                    }
+                    .draggable(dismiss, Orientation.Vertical, onDragStopped = { velocity ->
+                        val close = dragged > with(density) { 140.dp.toPx() } || velocity > 2_000f
+                        dragged = 0f
+                        if (close) onClose()
+                        onDrag(null)
+                    }),
+            ) {
+                NowPlayingContent(song, player, onClose)
+            }
+        }
+    }
+}
+
+/** The cover shared by the mini player and Now Playing, so it flies between the two. */
+const val PLAYER_COVER = "nowPlaying"
+
+/**
+ * The mini player to Now Playing motion: linear inside, so following a finger (seeking the transition) moves the
+ * container exactly with it; [PLAYER_EASING] shapes it when it runs on its own (a tap, or finishing after letting go).
+ */
+const val PLAYER_MOTION_MS = 420
+val PLAYER_EASING = tween<Float>(PLAYER_MOTION_MS, easing = FastOutSlowInEasing)
+private val PLAYER_MOTION_DP = tween<Dp>(PLAYER_MOTION_MS, easing = LinearEasing)
+
+/**
+ * The mini player and Now Playing as one container ([NowPlaying] grows out of it): the same bounds in both, which
+ * move and resize between the two while their contents cross-fade, and corners rounding as the mini player's
+ * (`open`: Now Playing's square ones). Inside the player's [LocalSharedTransition] and [LocalPageScope] only.
+ */
+@Composable
+fun Modifier.sharedPlayer(open: Boolean): Modifier {
+    val shared = LocalSharedTransition.current ?: return this
+    val scope = LocalPageScope.current ?: return this
+    val corner by scope.transition.animateDp({ PLAYER_MOTION_DP }, label = "corner") { state ->
+        if ((state == EnterExitState.Visible) == open) 0.dp else 16.dp
+    }
+    return with(shared) {
+        this@sharedPlayer.sharedBounds(
+            rememberSharedContentState("player"), animatedVisibilityScope = scope,
+            // Each side's look cross-fades within the first quarter, so the container is solid while it grows.
+            enter = fadeIn(tween(PLAYER_MOTION_MS / 4, easing = LinearEasing)),
+            exit = fadeOut(tween(PLAYER_MOTION_MS / 4, easing = LinearEasing)),
+            boundsTransform = { _, _ -> tween(PLAYER_MOTION_MS, easing = LinearEasing) },
+            // Now Playing is scaled into the container; the mini player's card stretches to it (its glass fills the
+            // container, its row stays centered), so the container is whole all the way in both directions.
+            resizeMode = if (open) SharedTransitionScope.ResizeMode.scaleToBounds(ContentScale.FillWidth, Alignment.Center)
+                else SharedTransitionScope.ResizeMode.RemeasureToBounds,
+            clipInOverlayDuringTransition = OverlayClip(RoundedCornerShape(corner)),
+        )
     }
 }
 
@@ -198,20 +250,7 @@ private fun NowPlayingContent(song: PlayerModel.NowPlaying, player: PlayerModel,
         outlineVariant = Color.White.copy(alpha = 0.2f),
     )
     // Light status bar icons over the dark wash while open.
-    val view = LocalView.current
-    DisposableEffect(view) {
-        val window = (view.context as? Activity)?.window
-        val controller = window?.let { WindowCompat.getInsetsController(it, view) }
-        val light = controller?.isAppearanceLightStatusBars
-        controller?.isAppearanceLightStatusBars = false
-        controller?.isAppearanceLightNavigationBars = false
-        onDispose {
-            if (light != null) {
-                controller.isAppearanceLightStatusBars = light
-                controller.isAppearanceLightNavigationBars = light
-            }
-        }
-    }
+    LightSystemBarIcons()
     MaterialTheme(colorScheme = scheme, typography = MaterialTheme.typography) {
         Box(Modifier.fillMaxSize().background(background)) {
           CompositionLocalProvider(LocalContentColor provides Color.White) {
@@ -260,6 +299,7 @@ private fun NowPlayingContent(song: PlayerModel.NowPlaying, player: PlayerModel,
                 Dialog.SPEED -> SpeedDialog(player) { dialog = null }
                 Dialog.SLEEP -> SleepDialog(player) { dialog = null }
                 Dialog.RATING -> song.id?.let { id -> RatingDialog(id) { dialog = null } }
+                Dialog.VISUALIZER -> Visualizer(song.title, song.artist, accent) { dialog = null }
                 null -> {}
             }
           }
@@ -322,6 +362,8 @@ private fun TopRow(
                     onClick = { menu = false; actions.open(Route.Equalizer) })
                 DropdownMenuItem(text = { Text("Playback Speed") }, leadingIcon = { Icon(painterResource(R.drawable.ic_speed), null) },
                     onClick = { menu = false; onDialog(Dialog.SPEED) })
+                DropdownMenuItem(text = { Text("Visualizer") }, leadingIcon = { Icon(painterResource(R.drawable.ic_visualizer), null) },
+                    onClick = { menu = false; onDialog(Dialog.VISUALIZER) })
                 DropdownMenuItem(text = { Text("Sleep Timer") }, leadingIcon = { Icon(painterResource(R.drawable.ic_timer), null) },
                     onClick = { menu = false; onDialog(Dialog.SLEEP) })
                 DropdownMenuItem(text = { Text("Audio Details") }, leadingIcon = { Icon(painterResource(R.drawable.ic_info), null) },
@@ -342,7 +384,7 @@ private fun PanelContent(panel: Panel, song: PlayerModel.NowPlaying, player: Pla
             Panel.COVER -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 // Paused, the cover steps back a little.
                 val scale by animateFloatAsState(if (song.isPlaying || song.isBuffering) 1f else 0.86f, spring(dampingRatio = 0.6f), label = "cover")
-                Cover(cover, Modifier.widthIn(max = 480.dp).fillMaxWidth().graphicsLayer { scaleX = scale; scaleY = scale }
+                Cover(cover, Modifier.sharedCover(PLAYER_COVER).widthIn(max = 480.dp).fillMaxWidth().graphicsLayer { scaleX = scale; scaleY = scale }
                     .shadow(24.dp, RoundedCornerShape(12.dp)), corner = 12.dp)
             }
             Panel.LYRICS -> LyricsPanel(song, player)
@@ -447,6 +489,7 @@ private fun ColumnScope.Controls(
     if (!compact) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
         PanelButton(panel == Panel.LYRICS, R.drawable.ic_lyrics, "Lyrics") { onPanel(Panel.LYRICS) }
         PanelButton(sleep != SleepTimer.State.Off, R.drawable.ic_timer, sleepLabel(sleep)) { onDialog(Dialog.SLEEP) }
+        PanelButton(false, R.drawable.ic_visualizer, "Visualizer") { onDialog(Dialog.VISUALIZER) }
         IconButton(onClick = onDetails) {
             Icon(painterResource(R.drawable.ic_info), contentDescription = "Audio details", tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -732,7 +775,7 @@ private fun formatOf(track: Track): String {
     return listOfNotNull(codec, track.bitDepth?.let { "$it-bit" }, rate).joinToString(", ")
 }
 
-private enum class Dialog { SPEED, SLEEP, RATING }
+private enum class Dialog { SPEED, SLEEP, RATING, VISUALIZER }
 
 /** The volume adjustment applied to a song, and why. */
 private fun volumeLine(track: Track, mode: PlaybackSettings.Normalization, bitPerfect: Boolean): String {
@@ -882,7 +925,7 @@ private fun CompactBody(
     if (panel == Panel.COVER) {
         Row(Modifier.fillMaxSize().padding(horizontal = 16.dp).padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-            if (showCover) Cover(cover, Modifier.fillMaxHeight(0.9f).aspectRatio(1f, matchHeightConstraintsFirst = true), corner = 10.dp)
+            if (showCover) Cover(cover, Modifier.sharedCover(PLAYER_COVER).fillMaxHeight(0.9f).aspectRatio(1f, matchHeightConstraintsFirst = true), corner = 10.dp)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
                 Controls(song, player, panel, onPanel = {}, onDetails = onDetails, onDialog = onDialog, compact = true)
             }

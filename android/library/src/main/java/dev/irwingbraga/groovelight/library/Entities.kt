@@ -70,7 +70,7 @@ data class Track(
 data class Playlist(
     @PrimaryKey val id: Long,
     val name: String,
-    /** Evaluated by the Mac: its songs are as of the last sync. */
+    /** Songs chosen by rules: evaluated here ([smartRules]), or by the Mac as of the last sync. */
     val isSmart: Boolean = false,
     /** How the Mac draws its cover: "generated" (palette and pattern), "image" or "songs"; null for the songs'. */
     val coverStyle: String? = null,
@@ -78,7 +78,12 @@ data class Playlist(
     val coverPattern: String? = null,
     val coverHash: String? = null,
     @ColumnInfo(defaultValue = "1") val coverShowsTitle: Boolean = true,
-)
+    /** A smart playlist's rules ([SmartRules] as JSON): evaluated here on this device's songs, when they can be. */
+    val smartRules: String? = null,
+) {
+    /** Made on this device and not on the Mac yet (its id until the next sync brings the Mac's). */
+    val isLocal: Boolean get() = id < 0
+}
 
 @Entity(
     tableName = "playlist_item",
@@ -137,25 +142,47 @@ data class MacEqPreset(
 )
 
 /**
- * Something done on this device that the Mac should know (phase 3 sends them): loves and ratings for now. Until sent,
- * they win over the snapshot, so a sync does not undo them.
+ * Something done on this device that the Mac should know (`POST /history` sends them): loves, ratings, plays, skips
+ * and playlist edits. Until sent, they win over the snapshot (plays are added to its counts, edits made again), so a
+ * sync does not undo them.
  */
 @Entity(tableName = "history_event", indices = [Index("trackId"), Index("sent")])
 data class HistoryEvent(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val trackId: Long,
-    /** [LOVE] (value 1 or 0) or [RATING] (0 to 5 stars). */
+    /** [LOVE] (value 1 or 0), [RATING] (0 to 5 stars), [PLAY] and [SKIP] (value: seconds heard), or a playlist edit (trackId 0). */
     val kind: String,
     val value: Int,
-    /** Epoch milliseconds. */
+    /** Epoch milliseconds: when it happened, or when the song started (plays and skips). */
     val at: Long,
     val sent: Boolean = false,
+    /** Playlist edits: the playlist (negative for one made here), its name, and the songs added or removed (ids, by commas). */
+    val playlistId: Long? = null,
+    val name: String? = null,
+    val trackIds: String? = null,
 ) {
+    val trackIdList: List<Long> get() = trackIds?.split(',')?.mapNotNull { it.toLongOrNull() }.orEmpty()
+
     companion object {
         const val LOVE = "love"
         const val RATING = "rating"
+        const val PLAY = "play"
+        const val SKIP = "skip"
+        const val PLAYLIST_CREATE = "playlistCreate"
+        const val PLAYLIST_ADD = "playlistAdd"
+        const val PLAYLIST_REMOVE = "playlistRemove"
+        const val PLAYLIST_RENAME = "playlistRename"
+        const val PLAYLIST_DELETE = "playlistDelete"
     }
 }
+
+/** An artist's photo from the Mac (as its artist pages show), for the artists on this device: in the artwork store. */
+@Entity(tableName = "artist_photo")
+data class ArtistPhoto(@PrimaryKey val name: String, val artworkHash: String)
+
+/** The same for the Mac's whole library (the catalog): fetched small from the Mac when shown, as its covers. */
+@Entity(tableName = "catalog_artist_photo")
+data class CatalogArtistPhoto(@PrimaryKey val name: String, val artworkHash: String)
 
 /** A person credited in the library, with how many albums they are on. */
 data class PersonSummary(val name: String, val albums: Int)
@@ -229,6 +256,8 @@ data class TransferRequest(
     val key: String,
     /** Epoch milliseconds. */
     val createdAt: Long = System.currentTimeMillis(),
+    /** Adding: the format it comes in ("original", "opus160", "aac192", "mp3_320"); null: the device's. */
+    val encoding: String? = null,
 ) {
     companion object {
         const val ADD = "add"

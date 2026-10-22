@@ -110,6 +110,8 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
                     reachable.value = status != null
                     Transfers.reachable.value = status != null
                     // Requests made while the Mac was away go as soon as it answers, and a sync brings the music.
+                    // Loves and ratings made here go to the Mac at once.
+                    if (client != null && status != null && prefs.tlsPort != 0) runCatching { Transfers.sendHistory(getApplication(), client) }
                     val requested = client != null && status != null && runCatching { Transfers.send(getApplication(), client) }.getOrDefault(false)
                     if ((requested || status?.optBoolean("syncRequested") == true) && prefs.folder != null) SyncWorker.syncNow(getApplication())
                 }

@@ -10,17 +10,20 @@ import java.time.Instant
  * The Mac's library snapshot (`DeviceSnapshot` on the Mac, version 1): read as a stream, since a large library's is
  * several megabytes.
  */
-class Snapshot(
+data class Snapshot(
     val albums: List<Album>,
     val tracks: List<Track>,
     val playlists: List<Playlist>,
     val items: List<PlaylistItem>,
     val credits: List<Credit> = emptyList(),
     val equalizer: List<MacEqPreset> = emptyList(),
+    /** The artists' photos (null from a Mac that sends none). */
+    val artists: List<ArtistPhoto>? = null,
 ) {
-    /** Every cover it refers to. */
+    /** Every cover (and artist photo) it refers to. */
     val artworkHashes: Set<String> get() =
-        (albums.mapNotNull { it.artworkHash } + tracks.mapNotNull { it.artworkHash } + playlists.mapNotNull { it.coverHash }).toSet()
+        (albums.mapNotNull { it.artworkHash } + tracks.mapNotNull { it.artworkHash } + playlists.mapNotNull { it.coverHash } +
+            artists.orEmpty().map { it.artworkHash }).toSet()
 
     /** Replaces the device's library with this one. */
     suspend fun importInto(database: LibraryDatabase) = database.library().replace(this)
@@ -44,6 +47,7 @@ class Snapshot(
             val items = mutableListOf<PlaylistItem>()
             val credits = mutableListOf<Credit>()
             val equalizer = mutableListOf<MacEqPreset>()
+            var artists: List<ArtistPhoto>? = null
             reader.beginObject()
             while (reader.hasNext()) {
                 when (reader.nextName()) {
@@ -56,6 +60,7 @@ class Snapshot(
                     }
                     "credits" -> if (!reader.isNull()) reader.array { credits += credit(reader) }
                     "equalizer" -> if (!reader.isNull()) equalizer += equalizer(reader)
+                    "artists" -> if (!reader.isNull()) artists = buildList { reader.array { add(artistPhoto(reader)) } }
                     "version" -> require(reader.nextInt() <= 1) { "This library comes from a newer Groovelight: update the app" }
                     else -> reader.skipValue()
                 }
@@ -66,7 +71,7 @@ class Snapshot(
             val kept = tracks.filter { it.albumKey in keys }
             val ids = kept.map { it.id }.toSet()
             Snapshot(albums, kept, playlists, items.filter { it.trackId in ids },
-                credits.filter { it.albumKey in keys && (it.trackId == null || it.trackId in ids) }, equalizer)
+                credits.filter { it.albumKey in keys && (it.trackId == null || it.trackId in ids) }, equalizer, artists)
         }
 
         private fun album(reader: JsonReader): Album {
@@ -121,6 +126,18 @@ class Snapshot(
             }
             return Track(id, title, artist, albumKey, disc, number, genre, year, (duration * 1000).toLong(), path, codec, rate, bits,
                 trackGain, albumGain, loudness, loved, lovedAt, rating, plays, lastPlayed, added, lyrics, artwork)
+        }
+
+        private fun artistPhoto(reader: JsonReader): ArtistPhoto {
+            var name = ""; var hash = ""
+            reader.obj { field ->
+                when (field) {
+                    "name" -> name = reader.nextString()
+                    "artworkHash" -> hash = reader.nextString()
+                    else -> reader.skipValue()
+                }
+            }
+            return ArtistPhoto(name, hash)
         }
 
         private fun credit(reader: JsonReader): Credit {
@@ -184,6 +201,7 @@ class Snapshot(
                     "name" -> playlist = playlist.copy(name = reader.nextString())
                     "isSmart" -> playlist = playlist.copy(isSmart = reader.nextBoolean())
                     "songIds" -> reader.array { songs += reader.nextLong() }
+                    "rules" -> if (!reader.isNull()) playlist = playlist.copy(smartRules = SmartRules.read(reader).toJson())
                     "cover" -> if (!reader.isNull()) reader.obj { key ->
                         when (key) {
                             "style" -> playlist = playlist.copy(coverStyle = reader.nextString())

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Groovelight in Android Auto: a media app (browsing the library, Now Playing, voice search). -->
+<automotiveApp>
+    <uses name="media" />
+</automotiveApp>

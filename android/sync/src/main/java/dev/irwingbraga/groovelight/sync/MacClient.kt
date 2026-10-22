@@ -51,8 +51,12 @@ class Prefs(context: Context) {
         get() = prefs.getBoolean("charging", false)
         set(value) = prefs.edit().putBoolean("charging", value).apply()
     var lastResult: String? by stringPref("lastResult")
-    /** The version (ETag) of the Mac's catalog the device holds. */
+    /** The version (ETag) of the Mac's catalog the device holds, after the version of the app's reader ("2:<etag>"). */
     var catalogTag: String? by stringPref("catalogTag")
+    /** The format lossless songs come in, chosen here ("original", "opus160", "aac192", "mp3_320"); null: the Mac's. */
+    var encoding: String? by stringPref("encoding")
+    /** The format the Mac's device page has for this device, as of the last catalog (null: as they are). */
+    var macEncoding: String? by stringPref("macEncoding")
     var lastSync: Long
         get() = prefs.getLong("lastSync", 0)
         set(value) = prefs.edit().putLong("lastSync", value).apply()
@@ -234,7 +238,9 @@ class MacClient(private val host: String, private val port: Int, private val dev
      * The Mac's whole library (v2, HTTPS): its JSON and version, or null when the Mac's is still `tag` (nothing sent).
      * Arrives deflated; checked against its SHA-256 and, once inflated, against the version.
      */
-    fun catalog(tag: String?): Pair<ByteArray, String>? {
+    fun catalog(tag: String?): Pair<ByteArray, String>? = retrying { readCatalog(tag) }
+
+    private fun readCatalog(tag: String?): Pair<ByteArray, String>? {
         val connection = open("GET", "/catalog", ByteArray(0), signed = true, timeout = 120_000)
         try {
             if (tag != null) connection.setRequestProperty("If-None-Match", tag)
@@ -267,12 +273,34 @@ class MacClient(private val host: String, private val port: Int, private val dev
         }
     }
 
+    /** Sends loves and ratings made on the device (`[{id, trackId, kind, value, atMs}]`) to the Mac's library. */
+    fun history(events: JSONArray): JSONObject = json("POST", "/history", JSONObject().put("events", events))
+
     /** Sends requests for the selection (`[{id, action, kind, key}]`); answers what the selection holds then. */
     fun requests(requests: JSONArray): JSONObject = json("POST", "/requests", JSONObject().put("requests", requests))
 
     private fun hex(data: ByteArray) = Pairing.hexString(MessageDigest.getInstance("SHA-256").digest(data))
 
-    private fun bytes(path: String, token: String): Pair<ByteArray, String?> {
+    /**
+     * A one-off download (the snapshot, covers, the catalog): tried again twice when the connection drops or the answer
+     * arrives cut short, as files are, rather than failing the whole sync.
+     */
+    private fun <T> retrying(block: () -> T): T {
+        var attempt = 0
+        while (true) {
+            try {
+                return block()
+            } catch (error: IOException) {
+                // The Mac's answer (an error it sent) is final; a dropped or cut-short connection is worth another try.
+                if (error is MacError || ++attempt >= 3) throw error
+                Thread.sleep(1_000L * attempt)
+            }
+        }
+    }
+
+    private fun bytes(path: String, token: String): Pair<ByteArray, String?> = retrying { readBytes(path, token) }
+
+    private fun readBytes(path: String, token: String): Pair<ByteArray, String?> {
         val (input, connection) = get(path, 0, token)
         try {
             return input.use { it.readBytes() } to connection.getHeaderField("X-GL-SHA256")

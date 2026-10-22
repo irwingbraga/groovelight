@@ -34,8 +34,8 @@ object Transfers {
     val reachable = kotlinx.coroutines.flow.MutableStateFlow<Boolean?>(null)
 
     /** Asks for an album, artist or song (or to remove it): kept, then sent as soon as the Mac can be reached. */
-    suspend fun request(context: Context, action: String, kind: String, key: String) {
-        LibraryDatabase.get(context).catalog().insertRequest(TransferRequest(action = action, kind = kind, key = key))
+    suspend fun request(context: Context, action: String, kind: String, key: String, encoding: String? = null) {
+        LibraryDatabase.get(context).catalog().insertRequest(TransferRequest(action = action, kind = kind, key = key, encoding = encoding))
         RequestWorker.schedule(context)
     }
 
@@ -48,22 +48,56 @@ object Transfers {
         val pending = dao.pendingRequests()
         if (pending.isEmpty()) return false
         val body = JSONArray().apply {
-            pending.forEach { put(JSONObject().put("id", it.id.toString()).put("action", it.action).put("kind", it.kind).put("key", it.key)) }
+            pending.forEach {
+                put(JSONObject().put("id", it.id.toString()).put("action", it.action).put("kind", it.kind).put("key", it.key)
+                    .apply { it.encoding?.let { format -> put("encoding", format) } })
+            }
         }
         val chosen = withContext(Dispatchers.IO) { client.requests(body) }
         dao.setChosen(choice(chosen).rows())
+        // (The catalog's version is kept: the next one fetched has these changes too.)
         dao.removeRequests(upTo = pending.last().id)
+        true
+    }
+
+    /**
+     * Sends the loves, ratings, plays, skips and playlist edits made here to the Mac (over HTTPS), and forgets them once it has them:
+     * the Mac's library (and Last.fm) has them, and the next snapshots bring back how each song stands there. Returns whether
+     * there were any.
+     */
+    suspend fun sendHistory(context: Context, client: MacClient): Boolean = sending.withLock {
+        val library = LibraryDatabase.get(context).library()
+        val events = library.unsentEvents()
+        if (events.isEmpty()) return false
+        // Ids with the time, so the Mac (which counts each play once) never takes a new one for one it had, even
+        // after the app's data was cleared.
+        val body = JSONArray().apply {
+            events.forEach {
+                put(JSONObject().put("id", "${it.id}-${it.at}").put("trackId", it.trackId).put("kind", it.kind).put("value", it.value).put("atMs", it.at)
+                    .apply {
+                        it.playlistId?.let { playlist -> put("playlistId", playlist) }
+                        it.name?.let { name -> put("name", name) }
+                        if (it.trackIds != null) put("trackIds", JSONArray(it.trackIdList))
+                    })
+            }
+        }
+        withContext(Dispatchers.IO) { client.history(body) }
+        library.removeEvents(upTo = events.last().id)
         true
     }
 
     /** Fetches the Mac's library when it changed since the last time (only its version is asked otherwise). */
     suspend fun refreshCatalog(context: Context, client: MacClient, prefs: Prefs) {
         val database = LibraryDatabase.get(context)
-        // The catalog may be gone (the app's data cleared): ask for all of it then.
-        val tag = prefs.catalogTag.takeIf { database.catalog().albumCount() > 0 }
+        // The catalog may be gone (the app's data cleared), or read by an older app that skipped parts this one keeps
+        // (artists' photos): ask for all of it then.
+        val held = prefs.catalogTag?.takeIf { it.startsWith("${Catalog.READER}:") }?.substringAfter(':')
+        val tag = held.takeIf { database.catalog().albumCount() > 0 }
         val (json, version) = withContext(Dispatchers.IO) { client.catalog(tag) } ?: return
-        Catalog.read(json.inputStream()).importInto(database)
-        prefs.catalogTag = version
+        val catalog = Catalog.read(json.inputStream())
+        catalog.importInto(database)
+        prefs.macEncoding = catalog.encoding
+        prefs.catalogTag = "${Catalog.READER}:$version"
     }
 
     private val fetching = Mutex()
@@ -109,6 +143,8 @@ object Transfers {
             artists = strings("artists").toSet(),
             trackIds = strings("trackIds").mapNotNull { it.toLongOrNull() }.toSet(),
             hasOthers = chosen.optBoolean("hasOthers"),
+            excludedTrackIds = strings("excludedTrackIds").mapNotNull { it.toLongOrNull() }.toSet(),
+            encodings = chosen.optJSONObject("encodings")?.let { formats -> formats.keys().asSequence().associateWith { formats.getString(it) } }.orEmpty(),
         )
     }
 }
@@ -136,6 +172,7 @@ class RequestWorker(context: Context, params: WorkerParameters) : CoroutineWorke
         return try {
             val client = SyncEngine(applicationContext, prefs).connect()
             Transfers.reachable.value = true
+            Transfers.sendHistory(applicationContext, client)
             if (Transfers.send(applicationContext, client) && prefs.folder != null) SyncWorker.syncNow(applicationContext)
             Result.success()
         } catch (error: Exception) {

@@ -10,14 +10,17 @@
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 
     <application>
-        <!-- Exported so the system, headsets and (later) Android Auto can find the media session. -->
+        <!-- Exported so the system, headsets and Android Auto can find the media session and browse the library. -->
         <service
             android:name=".PlaybackService"
             android:exported="true"
             android:foregroundServiceType="mediaPlayback"
             tools:ignore="ExportedService">
             <intent-filter>
+                <action android:name="androidx.media3.session.MediaLibraryService" />
                 <action android:name="androidx.media3.session.MediaSessionService" />
+                <!-- Android Auto, and media browsers of older Android versions, find it by this one. -->
+                <action android:name="android.media.browse.MediaBrowserService" />
             </intent-filter>
         </service>
     </application>

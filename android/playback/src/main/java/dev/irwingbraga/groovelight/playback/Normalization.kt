@@ -41,9 +41,10 @@ object Normalization {
         return 10.0.pow(gain / 20).toFloat().coerceIn(0f, 1f)
     }
 
-    internal fun listener(player: Player) = object : Player.Listener {
+    /** Sets the player's volume when its song changes (`level`: a crossfade's, which multiplies the gain). */
+    internal fun listener(player: Player, level: (Player) -> Float = { 1f }) = object : Player.Listener {
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-            player.volume = volume(mediaItem)
+            player.volume = volume(mediaItem) * level(player)
         }
     }
 }

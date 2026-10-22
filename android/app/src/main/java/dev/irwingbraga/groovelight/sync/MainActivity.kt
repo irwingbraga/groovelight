@@ -2,7 +2,13 @@ package dev.irwingbraga.groovelight.sync
 
 import android.Manifest
 import android.os.Build
+import android.app.SearchManager
+import android.content.Intent
 import android.os.Bundle
+import android.provider.MediaStore
+import androidx.lifecycle.lifecycleScope
+import dev.irwingbraga.groovelight.app.VoiceSearch
+import kotlinx.coroutines.launch
 import dev.irwingbraga.groovelight.playback.PlaybackSettings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -18,20 +24,42 @@ import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.irwingbraga.groovelight.BuildConfig
+import dev.irwingbraga.groovelight.ui.Appearance
 import dev.irwingbraga.groovelight.ui.GroovelightTheme
+import dev.irwingbraga.groovelight.ui.SystemBarIcons
+import dev.irwingbraga.groovelight.ui.UpdatePrompt
 import dev.irwingbraga.groovelight.ui.ListeningCard
 import dev.irwingbraga.groovelight.ui.ModeChoice
 import dev.irwingbraga.groovelight.ui.PlayerShell
 
 // In Groovelight Sync's package: the launcher's component name stays the same across the update.
 class MainActivity : ComponentActivity() {
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        playFromSearch(intent)
+    }
+
+    /** "Play ... on Groovelight" asked by voice: plays what is found (the app opens as well). */
+    private fun playFromSearch(intent: Intent?) {
+        if (intent?.action != MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH) return
+        val query = intent.getStringExtra(SearchManager.QUERY)
+        lifecycleScope.launch { VoiceSearch.play(this@MainActivity, query) }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        playFromSearch(intent)
         PlaybackSettings.init(this)
+        Appearance.init(this)
         enableEdgeToEdge()
         setContent {
-            GroovelightTheme {
-                Surface(Modifier.fillMaxSize()) { GroovelightApp() }
+            val dark = Appearance.isDark()
+            SystemBarIcons(dark)
+            GroovelightTheme(dark) {
+                Surface(Modifier.fillMaxSize()) {
+                    GroovelightApp()
+                    UpdatePrompt()
+                }
             }
         }
     }

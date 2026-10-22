@@ -68,10 +68,13 @@ object SleepTimer {
         }
     }
 
-    /** Called by the service with its player: the end-of-song timer watches it. */
+    private var watching: Player.Listener? = null
+
+    /** Called by the service with the player playing (again when crossfade hands over to the other): the timer watches it. */
     internal fun attach(player: Player) {
+        watching?.let { this.player?.removeListener(it) }
         this.player = player
-        player.addListener(object : Player.Listener {
+        watching = object : Player.Listener {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 if (_state.value == State.EndOfSong && reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) {
                     player.pause()
@@ -82,11 +85,13 @@ object SleepTimer {
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == Player.STATE_ENDED && _state.value == State.EndOfSong) _state.value = State.Off
             }
-        })
+        }.also(player::addListener)
     }
 
     internal fun detach() {
         cancel()
+        watching?.let { player?.removeListener(it) }
+        watching = null
         player = null
     }
 

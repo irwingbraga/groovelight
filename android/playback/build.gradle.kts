@@ -18,6 +18,8 @@ dependencies {
     api(libs.media3.exoplayer)
     api(libs.media3.session)
     api(libs.coroutines.android)
+    // Answering media browsers (Android Auto) with coroutines.
+    implementation(libs.coroutines.guava)
     implementation(libs.core.ktx)
     testImplementation(libs.junit)
     testImplementation(libs.json)

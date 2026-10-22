@@ -2,6 +2,7 @@ package dev.irwingbraga.groovelight.library
 
 import androidx.room.Dao
 import androidx.room.Insert
+import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
 import kotlinx.coroutines.flow.Flow
@@ -18,11 +19,17 @@ interface CatalogDao {
     @Query("SELECT * FROM catalog_album WHERE artist = :artist ORDER BY year, title COLLATE NOCASE")
     fun albumsOf(artist: String): Flow<List<CatalogAlbum>>
 
+    /** Album artists, with the artist's photo on the Mac, or one of their covers when it has none. */
     @Query("""
-        SELECT artist AS name, COUNT(*) AS albums, MIN(artworkHash) AS artworkHash FROM catalog_album
-        WHERE isCompilation = 0 GROUP BY artist ORDER BY artist COLLATE NOCASE
+        SELECT artist AS name, COUNT(*) AS albums,
+            COALESCE((SELECT artworkHash FROM catalog_artist_photo WHERE catalog_artist_photo.name = catalog_album.artist),
+                MIN(artworkHash)) AS artworkHash
+        FROM catalog_album WHERE isCompilation = 0 GROUP BY artist ORDER BY artist COLLATE NOCASE
     """)
     fun artists(): Flow<List<CatalogArtist>>
+
+    @Query("SELECT artworkHash FROM catalog_artist_photo WHERE name = :name")
+    fun artistPhoto(name: String): Flow<String?>
 
     @Query("SELECT * FROM catalog_track ORDER BY title COLLATE NOCASE")
     fun tracks(): Flow<List<CatalogTrack>>
@@ -50,13 +57,19 @@ interface CatalogDao {
 
     /** Replaces the catalog with the Mac's (and what the selection holds). */
     @Transaction
-    suspend fun replace(albums: List<CatalogAlbum>, tracks: List<CatalogTrack>, chosen: List<CatalogChosen>) {
+    suspend fun replace(albums: List<CatalogAlbum>, tracks: List<CatalogTrack>, chosen: List<CatalogChosen>,
+                        artists: List<CatalogArtistPhoto> = emptyList()) {
         clearTracks()
         clearAlbums()
+        clearArtistPhotos()
         insertAlbums(albums)
         insertTracks(tracks)
+        insertArtistPhotos(artists)
         setChosen(chosen)
     }
+
+    @Query("DELETE FROM catalog_artist_photo") suspend fun clearArtistPhotos()
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun insertArtistPhotos(photos: List<CatalogArtistPhoto>)
 
     @Transaction
     suspend fun setChosen(chosen: List<CatalogChosen>) {

@@ -15,6 +15,12 @@
       "year" : 1997
     }
   ],
+  "artists" : [
+    {
+      "artworkHash" : "face01",
+      "name" : "Radiohead"
+    }
+  ],
   "createdAt" : "2027-01-15T08:00:00Z",
   "credits" : [
     {
@@ -94,6 +100,29 @@
       "id" : 8,
       "isSmart" : true,
       "name" : "Most Played",
+      "rules" : {
+        "limit" : {
+          "count" : 25,
+          "seed" : 8,
+          "selectedBy" : "mostPlayed",
+          "unit" : "songs"
+        },
+        "match" : "all",
+        "rules" : [
+          {
+            "date" : "2027-01-15T08:00:00Z",
+            "field" : "plays",
+            "id" : "00000000-0000-0000-0000-000000000008",
+            "number" : 0,
+            "number2" : 0,
+            "op" : "greaterThan",
+            "period" : 2,
+            "periodUnit" : "weeks",
+            "quality" : 2,
+            "text" : ""
+          }
+        ]
+      },
       "songIds" : [
         101,
         201

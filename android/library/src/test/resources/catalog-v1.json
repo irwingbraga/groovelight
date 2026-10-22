@@ -22,6 +22,12 @@
       "title" : "Hits"
     }
   ],
+  "artists" : [
+    {
+      "artworkHash" : "face01",
+      "name" : "Radiohead"
+    }
+  ],
   "chosen" : {
     "albumKeys" : [
       "radiohead|ok computer"
@@ -29,6 +35,9 @@
     "artists" : [
 
     ],
+    "encodings" : {
+      "album:radiohead|kid a" : "opus160"
+    },
     "everything" : false,
     "excludedTrackIds" : [
       201

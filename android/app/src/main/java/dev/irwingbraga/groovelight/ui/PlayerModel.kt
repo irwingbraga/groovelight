@@ -20,6 +20,9 @@ import dev.irwingbraga.groovelight.playback.SleepTimer
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flow
@@ -72,6 +75,18 @@ class PlayerModel(application: Application) : AndroidViewModel(application) {
     val speed: StateFlow<Float> = speeds.asStateFlow()
     val sleepTimer = SleepTimer.state
 
+    /**
+     * Whether the mini player is put away: closed by the user, or paused for longer than [hideAfter] (counted from when
+     * it paused, also while the app was away). Playing anything brings it back; the queue is kept either way.
+     */
+    private val hidden = MutableStateFlow(false)
+    val miniPlayerHidden: StateFlow<Boolean> = hidden.asStateFlow()
+    /** Minutes paused before the mini player hides itself (0: never). */
+    private val hideMinutes = MutableStateFlow(prefs.getInt("hideAfterMinutes", 15))
+    val hideAfter: StateFlow<Int> = hideMinutes.asStateFlow()
+    private var hiding: Job? = null
+    private var wasPlaying: Boolean? = null
+
     private var controller: MediaController? = null
     private val listener = object : Player.Listener {
         override fun onEvents(player: Player, events: Player.Events) {
@@ -106,6 +121,7 @@ class PlayerModel(application: Application) : AndroidViewModel(application) {
             state.value = null
             return
         }
+        followPauses(player.isPlaying)
         val metadata = player.mediaMetadata
         val extras = item.mediaMetadata.extras
         val duration = player.duration.takeIf { it != C.TIME_UNSET } ?: item.mediaMetadata.durationMs ?: 0
@@ -258,6 +274,62 @@ class PlayerModel(application: Application) : AndroidViewModel(application) {
 
     fun clearUpNext() {
         controller?.run { if (currentMediaItemIndex + 1 < mediaItemCount) removeMediaItems(currentMediaItemIndex + 1, mediaItemCount) }
+    }
+
+    /**
+     * Puts the mini player away: playback stops (its notification goes) and the queue stays, so Play on a headset or
+     * playing anything brings it back. [reopen] undoes it.
+     */
+    fun closePlayer() {
+        controller?.run {
+            pause()
+            stop()
+        }
+        hidden.value = true
+    }
+
+    fun reopen() { hidden.value = false }
+
+    /** Empties the queue: nothing is left to play, and the mini player goes. */
+    fun clearQueue() {
+        controller?.run {
+            stop()
+            clearMediaItems()
+        }
+    }
+
+    fun setHideAfter(minutes: Int) {
+        hideMinutes.value = minutes
+        prefs.edit { putInt("hideAfterMinutes", minutes) }
+        wasPlaying = null
+        controller?.let { followPauses(it.isPlaying) }
+    }
+
+    /**
+     * Playing shows the mini player; pausing starts the wait before it hides. The time it paused is kept, so after the
+     * app was away (or ended) for longer, it opens with the mini player put away.
+     */
+    private fun followPauses(playing: Boolean) {
+        if (playing == wasPlaying) return
+        val first = wasPlaying == null
+        wasPlaying = playing
+        hiding?.cancel()
+        if (playing) {
+            hidden.value = false
+            prefs.edit { remove("pausedAt") }
+            return
+        }
+        val now = System.currentTimeMillis()
+        val pausedAt = if (first) prefs.getLong("pausedAt", now) else now
+        prefs.edit { putLong("pausedAt", pausedAt) }
+        val minutes = hideMinutes.value
+        if (minutes <= 0) return
+        val left = pausedAt + minutes * 60_000L - now
+        if (left <= 0) hidden.value = true
+        else hiding = viewModelScope.launch {
+            delay(left)
+            hidden.value = true
+        }
     }
 
     fun seekTo(milliseconds: Long) { controller?.seekTo(milliseconds) }

@@ -101,6 +101,8 @@ fun ShelfScreen() {
     val albums by actions.library.albums.collectAsStateWithLifecycle()
     val all = albums ?: return Loading()
     val scheme = darkColorScheme(primary = Color(0xFFB4C5FF), background = Color.Black, surface = Color.Black)
+    // Always dark, as on the Mac: light status bar icons over it whatever the theme.
+    LightSystemBarIcons()
     MaterialTheme(colorScheme = scheme, typography = MaterialTheme.typography) {
         CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides Color.White) {
             Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF0B0D14), Color.Black)))) {

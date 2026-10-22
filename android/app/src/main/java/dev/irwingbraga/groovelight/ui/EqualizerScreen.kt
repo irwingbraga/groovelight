@@ -98,12 +98,13 @@ fun EqualizerScreen() {
     val bitPerfect by PlaybackSettings.bitPerfectActive.collectAsStateWithLifecycle()
     var selected by rememberSaveable { mutableIntStateOf(8) }
     var presets by rememberSaveable { mutableStateOf(false) }
-    Column(Modifier.fillMaxSize()) {
+    GlassTop(bar = {
         SettingsBar("Equalizer") {
             Switch(checked = enabled, onCheckedChange = PlaybackSettings::setEqEnabled, modifier = Modifier.padding(end = 12.dp)
                 .semantics { contentDescription = "Equalizer" })
         }
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 24.dp + LocalBottomInset.current)) {
+    }) {
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(top = LocalTopInset.current, bottom = 24.dp + LocalBottomInset.current)) {
             if (bitPerfect) {
                 Notice("Playing bit-perfect to the USB DAC: the equalizer is off until the next song that is not.")
             }

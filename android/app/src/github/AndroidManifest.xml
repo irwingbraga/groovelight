@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The GitHub build updates itself from GitHub releases (Google Play does not allow that, so the Play build has none of this). -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Installing the downloaded release over this one: Android asks the user (and to allow it the first time). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Updating without asking again, where Android allows it (Android 12 and later, when this app installed itself). -->
+    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
+
+    <application>
+        <receiver android:name="dev.irwingbraga.groovelight.update.UpdateReceiver" android:exported="false" />
+    </application>
+</manifest>

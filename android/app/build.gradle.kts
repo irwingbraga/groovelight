@@ -92,10 +92,18 @@ dependencies {
     implementation(libs.lifecycle.runtime.compose)
     implementation(libs.documentfile)
     implementation(libs.coil.compose)
+    // Glass: the navigation bar blurs what scrolls behind it.
+    implementation(libs.haze)
+    // Home screen widgets: Now Playing and Recently Played.
+    implementation(libs.glance.appwidget)
+    implementation(libs.glance.material3)
     implementation(libs.compose.navigation.suite)
     implementation(libs.navigation3.ui)
     implementation(libs.palette)
     testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
+    testImplementation(libs.coroutines.test)
 }
 
 /**

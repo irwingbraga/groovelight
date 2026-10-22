@@ -6,6 +6,7 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
+        android:name="dev.irwingbraga.groovelight.app.GroovelightApp"
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:enableOnBackInvokedCallback="true"
@@ -25,7 +26,68 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- "Play ... on Groovelight" by voice (Google Assistant, Android Auto). -->
+            <intent-filter>
+                <action android:name="android.media.action.MEDIA_PLAY_FROM_SEARCH" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <!-- Holding the Quick Settings tile opens the app. -->
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE_PREFERENCES" />
+            </intent-filter>
         </activity>
+
+        <!-- The player (declared in the playback module): as a media browser for Android Auto, stated here too. -->
+        <service
+            android:name="dev.irwingbraga.groovelight.playback.PlaybackService"
+            android:exported="true"
+            tools:ignore="ExportedService">
+            <intent-filter>
+                <action android:name="android.media.browse.MediaBrowserService" />
+            </intent-filter>
+        </service>
+
+        <!-- Android Auto: Groovelight is a media app there. -->
+        <meta-data android:name="com.google.android.gms.car.application" android:resource="@xml/automotive_app_desc" />
+
+        <!-- The covers, read-only, for Android Auto's lists (it shows them from its own app). -->
+        <provider
+            android:name="dev.irwingbraga.groovelight.app.ArtworkProvider"
+            android:authorities="${applicationId}.artwork"
+            android:exported="true"
+            tools:ignore="ExportedContentProvider" />
+
+        <!-- Home screen widgets: Now Playing, and Recently Played (tap an album to play it). -->
+        <receiver
+            android:name="dev.irwingbraga.groovelight.widget.NowPlayingWidgetReceiver"
+            android:exported="true"
+            android:label="Now Playing">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_now_playing" />
+        </receiver>
+        <receiver
+            android:name="dev.irwingbraga.groovelight.widget.RecentlyPlayedWidgetReceiver"
+            android:exported="true"
+            android:label="Recently Played">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_recently_played" />
+        </receiver>
+
+        <!-- The Quick Settings tile: play or pause, with the song playing. -->
+        <service
+            android:name="dev.irwingbraga.groovelight.app.PlayerTile"
+            android:exported="true"
+            android:icon="@drawable/ic_play"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
 
         <!-- Covers shared with other apps (Share on songs and albums), read-only and only the ones shared. -->
         <provider

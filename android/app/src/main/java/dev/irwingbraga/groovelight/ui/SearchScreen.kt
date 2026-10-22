@@ -55,7 +55,8 @@ fun SearchScreen() {
     val focusManager = LocalFocusManager.current
     // Opens with the keyboard up when there is nothing searched yet.
     LaunchedEffect(Unit) { if (query.isEmpty()) runCatching { focus.requestFocus() } }
-    Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars)) {
+    // The search field floats over the results as glass.
+    GlassTop(bar = { Box(Modifier.windowInsetsPadding(WindowInsets.statusBars)) {
         TextField(
             value = query,
             onValueChange = { actions.library.query.value = it },
@@ -74,13 +75,14 @@ fun SearchScreen() {
                 disabledIndicatorColor = Color.Transparent),
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp).focusRequester(focus),
         )
+    } }) {
         val found = results
         when {
             found == null -> EmptyState(R.drawable.ic_search, "Search your library", "Find artists, albums and songs on this device.",
-                Modifier.padding(bottom = LocalBottomInset.current))
+                Modifier.padding(top = LocalTopInset.current, bottom = LocalBottomInset.current))
             found.isEmpty -> EmptyState(R.drawable.ic_search, "No results", "Nothing on this device matches \"${found.query}\".",
-                Modifier.padding(bottom = LocalBottomInset.current))
-            else -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 16.dp + LocalBottomInset.current)) {
+                Modifier.padding(top = LocalTopInset.current, bottom = LocalBottomInset.current))
+            else -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = LocalTopInset.current, bottom = 16.dp + LocalBottomInset.current)) {
                 if (found.artists.isNotEmpty()) {
                     item(key = "artists") { SectionTitle("Artists") }
                     items(found.artists, key = { "artist:${it.name}" }) { artist ->

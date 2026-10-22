@@ -6,27 +6,45 @@ import java.io.InputStream
 import java.io.InputStreamReader
 
 /** The Mac's whole library (`DeviceCatalog` on the Mac), read as a stream: a large library's is several megabytes. */
-class Catalog(val albums: List<CatalogAlbum>, val tracks: List<CatalogTrack>, val choice: Choice) {
-    suspend fun importInto(database: LibraryDatabase) = database.catalog().replace(albums, tracks, choice.rows())
+class Catalog(val albums: List<CatalogAlbum>, val tracks: List<CatalogTrack>, val choice: Choice, val encoding: String? = null,
+              val artists: List<CatalogArtistPhoto> = emptyList()) {
+    suspend fun importInto(database: LibraryDatabase) = database.catalog().replace(albums, tracks, choice.rows(), artists)
 
     companion object {
+        /** What this reader keeps (2: artists' photos): a catalog read by an older one is fetched whole again. */
+        const val READER = 2
+
         fun read(input: InputStream): Catalog = JsonReader(InputStreamReader(input, Charsets.UTF_8)).use { reader ->
             val albums = mutableListOf<CatalogAlbum>()
             val tracks = mutableListOf<CatalogTrack>()
             var choice = Choice()
+            var encoding: String? = null
+            val artists = mutableListOf<CatalogArtistPhoto>()
             reader.beginObject()
             while (reader.hasNext()) {
                 when (reader.nextName()) {
                     "albums" -> reader.array { albums += album(reader) }
                     "songs" -> reader.array { tracks += song(reader) }
                     "chosen" -> choice = Choice.read(reader)
+                    "encoding" -> encoding = reader.stringOrNull()
+                    "artists" -> if (!reader.isNull()) reader.array {
+                        var name = ""; var hash = ""
+                        reader.obj { field ->
+                            when (field) {
+                                "name" -> name = reader.nextString()
+                                "artworkHash" -> hash = reader.nextString()
+                                else -> reader.skipValue()
+                            }
+                        }
+                        artists += CatalogArtistPhoto(name, hash)
+                    }
                     "version" -> require(reader.nextInt() <= 1) { "This library comes from a newer Groovelight: update the app" }
                     else -> reader.skipValue()
                 }
             }
             reader.endObject()
             val keys = albums.map { it.key }.toSet()
-            Catalog(albums, tracks.filter { it.albumKey in keys }, choice)
+            Catalog(albums, tracks.filter { it.albumKey in keys }, choice, encoding, artists)
         }
 
         private fun album(reader: JsonReader): CatalogAlbum {
@@ -83,6 +101,8 @@ data class Choice(
     val trackIds: Set<Long> = emptySet(),
     /** Songs removed from this device: off it whatever else is chosen (the Mac keeps them). */
     val excludedTrackIds: Set<Long> = emptySet(),
+    /** Formats chosen per album, artist or song ("album:<key>" to "opus160"...), over the device's own. */
+    val encodings: Map<String, String> = emptyMap(),
     val hasOthers: Boolean = false,
 ) {
     /**
@@ -95,6 +115,11 @@ data class Choice(
         val add = request.action == TransferRequest.ADD
         val ids = songs(request.kind, request.key)
         val excluded = if (add) choice.excludedTrackIds - ids else choice.excludedTrackIds + ids
+        // Adding sets its format (or the device's again, without one); removing forgets it.
+        val formatKey = "${request.kind}:${request.key}"
+        val formatted = if (request.kind == TransferRequest.PLAYLIST) choice
+            else choice.copy(encodings = if (add && request.encoding != null) choice.encodings + (formatKey to request.encoding) else choice.encodings - formatKey)
+        @Suppress("NAME_SHADOWING") val choice = formatted
         when (request.kind) {
             TransferRequest.ALBUM -> choice.copy(albumKeys = if (add) choice.albumKeys + request.key else choice.albumKeys - request.key, excludedTrackIds = excluded)
             TransferRequest.ARTIST -> choice.copy(artists = if (add) choice.artists + request.key else choice.artists - request.key, excludedTrackIds = excluded)
@@ -115,6 +140,9 @@ data class Choice(
     /** Whether the song was removed from the device (and stays off it). */
     fun excludes(trackId: Long) = trackId in excludedTrackIds
 
+    /** The format chosen for an album (or its artist), or null for the device's own. */
+    fun encodingOf(album: CatalogAlbum): String? = encodings["album:${album.key}"] ?: encodings["artist:${album.artist}"]
+
     fun rows(): List<CatalogChosen> = buildList {
         if (everything) add(CatalogChosen("everything", ""))
         if (hasOthers) add(CatalogChosen("others", ""))
@@ -122,6 +150,7 @@ data class Choice(
         artists.forEach { add(CatalogChosen(TransferRequest.ARTIST, it)) }
         trackIds.forEach { add(CatalogChosen(TransferRequest.SONG, it.toString())) }
         excludedTrackIds.forEach { add(CatalogChosen("excluded", it.toString())) }
+        encodings.forEach { (key, format) -> add(CatalogChosen("format:$format", key)) }
     }
 
     companion object {
@@ -131,6 +160,7 @@ data class Choice(
             artists = rows.filter { it.kind == TransferRequest.ARTIST }.map { it.key }.toSet(),
             trackIds = rows.filter { it.kind == TransferRequest.SONG }.mapNotNull { it.key.toLongOrNull() }.toSet(),
             excludedTrackIds = rows.filter { it.kind == "excluded" }.mapNotNull { it.key.toLongOrNull() }.toSet(),
+            encodings = rows.filter { it.kind.startsWith("format:") }.associate { it.key to it.kind.removePrefix("format:") },
             hasOthers = rows.any { it.kind == "others" },
         )
 
@@ -144,6 +174,7 @@ data class Choice(
                     "artists" -> choice.copy(artists = buildSet { reader.array { add(reader.nextString()) } })
                     "trackIds" -> choice.copy(trackIds = buildSet { reader.array { add(reader.nextLong()) } })
                     "excludedTrackIds" -> choice.copy(excludedTrackIds = buildSet { reader.array { add(reader.nextLong()) } })
+                    "encodings" -> choice.copy(encodings = buildMap { reader.obj { key -> put(key, reader.nextString()) } })
                     else -> choice.also { reader.skipValue() }
                 }
             }

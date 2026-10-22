@@ -97,6 +97,8 @@ class EqualizerSink(
     sink: AudioSink,
     private val settings: () -> EqPreset?,
     private val bitPerfect: (sampleRate: Int, channels: Int, encoding: Int) -> Boolean,
+    /** Where the visualizers read this player's music ([AudioTap]). */
+    private val tap: AudioTap.Channel? = null,
 ) : ForwardingAudioSink(sink) {
     private val filters = EqFilters()
     /** Whether the current stream is converted and filtered here (decided when it is configured). */
@@ -120,6 +122,7 @@ class EqualizerSink(
         if (!processing) return super.configure(audioSinkConfig)
         inputEncoding = format.pcmEncoding
         channels = format.channelCount
+        tap?.sampleRate = format.sampleRate
         filters.configure(format.sampleRate, channels)
         filters.reset()
         val floatFormat = format.buildUpon().setPcmEncoding(C.ENCODING_PCM_FLOAT).build()
@@ -136,6 +139,11 @@ class EqualizerSink(
         if (!processing) return super.handleBuffer(buffer, presentationTimeUs, encodedAccessUnitCount)
         // The renderer hands the same buffer again until it is taken: filtered once, then offered until the sink has it all.
         val filtered = pending ?: convert(buffer).also { pending = it }
+        // How far ahead of what is heard the sink is, for the visualizers to show what plays now.
+        if (tap != null && AudioTap.enabled) {
+            val heard = getCurrentPositionUs(false)
+            if (heard != AudioSink.CURRENT_POSITION_NOT_SET) tap.latencyFrames = (presentationTimeUs - heard) * tap.sampleRate / 1_000_000
+        }
         val done = super.handleBuffer(filtered, presentationTimeUs, encodedAccessUnitCount)
         if (done) pending = null
         return done
@@ -166,6 +174,7 @@ class EqualizerSink(
         buffer.position(buffer.limit())
         filters.setPreset(settings())
         filters.process(samples, count / channels.coerceAtLeast(1))
+        if (AudioTap.enabled) tap?.write(samples, count, channels)
         if (output.capacity() < count * 4) output = ByteBuffer.allocateDirect(count * 4 * 2).order(ByteOrder.nativeOrder())
         output.clear()
         output.asFloatBuffer().put(samples, 0, count)
