@@ -1,4 +1,5 @@
 import Foundation
+import GRDB
 import Testing
 @testable import LibraryKit
 
@@ -68,6 +69,113 @@ extension DeviceSnapshotTests {
         var songs = DeviceSelection()
         songs.trackIds = [tracks[1].id!]
         #expect(try database.writer.read { try LibraryDatabase.deviceContents($0, songs) }.tracks.map(\.id) == [tracks[1].id])
+    }
+}
+
+extension DeviceSnapshotTests {
+    @Test func lovesAndRatingsFromADeviceReachTheLibrary() throws {
+        let database = try LibraryDatabaseTests.seeded()
+        let tracks = try database.writer.read { try LibraryDatabase.allTracks($0) }
+        let id = { (title: String) in tracks.first { $0.title == title }!.id! }
+        let early = Int64(1_700_000_000_000), late = Int64(1_800_000_000_000)
+        // Loved here later than the device's unlove: stays loved. Not loved here: the device's love and rating apply.
+        try database.setLoved(true, trackId: id("Something"), at: Date(timeIntervalSince1970: Double(late) / 1000))
+        let changed = try database.applyDeviceHistory([
+            DeviceHistoryEvent(id: "1", trackId: id("Something"), kind: .love, value: 0, atMs: early),
+            DeviceHistoryEvent(id: "2", trackId: id("Come Together"), kind: .love, value: 1, atMs: early),
+            DeviceHistoryEvent(id: "3", trackId: id("Come Together"), kind: .rating, value: 4, atMs: early),
+        ]).loves
+        #expect(changed.map(\.trackId) == [id("Come Together")] && changed.first?.loved == true)
+        let after = try database.writer.read { try LibraryDatabase.allTracks($0) }
+        let something = try #require(after.first { $0.title == "Something" }), together = try #require(after.first { $0.title == "Come Together" })
+        #expect(something.isLoved && together.isLoved && together.rating == 4)
+        #expect(together.lovedAt == Date(timeIntervalSince1970: Double(early) / 1000))
+        // Sent again (a retry): nothing changes.
+        #expect(try database.applyDeviceHistory([DeviceHistoryEvent(id: "2", trackId: id("Come Together"), kind: .love, value: 1, atMs: early)]).isEmpty)
+        // An unlove made on the device after the Mac's love wins.
+        let unloved = try database.applyDeviceHistory([DeviceHistoryEvent(id: "4", trackId: id("Something"), kind: .love, value: 0, atMs: late + 1)]).loves
+        #expect(unloved.first?.loved == false)
+    }
+
+    @Test func playsFromADeviceCountOnceAndKeepTheirTimes() throws {
+        let database = try LibraryDatabaseTests.seeded()
+        let tracks = try database.writer.read { try LibraryDatabase.allTracks($0) }
+        let song = try #require(tracks.first { $0.title == "Something" }).id!
+        let early = Int64(1_700_000_000_000), late = Int64(1_800_000_000_000)
+        let events = [
+            DeviceHistoryEvent(id: "a", trackId: song, kind: .play, value: 180, atMs: late),
+            DeviceHistoryEvent(id: "b", trackId: song, kind: .play, value: 200, atMs: early),
+            DeviceHistoryEvent(id: "c", trackId: song, kind: .skip, value: 5, atMs: late + 1),
+            DeviceHistoryEvent(id: "d", trackId: song, kind: .unknown, value: 1, atMs: late),
+        ]
+        let changes = try database.applyDeviceHistory(events, deviceId: "phone")
+        #expect(changes.plays.map(\.startedAt) == [early, late].map { Date(timeIntervalSince1970: Double($0) / 1000) })
+        #expect(changes.plays.map(\.listened) == [200, 180])
+        var track = try #require(try database.writer.read { try Track.fetchOne($0, key: song) })
+        // Last Played is the newest play, whatever order they came in.
+        #expect(track.playCount == 2 && track.skipCount == 1 && track.lastPlayedAt == Date(timeIntervalSince1970: Double(late) / 1000))
+        // Sent again (the answer was lost): counted once. The same ids from another device count.
+        #expect(try database.applyDeviceHistory(events, deviceId: "phone").isEmpty)
+        try database.applyDeviceHistory(Array(events.prefix(1)), deviceId: "player")
+        track = try #require(try database.writer.read { try Track.fetchOne($0, key: song) })
+        #expect(track.playCount == 3 && track.skipCount == 1)
+    }
+
+    @Test func playlistsEditedOnADeviceChangeTheLibrary() throws {
+        let database = try LibraryDatabaseTests.seeded()
+        let ids = try database.writer.read { try LibraryDatabase.allTracks($0) }.compactMap(\.id)
+        let at = Int64(1_800_000_000_000)
+        func playlist(_ name: String) throws -> Playlist? {
+            try database.writer.read { try Playlist.filter(Column("name") == name).fetchOne($0) }
+        }
+        func songs(_ name: String) throws -> [Int64] {
+            let id = try #require(try playlist(name)?.id)
+            return try database.writer.read { try LibraryDatabase.tracks($0, playlistId: id).compactMap(\.id) }
+        }
+        // Made on the device (id -5), songs added and removed there, then renamed: one batch.
+        let first = [
+            DeviceHistoryEvent(id: "1", kind: .playlistCreate, atMs: at, playlistId: -5, name: "Car", trackIds: [ids[0], 99_999]),
+            DeviceHistoryEvent(id: "2", kind: .playlistAdd, atMs: at, playlistId: -5, trackIds: [ids[1], ids[2]]),
+            DeviceHistoryEvent(id: "3", kind: .playlistRemove, atMs: at, playlistId: -5, trackIds: [ids[1]]),
+        ]
+        try database.applyDeviceHistory(first, deviceId: "phone")
+        // Sent again (the answer was lost): nothing twice.
+        try database.applyDeviceHistory(first, deviceId: "phone")
+        #expect(try songs("Car") == [ids[0], ids[2]])
+        // Later, still with the device's id (before its next sync), and then with the Mac's.
+        try database.applyDeviceHistory([DeviceHistoryEvent(id: "4", kind: .playlistRename, atMs: at, playlistId: -5, name: "Road")],
+                                        deviceId: "phone")
+        let made = try #require(try playlist("Road")).id!
+        try database.applyDeviceHistory([DeviceHistoryEvent(id: "5", kind: .playlistAdd, atMs: at, playlistId: made, trackIds: [ids[1]])],
+                                        deviceId: "phone")
+        #expect(try songs("Road") == [ids[0], ids[2], ids[1]])
+        // Another device's -5 is its own.
+        try database.applyDeviceHistory([DeviceHistoryEvent(id: "1", kind: .playlistDelete, atMs: at, playlistId: -5)], deviceId: "player")
+        #expect(try playlist("Road") != nil)
+        try database.applyDeviceHistory([DeviceHistoryEvent(id: "6", kind: .playlistDelete, atMs: at, playlistId: -5)], deviceId: "phone")
+        #expect(try playlist("Road") == nil)
+    }
+
+    @Test func artistPhotosGoWithTheirArtists() throws {
+        let database = try LibraryDatabaseTests.seeded()
+        let tracks = try database.writer.read { try LibraryDatabase.allTracks($0) }
+        let id = { (title: String) in tracks.first { $0.title == title }!.id! }
+        // Kept by lowercased name; one artist without a photo, one not on the device.
+        try database.setArtistInfo(Data(#"{"fetchedAt":0,"imageHash":"beatles"}"#.utf8), name: "The Beatles")
+        try database.setArtistInfo(Data(#"{"fetchedAt":0,"imageChecked":true}"#.utf8), name: "Radiohead")
+        try database.setArtistInfo(Data(#"{"fetchedAt":0,"imageHash":"elsewhere"}"#.utf8), name: "Somebody Else")
+        let snapshot = try database.writer.read {
+            try DeviceSnapshot.build($0, paths: [id("Something"): "a.flac", id("Paranoid Android"): "b.flac"])
+        }
+        #expect(snapshot.artists == [DeviceSnapshot.Artist(name: "The Beatles", artworkHash: "beatles")])
+        let catalog = try database.writer.read { try DeviceCatalog.build($0, selection: DeviceSelection()) }
+        #expect(catalog.artists?.map(\.artworkHash) == ["beatles"])
+    }
+
+    @Test func historyFromANewerAppSkipsWhatItDoesNotKnow() throws {
+        let json = #"[{"id":"1","trackId":3,"kind":"somethingNew","value":1,"atMs":1}]"#
+        let events = try JSONDecoder().decode([DeviceHistoryEvent].self, from: Data(json.utf8))
+        #expect(events.first?.kind == .unknown)
     }
 }
 

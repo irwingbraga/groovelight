@@ -64,6 +64,20 @@ extension LibraryDatabase {
         try Row.fetchAll(db, sql: "SELECT artistKey, data FROM artistInfo").map { ($0["artistKey"], $0["data"]) }
     }
 
+    /// The photos known for these artists (in the artwork cache), by name as given: matched without case, as the
+    /// artist info is kept.
+    public static func artistPhotos(_ db: Database, names: some Sequence<String>) throws -> [String: String] {
+        let wanted = Dictionary(names.map { ($0.lowercased(), $0) }, uniquingKeysWith: { first, _ in first })
+        guard !wanted.isEmpty else { return [:] }
+        var photos: [String: String] = [:]
+        for row in try Row.fetchAll(db, sql: "SELECT artistKey, data FROM artistInfo") {
+            guard let name = wanted[row["artistKey"] as String],
+                  let hash = try? JSONDecoder().decode(ArtistPhoto.self, from: row["data"] as Data).imageHash else { continue }
+            photos[name] = hash
+        }
+        return photos
+    }
+
     /// Albums (with a title) whose credits were never looked up.
     public static func albumKeysWithoutInfo(_ db: Database) throws -> [String] {
         try String.fetchAll(db, sql: """
@@ -147,3 +161,6 @@ extension LibraryDatabase {
         return PersonCredits(person: person, albums: albums.map { ($0, albumRoles[$0.albumKey] ?? []) }, tracks: tracks, roles: sortedRoles)
     }
 }
+
+/// The photo in a cached artist info (MetadataKit's `ArtistInfo`, which this package does not see).
+private struct ArtistPhoto: Decodable { var imageHash: String? }

@@ -196,6 +196,18 @@ public final class LibraryDatabase: Sendable {
                 t.add(column: "loudnessCheckedAt", .datetime)
             }
         }
+        migrator.registerMigration("v12-deviceHistory") { db in
+            // Plays, skips and playlist edits from devices, so a resent one is not applied twice.
+            try db.create(table: "deviceHistoryEvent") { t in
+                t.column("deviceId", .text).notNull()
+                t.column("eventId", .text).notNull()
+                t.column("appliedAt", .datetime).notNull()
+                // Playlists made on the device: the id it gave (negative) and the one made here.
+                t.column("localPlaylistId", .integer)
+                t.column("playlistId", .integer)
+                t.primaryKey(["deviceId", "eventId"])
+            }
+        }
         return migrator
     }
 
@@ -392,7 +404,7 @@ extension LibraryDatabase {
         }
     }
 
-    private static func append(_ db: Database, trackIds: [Int64], to playlistId: Int64) throws {
+    static func append(_ db: Database, trackIds: [Int64], to playlistId: Int64) throws {
         let start = try Int.fetchOne(db, sql: "SELECT COALESCE(MAX(position) + 1, 0) FROM playlistItem WHERE playlistId = ?",
                                      arguments: [playlistId]) ?? 0
         for (offset, trackId) in trackIds.enumerated() {

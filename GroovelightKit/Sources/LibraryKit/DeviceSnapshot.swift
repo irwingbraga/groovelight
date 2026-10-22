@@ -58,6 +58,8 @@ public struct DeviceSnapshot: Codable, Hashable, Sendable {
         public var songIds: [Int64]
         /// How its cover is drawn (nil: the songs' covers, with the name). Added after version 1.
         public var cover: Cover? = nil
+        /// A smart playlist's rules, for the device to evaluate them on its own songs as they are played and loved there.
+        public var rules: SmartPlaylistRules? = nil
     }
 
     /// A playlist's cover as the Mac draws it: a generated gradient and pattern, an image, or its songs' covers.
@@ -149,6 +151,19 @@ public struct DeviceSnapshot: Codable, Hashable, Sendable {
     /// Added after version 1 shipped: older readers ignore them.
     public var credits: [Credit]? = nil
     public var equalizer: Equalizer? = nil
+    /// The photos of the artists on the device (album artists and song artists), fetched with the covers.
+    public var artists: [Artist]? = nil
+
+    /// An artist's photo, as the Mac's artist pages show it (in the artwork store, by hash).
+    public struct Artist: Codable, Hashable, Sendable {
+        public var name: String
+        public var artworkHash: String
+
+        public init(name: String, artworkHash: String) {
+            self.name = name
+            self.artworkHash = artworkHash
+        }
+    }
 
     /// The snapshot for the songs on a device: `paths` maps each song's id to its path there, `codecs` the ones that
     /// were converted (id to the codec on the device).
@@ -182,10 +197,13 @@ public struct DeviceSnapshot: Codable, Hashable, Sendable {
         var playlists: [Playlist] = []
         for playlist in try LibraryDatabase.playlists(db) {
             guard let id = playlist.id else { continue }
-            let songIds = try LibraryDatabase.tracks(db, playlistId: id).compactMap(\.id).filter { paths[$0] != nil }
-            if !songIds.isEmpty {
+            let allIds = try LibraryDatabase.tracks(db, playlistId: id).compactMap(\.id)
+            let songIds = allIds.filter { paths[$0] != nil }
+            // Playlists with songs on the device; empty ones (new, maybe made on the device), to add songs to there; and
+            // smart ones, which the device evaluates on its own songs (it shows them once they have some).
+            if !songIds.isEmpty || (allIds.isEmpty && !playlist.isSmart) || playlist.rules != nil {
                 playlists.append(Playlist(id: id, name: playlist.name, isSmart: playlist.isSmart, songIds: songIds,
-                                          cover: playlist.coverStyle.map(Cover.init)))
+                                          cover: playlist.coverStyle.map(Cover.init), rules: playlist.rules))
             }
         }
         // Credits of the albums on the device; song credits only for songs that are there.
@@ -202,8 +220,11 @@ public struct DeviceSnapshot: Codable, Hashable, Sendable {
                                       albumKey: row["albumKey"], trackId: trackId, wholeRelease: row["wholeRelease"]))
             }
         }
+        let names = Set(albums.values.filter { !$0.isCompilation }.map(\.artist) + songs.map(\.artist))
+        let artists = try LibraryDatabase.artistPhotos(db, names: names).map { Artist(name: $0.key, artworkHash: $0.value) }
+            .sorted { $0.name < $1.name }
         return DeviceSnapshot(createdAt: now, songs: songs.sorted { $0.id < $1.id },
                               albums: albums.values.sorted { $0.key < $1.key }, playlists: playlists, credits: credits,
-                              equalizer: equalizer)
+                              equalizer: equalizer, artists: artists)
     }
 }

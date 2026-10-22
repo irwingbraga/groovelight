@@ -1,4 +1,5 @@
 import Foundation
+import os
 import Network
 import Security
 
@@ -194,7 +195,8 @@ public final class LocalHTTPServer: @unchecked Sendable {
         switch response.body {
         case .data(let data):
             let head = Self.head(status: response.status, headers: response.headers, length: data.count)
-            connection.send(content: head + data, completion: .contentProcessed { _ in connection.cancel() })
+            connection.send(content: head + data, contentContext: .finalMessage, isComplete: true,
+                            completion: .contentProcessed { [weak self] _ in self?.close(connection) })
         case .file(let url):
             guard let handle = try? FileHandle(forReadingFrom: url),
                   let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize else {
@@ -228,7 +230,8 @@ public final class LocalHTTPServer: @unchecked Sendable {
     private func stream(_ handle: FileHandle, remaining: Int, on connection: NWConnection) {
         guard remaining > 0, let data = try? handle.read(upToCount: min(Self.chunk, remaining)), !data.isEmpty else {
             try? handle.close()
-            connection.send(content: nil, contentContext: .finalMessage, isComplete: true, completion: .contentProcessed { _ in connection.cancel() })
+            connection.send(content: nil, contentContext: .finalMessage, isComplete: true,
+                            completion: .contentProcessed { [weak self] _ in self?.close(connection) })
             return
         }
         connection.send(content: data, completion: .contentProcessed { [weak self] error in
@@ -239,6 +242,29 @@ public final class LocalHTTPServer: @unchecked Sendable {
             }
             self?.stream(handle, remaining: remaining - data.count, on: connection)
         })
+    }
+
+    /// Ends a connection once its response has reached the device. "Processed" only means the bytes were handed to
+    /// the network stack: cancelling then can drop what is still in its buffers, and the device sees a response cut
+    /// short ("unexpected end of stream"), more often with large ones on slow Wi-Fi. So the response ends with the
+    /// stream's end (sent above), the device closes its side once it has read everything (Connection: close), and the
+    /// connection is cancelled then, or after a minute at most.
+    private func close(_ connection: NWConnection) {
+        let closed = OSAllocatedUnfairLock(initialState: false)
+        drain(connection, closed: closed)
+        queue.asyncAfter(deadline: .now() + 60) { Self.finish(connection, closed: closed) }
+    }
+
+    /// Reads (and drops) whatever the device still sends, until it closes its side.
+    private func drain(_ connection: NWConnection, closed: OSAllocatedUnfairLock<Bool>) {
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { [weak self] _, _, isComplete, error in
+            if isComplete || error != nil || self == nil { Self.finish(connection, closed: closed) } else { self?.drain(connection, closed: closed) }
+        }
+    }
+
+    private static func finish(_ connection: NWConnection, closed: OSAllocatedUnfairLock<Bool>) {
+        guard closed.withLock({ done in defer { done = true }; return !done }) else { return }
+        connection.cancel()
     }
 
     /// "bytes=100-" or "bytes=100-199" (one range).

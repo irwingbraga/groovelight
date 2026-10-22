@@ -173,6 +173,25 @@ final class LastFMStore {
         sendSoon()
     }
 
+    /// Songs played on a device (the Android app), as they reach the Mac: queued as scrobbles with the time each started.
+    /// Last.fm refuses scrobbles older than two weeks, so those are only counted in the library.
+    func playedElsewhere(_ plays: [(trackId: Int64, startedAt: Date, listened: TimeInterval)]) {
+        guard UserDefaults.standard.bool(forKey: Keys.scrobble), isConnected else { return }
+        Task {
+            let tracks = (try? await database.writer.read { db in try Track.fetchAll(db, keys: plays.map(\.trackId)) }) ?? []
+            let byId = Dictionary(tracks.compactMap { track in track.id.map { ($0, track) } }, uniquingKeysWith: { first, _ in first })
+            let oldest = Date.now.addingTimeInterval(-14 * 86_400)
+            for play in plays where play.startedAt > oldest {
+                guard let track = byId[play.trackId], ScrobbleRules.isEligible(duration: track.duration, listened: play.listened),
+                      let song = Self.lastFMTrack(track) else { continue }
+                try? database.enqueueLastFM(LastFMQueueItem(kind: .scrobble, artist: song.artist, track: song.track, album: song.album,
+                                                            albumArtist: song.albumArtist, duration: song.duration,
+                                                            trackNumber: song.trackNumber, timestamp: play.startedAt))
+            }
+            sendSoon()
+        }
+    }
+
     /// Songs were loved or unloved in the library: the same on Last.fm.
     func lovedChanged(trackIds: [Int64], loved: Bool) {
         guard isConnected, UserDefaults.standard.bool(forKey: Keys.syncLoves) else { return }
@@ -217,6 +236,15 @@ final class LastFMStore {
     }
 
     /// The song as Last.fm names it (nil without an artist: Last.fm would refuse it).
+    private static func lastFMTrack(_ track: Track) -> LastFMTrack? {
+        let artist = track.artist?.nonEmptyTrimmed ?? track.albumArtist?.nonEmptyTrimmed
+        guard let artist, artist != "Unknown Artist", let title = track.title.nonEmptyTrimmed else { return nil }
+        let album = track.album?.nonEmptyTrimmed
+        return LastFMTrack(artist: artist, track: title, album: album == "Unknown Album" ? nil : album,
+                           albumArtist: track.albumArtist?.nonEmptyTrimmed, duration: track.duration > 0 ? track.duration : nil,
+                           trackNumber: track.trackNumber)
+    }
+
     private static func lastFMTrack(_ item: PlayableItem, _ track: Track?) -> LastFMTrack? {
         let artist = track?.artist?.nonEmptyTrimmed ?? item.artist.nonEmptyTrimmed ?? track?.albumArtist?.nonEmptyTrimmed
         guard let artist, artist != "Unknown Artist", let title = (track?.title ?? item.title).nonEmptyTrimmed else { return nil }

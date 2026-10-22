@@ -45,6 +45,9 @@ public struct DeviceSelection: Codable, Hashable, Sendable {
     /// playlist, all music, a send), and their files deleted from the device. Only the device changes: the library
     /// keeps them. Adding them again (their album, artist or the song) brings them back.
     public var excludedTrackIds: Set<Int64> = []
+    /// Formats chosen for parts of the selection, over the device's own: keys "album:<key>", "artist:<name>" or
+    /// "song:<id>", values "original" or a `LossyEncoding` raw value (an album asked for as Opus on the phone).
+    public var encodings: [String: String] = [:]
 
     public init() {}
 
@@ -52,7 +55,7 @@ public struct DeviceSelection: Codable, Hashable, Sendable {
         !everything && !lovedSongs && playlistIds.isEmpty && artists.isEmpty && albumKeys.isEmpty && genres.isEmpty && trackIds.isEmpty
     }
 
-    private enum CodingKeys: String, CodingKey { case everything, lovedSongs, playlistIds, artists, albumKeys, genres, trackIds, excludedTrackIds }
+    private enum CodingKeys: String, CodingKey { case everything, lovedSongs, playlistIds, artists, albumKeys, genres, trackIds, excludedTrackIds, encodings }
 
     // Selections saved before a field existed decode with it empty.
     public init(from decoder: Decoder) throws {
@@ -65,6 +68,15 @@ public struct DeviceSelection: Codable, Hashable, Sendable {
         genres = try container.decodeIfPresent(Set<String>.self, forKey: .genres) ?? []
         trackIds = try container.decodeIfPresent(Set<Int64>.self, forKey: .trackIds) ?? []
         excludedTrackIds = try container.decodeIfPresent(Set<Int64>.self, forKey: .excludedTrackIds) ?? []
+        encodings = try container.decodeIfPresent([String: String].self, forKey: .encodings) ?? [:]
+    }
+
+    /// The format a song goes to the device in: the one chosen for it, else for its album, else for its artist, else
+    /// the device's (`fallback`).
+    public func encoding(for track: Track, fallback: LossyEncoding?) -> LossyEncoding? {
+        let keys = ["song:\(track.id ?? -1)", "album:\(track.albumKey)", "artist:\(track.displayAlbumArtist)", "artist:\(track.displayArtist)"]
+        guard let chosen = keys.lazy.compactMap({ encodings[$0] }).first else { return fallback }
+        return LossyEncoding(rawValue: chosen)
     }
 }
 
@@ -208,6 +220,20 @@ public struct DeviceSyncPlan: Sendable {
 }
 
 public enum DeviceSync {
+    /// The format each song goes to a device in (chosen per album, artist or song over the device's own).
+    public struct Formats: Sendable {
+        public var choose: @Sendable (Track) -> LossyEncoding?
+
+        public init(_ choose: @escaping @Sendable (Track) -> LossyEncoding?) {
+            self.choose = choose
+        }
+
+        /// From a device's selection, over `fallback` (its own format).
+        public static func of(_ selection: DeviceSelection, fallback: LossyEncoding?) -> Formats {
+            Formats { selection.encoding(for: $0, fallback: fallback) }
+        }
+    }
+
     /// The codec a converted song has on the device, from its manifest fingerprint ("|flac", "|opus160"...); nil for a
     /// song copied as it is.
     public static func convertedCodec(fingerprint: String) -> String? {
@@ -260,7 +286,10 @@ public enum DeviceSync {
     /// 4 GB file limit.
     public static func plan(tracks: [Track], playlists: [DevicePlaylist], profile: DeviceProfile, manifest: DeviceManifest,
                             mode: Mode, root: URL, fat32: Bool = false, player: Player? = nil, excluded: Set<Int64> = [],
+                            formats: Formats? = nil,
                             existing: (String) -> Bool = { _ in false }) -> DeviceSyncPlan {
+        // Each song's format: chosen per album, artist or song (`formats`), else the device's.
+        let format: (Track) -> LossyEncoding? = formats?.choose ?? { _ in profile.encoding }
         let tracks = excluded.isEmpty ? tracks : tracks.filter { !excluded.contains($0.id ?? -1) }
         var plan = DeviceSyncPlan()
         var desired: [String: (DeviceSyncPlan.Content, DeviceManifest.Entry)] = [:]
@@ -312,7 +341,7 @@ public enum DeviceSync {
         // Songs, each in its template path. The planned order is stable so names numbered for collisions stay put.
         var covers: [String: String] = [:]
         // A player device, or one set to a lossy format, gets each song of a CUE album as a file of its own.
-        let splitsCue = player != nil || profile.encoding != nil
+        let splitsCue = player != nil || tracks.contains { $0.isCueTrack && format($0) != nil }
         for track in tracks.filter({ !$0.isCueTrack || splitsCue }).sorted(by: { $0.path < $1.path }) {
             guard let id = track.id else { continue }
             if fat32, track.fileSize > fat32Limit {
@@ -327,7 +356,7 @@ public enum DeviceSync {
             // The device's lossy format for lossless songs (a player that cannot decode it gets FLAC instead).
             let codec = AudioSpec.Codec(formatName: track.format)
             var encoding: LossyEncoding?
-            if let lossy = profile.encoding, LossyEncoding.applies(to: codec) || track.isCueTrack,
+            if let lossy = format(track), LossyEncoding.applies(to: codec) || track.isCueTrack,
                player.map({ $0.decodes.contains(lossy.codec) }) ?? true {
                 encoding = lossy
                 delivery = .flac
@@ -448,9 +477,10 @@ public enum DeviceSync {
     /// when it next connects). Sent songs are added without making them part of the sync.
     public static func plan(syncing: (tracks: [Track], playlists: [DevicePlaylist]), sending: (tracks: [Track], playlists: [DevicePlaylist]),
                             profile: DeviceProfile, manifest: DeviceManifest, root: URL, fat32: Bool = false, player: Player? = nil,
-                            excluded: Set<Int64> = [], existing: (String) -> Bool) -> DeviceSyncPlan {
+                            excluded: Set<Int64> = [], formats: Formats? = nil,
+                            existing: (String) -> Bool) -> DeviceSyncPlan {
         var plan = plan(tracks: syncing.tracks, playlists: syncing.playlists, profile: profile, manifest: manifest, mode: .sync,
-                        root: root, fat32: fat32, player: player, excluded: excluded, existing: existing)
+                        root: root, fat32: fat32, player: player, excluded: excluded, formats: formats, existing: existing)
         let sending = (tracks: sending.tracks.filter { !excluded.contains($0.id ?? -1) }, playlists: sending.playlists)
         guard !sending.tracks.isEmpty || !sending.playlists.isEmpty else { return plan }
         // The device as the sync leaves it (files it would remove are still there), then the sends on top.
@@ -459,7 +489,7 @@ public enum DeviceSync {
         for write in plan.writes { after.entries[write.path] = write.entry }
         let written = Set(plan.writes.map(\.path))
         let sends = self.plan(tracks: sending.tracks, playlists: sending.playlists, profile: profile, manifest: after, mode: .send,
-                              root: root, fat32: fat32, player: player) { path in written.contains(path) || existing(path) }
+                              root: root, fat32: fat32, player: player, formats: formats) { path in written.contains(path) || existing(path) }
         plan.writes += sends.writes.filter { !written.contains($0.path) }
         // A sent song the sync was about to remove stays, as a sent file from now on (later syncs keep it).
         let removed = Set(plan.deletions)
@@ -572,20 +602,37 @@ enum SyncedLyricsCheck {
 }
 
 extension ArtworkCache {
-    /// The image as JPEG with its longest side at most `maxPixels` (0: the original size), for cover.jpg files.
+    /// The image as JPEG with its longest side at most `maxPixels` (0: the original size), for cover.jpg files and
+    /// devices. From the original, or its stored thumbnails when the original is missing or unreadable. Always 8-bit
+    /// RGB: CMYK, 16-bit or wide-gamut covers (scans, some releases) do not decode on Android and some players.
     public func jpeg(for hash: String, maxPixels: Int) -> Data? {
-        let original = url(for: hash, size: nil)
-        guard let source = CGImageSourceCreateWithURL(original as CFURL, nil) else { return nil }
+        for candidate in [url(for: hash, size: nil), url(for: hash, size: .large), url(for: hash, size: .small)] {
+            if let data = Self.jpeg(from: candidate, maxPixels: maxPixels) { return data }
+        }
+        return nil
+    }
+
+    static func jpeg(from url: URL, maxPixels: Int) -> Data? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil), CGImageSourceGetCount(source) > 0 else { return nil }
         var options: [CFString: Any] = [kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceCreateThumbnailFromImageAlways: true]
         if maxPixels > 0 { options[kCGImageSourceThumbnailMaxPixelSize] = maxPixels }
         if maxPixels == 0, let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] {
             options[kCGImageSourceThumbnailMaxPixelSize] = max(properties[kCGImagePropertyPixelWidth] as? Int ?? 3000,
                                                                properties[kCGImagePropertyPixelHeight] as? Int ?? 3000)
         }
-        guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
+        guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary), image.width > 0, image.height > 0,
+              let space = CGColorSpace(name: CGColorSpace.sRGB),
+              let context = CGContext(data: nil, width: image.width, height: image.height, bitsPerComponent: 8, bytesPerRow: 0, space: space,
+                                      bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else { return nil }
+        // Over white, for covers with transparency (JPEG has none).
+        let rect = CGRect(x: 0, y: 0, width: image.width, height: image.height)
+        context.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+        context.fill(rect)
+        context.draw(image, in: rect)
+        guard let rgb = context.makeImage() else { return nil }
         let data = NSMutableData()
         guard let destination = CGImageDestinationCreateWithData(data, "public.jpeg" as CFString, 1, nil) else { return nil }
-        CGImageDestinationAddImage(destination, image, [kCGImageDestinationLossyCompressionQuality: 0.88] as CFDictionary)
+        CGImageDestinationAddImage(destination, rgb, [kCGImageDestinationLossyCompressionQuality: 0.88] as CFDictionary)
         return CGImageDestinationFinalize(destination) ? data as Data : nil
     }
 }

@@ -1,4 +1,5 @@
 import Foundation
+import ImageIO
 import SFBAudioEngine
 import Testing
 @testable import LibraryKit
@@ -243,6 +244,28 @@ struct DeviceSyncTests {
         #expect(back.excludedTrackIds == [1] && back.trackIds == [2])
     }
 
+    @Test func formatsChosenPerAlbumOverTheDevicesOwn() throws {
+        let fixture = try Fixture()
+        var one = try fixture.addTrack(1, "One", artist: "Band", album: "LP", number: 1)
+        one.format = "FLAC"
+        var other = try fixture.addTrack(2, "Other", artist: "Solo", album: "EP", number: 1)
+        other.format = "FLAC"
+        // Original by default; the LP asked for as Opus on the phone.
+        var selection = DeviceSelection().applying([TransferRequest(id: "1", action: .add, kind: .album, key: one.albumKey, encoding: "opus160")])
+        #expect(selection.encodings == ["album:\(one.albumKey)": "opus160"])
+        let plan = DeviceSync.plan(tracks: [one, other], playlists: [], profile: DeviceProfile(), manifest: DeviceManifest(), mode: .sync,
+                                   root: fixture.device, formats: .of(selection, fallback: nil))
+        let songs = Dictionary(uniqueKeysWithValues: plan.writes.map { ($0.entry.trackId, $0) })
+        #expect(songs[1]?.path.hasSuffix(".opus") == true && songs[2]?.content == .file(other.url))
+        // A song's own choice wins over its album's; "original" keeps it lossless even on a device set to MP3.
+        selection.encodings["song:1"] = "original"
+        #expect(selection.encoding(for: one, fallback: .mp3_320) == nil)
+        #expect(selection.encoding(for: other, fallback: .mp3_320) == .mp3_320)
+        // Adding it again without a format goes back to the device's; removing forgets it.
+        selection = selection.applying([TransferRequest(id: "2", action: .add, kind: .album, key: one.albumKey)])
+        #expect(selection.encodings["album:\(one.albumKey)"] == nil)
+    }
+
     @Test func selectionsSavedBeforeSongsCouldBeChosenStillRead() throws {
         let old = Data(#"{"everything":false,"lovedSongs":true,"playlistIds":[],"artists":["Radiohead"],"albumKeys":[],"genres":[]}"#.utf8)
         let selection = try JSONDecoder().decode(DeviceSelection.self, from: old)
@@ -339,6 +362,33 @@ struct DeviceSyncTests {
         }
         #expect(LossyEncoding.applies(to: .alac) && !LossyEncoding.applies(to: .mp3))
         #expect(LossyEncoding.mp3_320.outputRate(for: 88_200) == 44_100 && LossyEncoding.aac192.outputRate(for: 44_100) == 44_100)
+    }
+
+    @Test func coversForDevicesAreRGBJPEGEvenWithoutTheOriginal() throws {
+        let base = FileManager.default.temporaryDirectory.appendingPathComponent("groovelight-covers-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: base) }
+        // A CMYK JPEG cover (as some scans are).
+        let context = try #require(CGContext(data: nil, width: 400, height: 400, bitsPerComponent: 8, bytesPerRow: 0,
+                                             space: CGColorSpaceCreateDeviceCMYK(), bitmapInfo: CGImageAlphaInfo.none.rawValue))
+        context.setFillColor(CGColor(colorSpace: CGColorSpaceCreateDeviceCMYK(), components: [0.1, 0.7, 0.9, 0.05, 1])!)
+        context.fill(CGRect(x: 0, y: 0, width: 400, height: 400))
+        let cmyk = NSMutableData()
+        let destination = try #require(CGImageDestinationCreateWithData(cmyk, "public.jpeg" as CFString, 1, nil))
+        CGImageDestinationAddImage(destination, try #require(context.makeImage()), nil)
+        #expect(CGImageDestinationFinalize(destination))
+        let cache = try ArtworkCache(directory: base.appendingPathComponent("cache"))
+        let hash = try #require(cache.store(cmyk as Data))
+        func model(_ data: Data) -> String? {
+            let source = CGImageSourceCreateWithData(data as CFData, nil)!
+            return (CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any])?[kCGImagePropertyColorModel] as? String
+        }
+        #expect(model(try Data(contentsOf: cache.url(for: hash, size: nil))) == "CMYK")
+        let sent = try #require(cache.jpeg(for: hash, maxPixels: 600))
+        #expect(model(sent) == "RGB")
+        // The original gone: the stored thumbnail is sent instead of nothing.
+        try FileManager.default.removeItem(at: cache.url(for: hash, size: nil))
+        #expect(cache.jpeg(for: hash, maxPixels: 600).map(model) == "RGB")
     }
 
     private func run(_ path: String, _ arguments: [String]) throws {

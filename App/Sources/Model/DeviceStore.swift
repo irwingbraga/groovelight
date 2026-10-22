@@ -252,7 +252,8 @@ final class DeviceStore {
                 guard let contents = try? await database.writer.read({ try LibraryDatabase.deviceContents($0, selection) }) else { return nil }
                 let manifest = DeviceManifest.read(from: root)
                 let plan = DeviceSync.plan(tracks: contents.tracks, playlists: contents.playlists, profile: profile, manifest: manifest,
-                                           mode: .sync, root: root, fat32: device.isFAT32, excluded: selection.excludedTrackIds) {
+                                           mode: .sync, root: root, fat32: device.isFAT32, excluded: selection.excludedTrackIds,
+                                           formats: .of(selection, fallback: profile.encoding)) {
                     FileManager.default.fileExists(atPath: root.appendingPathComponent($0).path)
                 }
                 return Preview(songs: plan.songCount, bytesToWrite: plan.bytesToWrite, filesToWrite: plan.writes.count,
@@ -277,7 +278,8 @@ final class DeviceStore {
             let preview = await Task.detached(priority: .utility) { () -> Preview? in
                 guard let contents = try? await database.writer.read({ try LibraryDatabase.deviceContents($0, selection) }) else { return nil }
                 let plan = DeviceSync.plan(tracks: contents.tracks, playlists: contents.playlists, profile: profile, manifest: manifest,
-                                           mode: .sync, root: URL(fileURLWithPath: "/device"), excluded: selection.excludedTrackIds) { files.contains($0.lowercased()) }
+                                           mode: .sync, root: URL(fileURLWithPath: "/device"), excluded: selection.excludedTrackIds,
+                                           formats: .of(selection, fallback: profile.encoding)) { files.contains($0.lowercased()) }
                 return Preview(songs: plan.songCount, bytesToWrite: plan.bytesToWrite, filesToWrite: plan.writes.count,
                                filesToRemove: plan.deletions.count, netBytes: plan.netBytes, musicBytes: manifest.musicBytes,
                                skipped: plan.skipped.map { "\($0.title): \($0.reason)" })
@@ -379,7 +381,9 @@ final class DeviceStore {
         _ = root.startAccessingSecurityScopedResource()
         let profile = device.id.hasPrefix("folder:") ? DeviceProfile() : profile(device.id)
         // Songs removed from the device stay off it, and their files go.
-        let excluded = device.id.hasPrefix("folder:") ? [] : selection(device.id).excludedTrackIds
+        let chosen = device.id.hasPrefix("folder:") ? DeviceSelection() : selection(device.id)
+        let excluded = chosen.excludedTrackIds
+        let formats = DeviceSync.Formats.of(chosen, fallback: profile.encoding)
         let database = model.database, artwork = model.artwork
         cancelFlag.isSet = false
         job = Job(deviceId: device.id, title: "\(title) to \(device.name)", phase: .planning)
@@ -390,7 +394,9 @@ final class DeviceStore {
                 let manifest = DeviceManifest.read(from: root)
                 let plan = await Task.detached(priority: .userInitiated) {
                     DeviceSync.plan(tracks: tracks, playlists: playlists, profile: profile, manifest: manifest, mode: mode, root: root,
-                                    fat32: device.isFAT32, excluded: excluded) { FileManager.default.fileExists(atPath: root.appendingPathComponent($0).path) }
+                                    fat32: device.isFAT32, excluded: excluded, formats: formats) {
+                        FileManager.default.fileExists(atPath: root.appendingPathComponent($0).path)
+                    }
                 }.value
                 // Room for the songs, with a little to spare for the card's own bookkeeping.
                 let available = Self.availableBytes(root)

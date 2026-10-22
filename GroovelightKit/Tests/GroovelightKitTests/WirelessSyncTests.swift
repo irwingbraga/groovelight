@@ -216,6 +216,7 @@ struct WirelessSyncTests {
         let key = SymmetricKey(size: .bits256)
         final class Seen: @unchecked Sendable {
             var snapshot: [Int64: String] = [:]; var codecs: [Int64: String] = [:]; var selection = DeviceSelection()
+            var history: [DeviceHistoryEvent] = []
         }
         let seen = Seen()
         let backend = WirelessSyncServer.Backend(
@@ -244,7 +245,8 @@ struct WirelessSyncTests {
             requests: { _, requests in
                 seen.selection = seen.selection.applying(requests)
                 return DeviceCatalog.Chosen(seen.selection)
-            })
+            },
+            history: { _, events in seen.history += events })
         let server = WirelessSyncServer(backend: backend)
         let port: UInt16 = try await withCheckedThrowingContinuation { continuation in
             server.start(name: "Groovelight TLS Test \(UUID().uuidString.prefix(4))", tls: (tls.identity, tls.fingerprint)) { port in
@@ -345,6 +347,12 @@ struct WirelessSyncTests {
             let chosen = try WirelessProtocol.decoder.decode(DeviceCatalog.Chosen.self, from: try await call("POST", "/requests", body: requests).0)
             #expect(chosen.albumKeys == ["band|lp"] && chosen.trackIds == [42] && chosen.artists.isEmpty)
         }
+        // Loves and ratings from the device (HTTPS only).
+        let history = try WirelessProtocol.encoder.encode(WirelessProtocol.History(events: [
+            DeviceHistoryEvent(id: "7", trackId: 1, kind: .love, value: 1, atMs: 1_800_000_000_000)]))
+        #expect(try await call("POST", "/history", body: history).1.statusCode == 200)
+        #expect(try await call("POST", "/history", body: history, secure: false).1.statusCode == 403)
+        #expect(seen.history.map(\.id) == ["7"])
         // The token is refused in plain HTTP, and a wrong one over TLS.
         #expect(try await call("GET", "/sync/\(plan.session)/file/0", signed: false, secure: false,
                                headers: [WirelessProtocol.Header.token: token]).1.statusCode == 401)

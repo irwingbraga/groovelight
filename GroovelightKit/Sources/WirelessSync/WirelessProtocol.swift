@@ -199,9 +199,12 @@ public enum WirelessProtocol {
         public var mode: String?
         /// `AudioSpec.Codec` raw values the device decodes (player mode): the Mac converts the rest to FLAC.
         public var decodes: [String]?
+        /// The format the device wants lossless songs in, chosen on it: "original" or a `LossyEncoding` raw value. Nil:
+        /// as set on the Mac's device page.
+        public var encoding: String?
 
         public init(manifest: DeviceManifest?, files: [String], capacity: Int64, available: Int64, model: String? = nil,
-                    name: String? = nil, volumes: [Volume]? = nil, mode: String? = nil, decodes: [String]? = nil) {
+                    name: String? = nil, volumes: [Volume]? = nil, mode: String? = nil, decodes: [String]? = nil, encoding: String? = nil) {
             self.manifest = manifest
             self.files = files
             self.capacity = capacity
@@ -211,6 +214,7 @@ public enum WirelessProtocol {
             self.volumes = volumes
             self.mode = mode
             self.decodes = decodes
+            self.encoding = encoding
         }
 
         public var isPlayer: Bool { mode == "player" }
@@ -289,6 +293,15 @@ public enum WirelessProtocol {
     }
 
     /// GET /status (signed): whether the Mac asked for a sync (its Sync button), so an open app starts one.
+    /// Loves, ratings, plays and skips made on the device (`POST /history`), answered with how many there were.
+    public struct History: Codable, Sendable {
+        public var events: [DeviceHistoryEvent]
+
+        public init(events: [DeviceHistoryEvent]) {
+            self.events = events
+        }
+    }
+
     /// Changes the app asks of its selection (`POST /requests`), answered with what the selection holds then.
     public struct Requests: Codable, Sendable {
         public var requests: [TransferRequest]

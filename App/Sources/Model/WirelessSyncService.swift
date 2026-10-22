@@ -5,7 +5,7 @@ import Observation
 import PlayerCore
 import WirelessSync
 
-/// Wireless sync with the Groovelight Sync app on Android (players and phones): the Mac serves on the local network,
+/// Wireless sync with the Groovelight app on Android (players and phones): the Mac serves on the local network,
 /// devices pair once (a code shown on both screens) and then pull their music. Paired devices appear under Devices
 /// with the same page as memory cards.
 @MainActor
@@ -224,12 +224,14 @@ final class WirelessSyncService {
             },
             catalog: { [weak self, database = model.database] id in
                 let selection = await self?.model.devices.selection(DeviceStore.wirelessId(id)) ?? DeviceSelection()
-                let catalog = try await database.writer.read { try DeviceCatalog.build($0, selection: selection) }
+                let encoding = await self?.model.devices.encoding(DeviceStore.wirelessId(id))
+                let catalog = try await database.writer.read { try DeviceCatalog.build($0, selection: selection, encoding: encoding) }
                 return try WirelessProtocol.encoder.encode(catalog)
             },
             requests: { [weak self] id, requests in
                 await self?.applyRequests(requests, from: id) ?? DeviceCatalog.Chosen(DeviceSelection())
-            })
+            },
+            history: { [weak self] id, events in try await self?.applyHistory(events, from: id) })
     }
 
     /// Albums, artists and songs the Android app asked for (or to remove): its selection changes, as if chosen here,
@@ -243,6 +245,17 @@ final class WirelessSyncService {
         }
         model.devices.setSelection(selection, for: deviceId)
         return DeviceCatalog.Chosen(selection)
+    }
+
+    /// Loves, ratings, plays and skips from the Android app: into the library, and to Last.fm (loves, and plays as
+    /// scrobbles with the time they started), as when made here.
+    private func applyHistory(_ events: [DeviceHistoryEvent], from id: String) throws {
+        let changes = try model.database.applyDeviceHistory(events, deviceId: DeviceStore.wirelessId(id))
+        for loved in [true, false] {
+            let ids = changes.loves.filter { $0.loved == loved }.map(\.trackId)
+            if !ids.isEmpty { model.lastfm.lovedChanged(trackIds: ids, loved: loved) }
+        }
+        if !changes.plays.isEmpty { model.lastfm.playedElsewhere(changes.plays) }
     }
 
     /// The equalizer's saved presets and current curve, for the device to offer.
@@ -375,6 +388,11 @@ final class WirelessSyncService {
         progress[id] = (0, 0)
         let deviceId = DeviceStore.wirelessId(id)
         let selection = model.devices.selection(deviceId)
+        // A format chosen on the device is this device's from now on (its page here shows it too).
+        if let chosen = request.encoding, chosen == "original" || LossyEncoding(rawValue: chosen) != nil {
+            let encoding = LossyEncoding(rawValue: chosen)
+            if encoding != model.devices.encoding(deviceId) { model.devices.setEncoding(encoding, for: deviceId) }
+        }
         var profile = model.devices.profile(deviceId)
         // A player gets the songs only: covers, lyrics and playlists come with the library snapshot.
         let player = request.isPlayer ? DeviceSync.Player(decodes: Set(request.decodes ?? [])) : nil
@@ -394,12 +412,14 @@ final class WirelessSyncService {
             let existing: (String) -> Bool = { files.contains($0.lowercased()) }
             // Nothing chosen to sync: only what was sent, and nothing is removed.
             let excluded = selection.excludedTrackIds
+            // Formats chosen per album, artist or song on the device, over its own.
+            let formats = DeviceSync.Formats.of(selection, fallback: profile.encoding)
             if selection.isEmpty {
                 return DeviceSync.plan(tracks: contents.1.tracks, playlists: contents.1.playlists, profile: profile, manifest: manifest,
-                                       mode: .send, root: root, player: player, excluded: excluded, existing: existing)
+                                       mode: .send, root: root, player: player, excluded: excluded, formats: formats, existing: existing)
             }
             return DeviceSync.plan(syncing: contents.0, sending: contents.1, profile: profile, manifest: manifest, root: root,
-                                   player: player, excluded: excluded, existing: existing)
+                                   player: player, excluded: excluded, formats: formats, existing: existing)
         }.value
         // Sent songs are in this plan now.
         UserDefaults.standard.removeObject(forKey: "devices.wireless.\(id).sends")

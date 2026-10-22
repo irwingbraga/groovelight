@@ -229,7 +229,7 @@ struct JobRow: View {
             switch job.phase {
             case .waiting:
                 ProgressView().controlSize(.small)
-                Text("Waiting for the device: open Groovelight Sync on it, or wait for its next automatic sync.")
+                Text("Waiting for the device: open Groovelight on it, or wait for its next automatic sync.")
                 Spacer()
                 Button("Cancel") { model.devices.cancel() }
             case .planning:
@@ -403,7 +403,7 @@ struct DeviceLayoutSection: View {
         } header: {
             Text("Layout on Devices")
         } footer: {
-            Text("For memory cards, players and Android devices. The music folder applies to cards and players; on Android, songs go in the folder chosen in Groovelight Sync. Names are made safe for any file system, and FAT32 cards leave out files over 4 GB. Many players read cover.jpg and .lrc files; smaller covers load faster on players with little memory. Changes apply at the next sync.")
+            Text("For memory cards, players and Android devices. The music folder applies to cards and players; on Android, songs go in the folder chosen in the Groovelight app. Names are made safe for any file system, and FAT32 cards leave out files over 4 GB. Many players read cover.jpg and .lrc files; smaller covers load faster on players with little memory. Changes apply at the next sync.")
                 .foregroundStyle(.secondary)
         }
     }

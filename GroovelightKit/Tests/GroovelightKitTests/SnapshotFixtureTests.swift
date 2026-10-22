@@ -36,7 +36,7 @@ struct SnapshotFixtureTests {
         ],
         playlists: [DeviceSnapshot.Playlist(id: 7, name: "Mix", isSmart: false, songIds: [201, 101],
                                             cover: DeviceSnapshot.Cover(style: "generated", palette: "ocean", pattern: "vinyl", showsTitle: true)),
-                    DeviceSnapshot.Playlist(id: 8, name: "Most Played", isSmart: true, songIds: [101, 201])],
+                    DeviceSnapshot.Playlist(id: 8, name: "Most Played", isSmart: true, songIds: [101, 201], rules: mostPlayed)],
         credits: [DeviceSnapshot.Credit(name: "Nigel Godrich", roles: ["producer", "engineer"], albumKey: "radiohead|ok computer",
                                         trackId: nil, wholeRelease: false),
                   DeviceSnapshot.Credit(name: "Jonny Greenwood", roles: ["guitar"], albumKey: "radiohead|ok computer", trackId: 102,
@@ -49,7 +49,15 @@ struct SnapshotFixtureTests {
             current: DeviceSnapshot.EQPreset(name: "Bass", preamp: -6, bands: [
                 DeviceSnapshot.EQPreset.Band(isEnabled: true, type: "peak", frequency: 63, gain: 6, q: 2.15),
             ]),
-            isEnabled: true))
+            isEnabled: true),
+        artists: [DeviceSnapshot.Artist(name: "Radiohead", artworkHash: "face01")])
+
+    /// Played songs, most played first (the device evaluates it on its own songs).
+    static var mostPlayed: SmartPlaylistRules {
+        var rule = SmartRule(field: .plays, op: .greaterThan, number: 0, date: Date(timeIntervalSince1970: 1_800_000_000))
+        rule.id = UUID(uuidString: "00000000-0000-0000-0000-000000000008")!
+        return SmartPlaylistRules(match: .all, rules: [rule], limit: SmartLimit(count: 25, unit: .songs, selectedBy: .mostPlayed, seed: 8))
+    }
 
     static let catalogFixture = fixture.deletingLastPathComponent().appendingPathComponent("catalog-v1.json")
 
@@ -58,6 +66,7 @@ struct SnapshotFixtureTests {
         selection.albumKeys = ["radiohead|ok computer"]
         selection.trackIds = [301]
         selection.excludedTrackIds = [201]
+        selection.encodings = ["album:radiohead|kid a": "opus160"]
         return DeviceCatalog(songs: [
             DeviceCatalog.Song(id: 101, title: "Airbag", artist: "Radiohead", albumKey: "radiohead|ok computer", discNumber: 1, trackNumber: 1,
                                duration: 284.5, codec: "flac", sampleRate: 96000, bitDepth: 24, genre: "Alternative", year: 1997, artworkHash: "abc"),
@@ -69,7 +78,7 @@ struct SnapshotFixtureTests {
             DeviceCatalog.Album(key: "radiohead|ok computer", title: "OK Computer", artist: "Radiohead", year: 1997, isCompilation: false, artworkHash: "abc"),
             DeviceCatalog.Album(key: "radiohead|kid a", title: "Kid A", artist: "Radiohead", year: 2000, isCompilation: false, artworkHash: nil),
             DeviceCatalog.Album(key: "compilation|hits", title: "Hits", artist: "Various Artists", year: nil, isCompilation: true, artworkHash: nil),
-        ], chosen: DeviceCatalog.Chosen(selection))
+        ], chosen: DeviceCatalog.Chosen(selection), artists: [DeviceSnapshot.Artist(name: "Radiohead", artworkHash: "face01")])
     }
 
     @Test func theMacWritesTheSharedCatalogFixture() throws {

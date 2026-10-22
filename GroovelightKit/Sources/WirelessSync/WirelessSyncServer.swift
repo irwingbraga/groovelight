@@ -30,6 +30,8 @@ public final class WirelessSyncServer: @unchecked Sendable {
         public var catalog: @Sendable (String) async throws -> Data
         /// Applies a device's requests to its selection and asks it to sync; returns what the selection holds then.
         public var requests: @Sendable (String, [TransferRequest]) async -> DeviceCatalog.Chosen
+        /// Applies a device's loves and ratings to the library.
+        public var history: @Sendable (String, [DeviceHistoryEvent]) async throws -> Void
 
         public init(info: @escaping @Sendable () -> WirelessProtocol.Info,
                     pairRequested: @escaping @Sendable (WirelessProtocol.PairRequest, WirelessProtocol.Pairing) async -> Void,
@@ -45,7 +47,8 @@ public final class WirelessSyncServer: @unchecked Sendable {
                     catalog: @escaping @Sendable (String) async throws -> Data = { _ in Data("{}".utf8) },
                     requests: @escaping @Sendable (String, [TransferRequest]) async -> DeviceCatalog.Chosen = { _, _ in
                         DeviceCatalog.Chosen(DeviceSelection())
-                    }) {
+                    },
+                    history: @escaping @Sendable (String, [DeviceHistoryEvent]) async throws -> Void = { _, _ in }) {
             self.info = info
             self.pairRequested = pairRequested
             self.pairStatus = pairStatus
@@ -59,6 +62,7 @@ public final class WirelessSyncServer: @unchecked Sendable {
             self.snapshot = snapshot
             self.catalog = catalog
             self.requests = requests
+            self.history = history
         }
     }
 
@@ -193,6 +197,17 @@ public final class WirelessSyncServer: @unchecked Sendable {
                 return .error(400, "bad requests")
             }
             return .json(await backend.requests(deviceId, body.requests))
+        case ("POST", 1, "history"):
+            guard request.secure else { return .error(403, "HTTPS only") }
+            guard let body = try? WirelessProtocol.decoder.decode(WirelessProtocol.History.self, from: request.body) else {
+                return .error(400, "bad history")
+            }
+            do {
+                try await backend.history(deviceId, body.events)
+                return .json(["applied": body.events.count])
+            } catch {
+                return .error(500, error.localizedDescription)
+            }
         default:
             return .error(404, "unknown request")
         }
