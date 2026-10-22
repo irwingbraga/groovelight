@@ -13,7 +13,7 @@ name: Release
 #   NOTARY_KEY_ID, NOTARY_ISSUER_ID
 # Updates (Sparkle) and the Android app:
 #   SPARKLE_PRIVATE_KEY          EdDSA key that signs the update feed (appcast.xml); its public half is in project.yml
-#   ANDROID_KEYSTORE             base64 of the release keystore of Groovelight Sync (Android)
+#   ANDROID_KEYSTORE             base64 of the release keystore of Groovelight for Android
 #   ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS
 
 on:
@@ -197,7 +197,7 @@ jobs:
           fi
 
   android:
-    # Groovelight Sync, the Android companion app, attached to the same release.
+    # Groovelight for Android (the player, with Groovelight Sync's package, so it updates it), attached to the same release.
     needs: release
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -224,22 +224,22 @@ jobs:
           GROOVELIGHT_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           GROOVELIGHT_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         # The GitHub build is the APK attached to the release. The Play build (an App Bundle) is only built and checked
-        # (permissions, target API, lint), so the app stays ready to submit to Google Play. The player stays out of
-        # releases until it is ready (-Pplayer=true builds it in).
+        # (permissions, target API, lint), so the app stays ready to submit to Google Play. The player is in releases
+        # since 0.5.0 (-Pplayer=true; without it, the build is Groovelight Sync).
         run: |
           if [ -f "$RUNNER_TEMP/release.jks" ]; then export GROOVELIGHT_KEYSTORE="$RUNNER_TEMP/release.jks"; fi
           ./gradlew --no-daemon testDebugUnitTest :app:testGithubDebugUnitTest assembleGithubRelease bundlePlayRelease \
-            checkPlayReleasePolicy :app:lintPlayRelease -PversionName="$VERSION" -PversionCode="${{ github.run_number }}"
-          cp app/build/outputs/apk/github/release/app-github-release.apk "$RUNNER_TEMP/GroovelightSync-$VERSION.apk"
+            checkPlayReleasePolicy :app:lintPlayRelease -PversionName="$VERSION" -PversionCode="${{ github.run_number }}" -Pplayer=true
+          cp app/build/outputs/apk/github/release/app-github-release.apk "$RUNNER_TEMP/Groovelight-$VERSION.apk"
 
       - name: Keep the APK
         uses: actions/upload-artifact@v4
         with:
-          name: GroovelightSync-${{ env.VERSION }}
-          path: ${{ runner.temp }}/GroovelightSync-${{ env.VERSION }}.apk
+          name: Groovelight-Android-${{ env.VERSION }}
+          path: ${{ runner.temp }}/Groovelight-${{ env.VERSION }}.apk
 
       - name: Attach to the release
         if: ${{ github.ref_type == 'tag' || inputs.publish }}
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "v$VERSION" "$RUNNER_TEMP/GroovelightSync-$VERSION.apk" --clobber
+        run: gh release upload "v$VERSION" "$RUNNER_TEMP/Groovelight-$VERSION.apk" --clobber

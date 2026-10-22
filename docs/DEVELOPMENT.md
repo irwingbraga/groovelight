@@ -15,7 +15,7 @@ Requirements: Xcode 26+ (developed with Xcode 27), [XcodeGen](https://github.com
     the MCP server, and `ImportPaths` (the places imports may not read from, checked by the tool and the app)
 - `App/`: the macOS app (SwiftUI views, app model, Now Playing / media keys); `App/Sources/Control/ControlService.swift` runs the tool's commands
 - `CLI/`: `groovelight`, the command line tool (swift-argument-parser), embedded in the app at `Contents/Helpers/groovelight`
-- `android/`: Groovelight for Android, the Android 12+ companion: wireless sync (released as Groovelight Sync) and the player in development (Kotlin, Compose, Media3, Room; modules `sync`, `library`, `playback`, `app`; see `android/README.md`)
+- `android/`: Groovelight for Android, the Android 12+ companion: wireless sync and the player (Kotlin, Compose, Media3, Room, Glance; modules `sync`, `library`, `playback`, `app`; see `android/README.md`)
 - `project.yml`: XcodeGen spec (the `.xcodeproj` is generated, not committed)
 
 ## Build and test
@@ -88,7 +88,7 @@ Copy a Debug build into the shared folder and open it in the VM; the debug tours
 
 ## Releases
 
-`.github/workflows/release.yml` runs on version tags (`git tag v0.2.0 && git push --tags`) or by hand from the Actions tab. It tests the package, builds a Release DMG with `scripts/make-dmg.sh`, signs and notarizes it when the Developer ID secrets are set, writes the Sparkle update feed (`appcast.xml`, signed with `SPARKLE_PRIVATE_KEY`), builds Groovelight Sync for Android (signed with the release keystore secrets) and attaches the DMG, the feed and the APK to a GitHub Release. The release notes come from `docs/releases/<tag>.md` (for example `docs/releases/v0.2.2.md`) when that file exists, otherwise GitHub lists the changes. The app reads the feed from the latest release (`SUFeedURL` in `project.yml`); the public half of the update key is `SUPublicEDKey`.
+`.github/workflows/release.yml` runs on version tags (`git tag v0.2.0 && git push --tags`) or by hand from the Actions tab. It tests the package, builds a Release DMG with `scripts/make-dmg.sh`, signs and notarizes it when the Developer ID secrets are set, writes the Sparkle update feed (`appcast.xml`, signed with `SPARKLE_PRIVATE_KEY`), builds Groovelight for Android with the player (`-Pplayer=true`, signed with the release keystore secrets; the APK is `Groovelight-<version>.apk`, which the Android app's update check looks for) and attaches the DMG, the feed and the APK to a GitHub Release. The release notes come from `docs/releases/<tag>.md` (for example `docs/releases/v0.2.2.md`) when that file exists, otherwise GitHub lists the changes. The app reads the feed from the latest release (`SUFeedURL` in `project.yml`); the public half of the update key is `SUPublicEDKey`.
 
 Secrets: `DEVELOPER_ID_P12`, `DEVELOPER_ID_P12_PASSWORD`, `DEVELOPER_ID_IDENTITY`, `NOTARY_KEY_P8`, `NOTARY_KEY_ID`, `NOTARY_ISSUER_ID` (signing and notarization), `SPARKLE_PRIVATE_KEY` (updates), `ANDROID_KEYSTORE`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` (Android).
 
