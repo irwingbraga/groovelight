@@ -1,6 +1,8 @@
 package dev.irwingbraga.groovelight.sync
 
 import android.app.Application
+import android.content.Context
+import androidx.core.content.edit
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -146,6 +148,8 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
                             prefs.host = mac.host
                             prefs.port = mac.port
                             pairing.value = null
+                            // The Library starts on the Mac's music (its Downloaded filter off).
+                            getApplication<Application>().getSharedPreferences("library", Context.MODE_PRIVATE).edit { remove("source") }
                             paired.value = true
                             SyncWorker.schedule(getApplication(), prefs)
                             return@launch
@@ -266,7 +270,7 @@ private fun PairScreen(model: SyncViewModel) {
     var host by remember { mutableStateOf("") }
     var port by remember { mutableStateOf("52300") }
 
-    Text("Open Groovelight on your Mac and turn on Settings, Devices, “Sync with Android devices over Wi-Fi”. Macs on this Wi-Fi show up here.",
+    Text("Open Groovelight on your Mac and turn on Settings, Devices, “Sync with phones and players over Wi-Fi”. Macs on this Wi-Fi show up here.",
         color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.75f))
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {

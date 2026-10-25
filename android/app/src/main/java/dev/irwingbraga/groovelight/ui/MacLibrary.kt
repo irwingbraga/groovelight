@@ -34,7 +34,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilledTonalIconToggleButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.DropdownMenu
@@ -72,6 +73,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -95,13 +97,19 @@ fun DownloadedFilter() {
     val library = LocalActions.current.library
     val source by library.source.collectAsStateWithLifecycle()
     val only = source == LibraryModel.Source.DEVICE
-    FilterChip(
-        selected = only,
-        onClick = { library.setSource(if (only) LibraryModel.Source.MAC else LibraryModel.Source.DEVICE) },
-        label = { Text("Downloaded") },
-        leadingIcon = if (only) ({ Icon(painterResource(R.drawable.ic_check_circle), null, Modifier.size(18.dp)) }) else null,
-        modifier = Modifier.padding(end = 4.dp).semantics { contentDescription = if (only) "Showing only music on this device" else "Showing the Mac's music too" },
-    )
+    // The download symbol, filled while only this device's music shows.
+    FilledTonalIconToggleButton(
+        checked = only,
+        onCheckedChange = { library.setSource(if (it) LibraryModel.Source.DEVICE else LibraryModel.Source.MAC) },
+        colors = IconButtonDefaults.filledTonalIconToggleButtonColors(containerColor = Color.Transparent,
+            checkedContainerColor = MaterialTheme.colorScheme.primary, checkedContentColor = MaterialTheme.colorScheme.onPrimary),
+        modifier = Modifier.semantics {
+            contentDescription = "Downloaded only"
+            stateDescription = if (only) "Showing only music on this device" else "Showing the Mac's music too"
+        },
+    ) {
+        Icon(painterResource(R.drawable.ic_download), null)
+    }
 }
 
 /** The Mac away, or requests waiting for it. */
@@ -199,7 +207,13 @@ fun CatalogArtists() {
     val holdings by actions.library.holdings.collectAsStateWithLifecycle()
     val local by actions.library.artists.collectAsStateWithLifecycle()
     val localNames = remember(local) { local.orEmpty().map { it.name }.toSet() }
+    val albums by actions.library.mergedAlbums.collectAsStateWithLifecycle()
+    val compilations = remember(albums) { albums.orEmpty().filter { it.isCompilation } }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = LocalTopInset.current, bottom = 16.dp + LocalBottomInset.current)) {
+        // First, as on the Mac.
+        if (compilations.isNotEmpty()) item(key = "compilations") {
+            CompilationsRow(compilations.size) { CatalogCover(compilations.first().artworkHash, it, round = true) }
+        }
         items(artists.orEmpty(), key = { it.name }) { artist ->
             ListItem(
                 headlineContent = { Text(artist.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },

@@ -86,6 +86,7 @@ import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Slider
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
@@ -271,7 +272,7 @@ private fun NowPlayingContent(song: PlayerModel.NowPlaying, player: PlayerModel,
             val wide = maxWidth >= 560.dp
             val roomForSource = maxWidth >= 360.dp
             Column(Modifier.fillMaxSize()) {
-                TopRow(song, onClose, onDetails = { details = true }, onDialog = { dialog = it },
+                TopRow(song, player, onClose, onDetails = { details = true }, onDialog = { dialog = it },
                     panels = if (layout == Layout.COMPACT) panel else null, onPanel = togglePanel, showSource = roomForSource)
                 if (layout == Layout.COMPACT) {
                     CompactBody(panel, song, player, cover, wide, onDetails = { details = true }, onDialog = { dialog = it })
@@ -320,6 +321,7 @@ private fun BoxScope.CoverWash(cover: File?, background: Color) {
 @Composable
 private fun TopRow(
     song: PlayerModel.NowPlaying,
+    player: PlayerModel,
     onClose: () -> Unit,
     onDetails: () -> Unit,
     onDialog: (Dialog) -> Unit,
@@ -333,7 +335,14 @@ private fun TopRow(
     Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = if (panels != null) 0.dp else 4.dp), verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = onClose) { Icon(painterResource(R.drawable.ic_expand_more), contentDescription = "Close Now Playing") }
         Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-            if (showSource) song.source?.let { source ->
+            if (song.playingOn != null) {
+                if (panels == null) Text("PLAYING ON", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                Text(song.playingOn, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, maxLines = 1,
+                    overflow = TextOverflow.Ellipsis)
+                val skipped by player.remote.skipped.collectAsStateWithLifecycle()
+                if (skipped > 0) Text(if (skipped == 1) "1 song is not there: skipped" else "$skipped songs are not there: skipped",
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else if (showSource) song.source?.let { source ->
                 if (panels == null) Text("PLAYING FROM", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(source, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
@@ -342,6 +351,7 @@ private fun TopRow(
             PanelButton(panels == Panel.LYRICS, R.drawable.ic_lyrics, "Lyrics") { onPanel(Panel.LYRICS) }
             PanelButton(panels == Panel.QUEUE, R.drawable.ic_queue, "Up Next") { onPanel(Panel.QUEUE) }
         }
+        PlayOnButton(player)
         Box {
             IconButton(onClick = { menu = true }) { Icon(painterResource(R.drawable.ic_more), contentDescription = "More") }
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
@@ -484,6 +494,7 @@ private fun ColumnScope.Controls(
             onClick = player::cycleRepeat,
         )
     }
+    RemoteVolume(player)
     if (!compact) Spacer(Modifier.height(12.dp))
     // The compact layout has Lyrics and Up Next in its top row, the sleep timer and details in the menu.
     if (!compact) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
@@ -612,10 +623,36 @@ private fun SyncedLyrics(lyrics: Lyrics.Synced, player: PlayerModel) {
     }
 }
 
-/** Up Next: tap plays a song, the handle drags it to another place, swiping removes it. */
+/** The Mac's volume while music plays there (a phone's own buttons set its level, as this device's do here). */
+@Composable
+private fun RemoteVolume(player: PlayerModel) {
+    val target by player.target.collectAsStateWithLifecycle()
+    if (target != PlayerModel.Target.MAC) return
+    val received by player.remote.state.collectAsStateWithLifecycle()
+    var dragging by remember { mutableStateOf<Float?>(null) }
+    var lastSent by remember { mutableStateOf(0L) }
+    Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(painterResource(R.drawable.ic_speaker), null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Slider(
+            value = dragging ?: (received?.state?.volume ?: 1.0).toFloat(),
+            onValueChange = { value ->
+                dragging = value
+                // Followed as it is dragged, a few times a second.
+                val now = System.currentTimeMillis()
+                if (now - lastSent > 150) { lastSent = now; player.setRemoteVolume(value) }
+            },
+            onValueChangeFinished = { dragging?.let(player::setRemoteVolume); dragging = null },
+            modifier = Modifier.weight(1f).padding(horizontal = 8.dp).semantics { contentDescription = "Volume on ${player.targetName()}" },
+        )
+    }
+}
+
+/** Up Next: tap plays a song, the handle drags it to another place, swiping removes it. Elsewhere, shown only. */
 @Composable
 private fun QueuePanel(player: PlayerModel) {
     val upNext by player.upNext.collectAsStateWithLifecycle()
+    val target by player.target.collectAsStateWithLifecycle()
+    if (target != PlayerModel.Target.THIS_DEVICE) return RemoteQueue(upNext, player.targetName(target))
     val shuffle by player.shuffle.collectAsStateWithLifecycle()
     var order by remember(upNext) { mutableStateOf(upNext) }
     var draggingKey by remember { mutableStateOf<String?>(null) }
@@ -698,6 +735,32 @@ private fun QueuePanel(player: PlayerModel) {
                             },
                     )
                 }
+            }
+        }
+    }
+}
+
+/** What plays next where music plays now (the songs this device has; edited there). */
+@Composable
+private fun RemoteQueue(upNext: List<PlayerModel.QueueEntry>, place: String) {
+    Column(Modifier.fillMaxSize()) {
+        Text("Up Next", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.semantics { heading() })
+        Text("On $place", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (upNext.isEmpty()) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("Nothing plays after this song", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            return@Column
+        }
+        LazyColumn(Modifier.fillMaxSize()) {
+            items(upNext, key = { it.key }) { entry ->
+                ListItem(
+                    headlineContent = { Text(entry.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    supportingContent = entry.artist?.let { { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis) } },
+                    leadingContent = { Cover(entry.artwork?.path?.let(::File), Modifier.size(44.dp), corner = 6.dp) },
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent, headlineColor = Color.White,
+                        supportingColor = MaterialTheme.colorScheme.onSurfaceVariant),
+                )
             }
         }
     }

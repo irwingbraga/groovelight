@@ -198,10 +198,10 @@ class LibraryModel(application: Application) : AndroidViewModel(application) {
 
     // MARK: The Mac's whole library
 
-    /** What the Library tab shows: only what is on this device (DEVICE), or the Mac's whole library with it (MAC). */
+    /** What the Library tab shows: only what is on this device (DEVICE), or the Mac's whole library with it (MAC, the default, and again on pairing). */
     enum class Source { DEVICE, MAC }
 
-    val source = MutableStateFlow(settings.getString("source", null)?.let { runCatching { Source.valueOf(it) }.getOrNull() } ?: Source.DEVICE)
+    val source = MutableStateFlow(settings.getString("source", null)?.let { runCatching { Source.valueOf(it) }.getOrNull() } ?: Source.MAC)
 
     fun setSource(value: Source) {
         source.value = value

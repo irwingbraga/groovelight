@@ -132,9 +132,11 @@ sealed interface Route {
     data class MacAlbumPage(val key: String) : Route
     data class MacArtistPage(val name: String) : Route
     data object LovedSongs : Route
+    /** Albums by various artists, the first entry of Artists as on the Mac. */
+    data object Compilations : Route
 
     /** A page of the library (it opens in the Library tab when asked from Settings). */
-    val isLibraryPage: Boolean get() = this is AlbumPage || this is ArtistPage || this is PlaylistPage || this is PersonPage || this == LovedSongs ||
+    val isLibraryPage: Boolean get() = this is AlbumPage || this is ArtistPage || this is PlaylistPage || this is PersonPage || this == LovedSongs || this == Compilations ||
         this is MacAlbumPage || this is MacArtistPage
 
     companion object {
@@ -147,6 +149,7 @@ sealed interface Route {
             Sync -> "sync"
             Equalizer -> "equalizer"
             LovedSongs -> "loved"
+            Compilations -> "compilations"
             is AlbumPage -> "album:${route.key}"
             is ArtistPage -> "artist:${route.name}"
             is PlaylistPage -> "playlist:${route.id}"
@@ -166,6 +169,7 @@ sealed interface Route {
                 "sync" -> Sync
                 "equalizer" -> Equalizer
                 "loved" -> LovedSongs
+                "compilations" -> Compilations
                 "album" -> AlbumPage(value)
                 "artist" -> ArtistPage(value)
                 "person" -> PersonPage(value)
@@ -327,7 +331,10 @@ fun PlayerShell(sync: SyncViewModel, player: PlayerModel = viewModel(), library:
                                         Route.Equalizer -> EqualizerScreen()
                                         Route.Sync -> GlassTop(bar = { SettingsBar("Sync") }) {
                                             Box(Modifier.padding(top = LocalTopInset.current, bottom = bottomInset)) {
-                                                SyncScreen(null, sync) { mode?.let { current -> ListeningCard(current, sync::setMode) } }
+                                                SyncScreen(null, sync) {
+                                                    mode?.let { current -> ListeningCard(current, sync::setMode) }
+                                                    PlayHereCard(player)
+                                                }
                                             }
                                         }
                                         is Route.PersonPage -> PersonPage(it.name)
@@ -337,6 +344,7 @@ fun PlayerShell(sync: SyncViewModel, player: PlayerModel = viewModel(), library:
                                         is Route.ArtistPage -> ArtistPage(it.name)
                                         is Route.PlaylistPage -> PlaylistPage(it.id)
                                         Route.LovedSongs -> PlaylistPage(null)
+                                        Route.Compilations -> CompilationsPage()
                                     }
                                     }
                                 }
@@ -489,7 +497,7 @@ private fun MiniPlayer(song: PlayerModel.NowPlaying, player: PlayerModel, haze: 
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(song.title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(problem ?: song.artist ?: "", style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                Text(problem ?: listOfNotNull(song.playingOn?.let { "On $it" }, song.artist).joinToString(" · "), style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     color = if (problem != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
             }
             IconButton(onClick = player::togglePlayPause) {
@@ -529,7 +537,9 @@ private fun PlayerSheet(song: PlayerModel.NowPlaying, player: PlayerModel, onOpe
         )
         HorizontalDivider(Modifier.padding(horizontal = 16.dp))
         SheetAction(R.drawable.ic_expand_more, "Open Now Playing", rotate = true) { then(onOpen) }
-        if (upNext.isNotEmpty()) {
+        val target by player.target.collectAsStateWithLifecycle()
+        // Up Next elsewhere is shown, not edited.
+        if (upNext.isNotEmpty() && target == PlayerModel.Target.THIS_DEVICE) {
             SheetAction(R.drawable.ic_queue, "Clear Up Next", detail = if (upNext.size == 1) "1 song after this one" else "${upNext.size} songs after this one") {
                 then(player::clearUpNext)
             }

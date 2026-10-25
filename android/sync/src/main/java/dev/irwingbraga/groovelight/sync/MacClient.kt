@@ -14,6 +14,7 @@ import java.io.IOException
 import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLEncoder
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.security.cert.CertificateException
@@ -278,6 +279,43 @@ class MacClient(private val host: String, private val port: Int, private val dev
 
     /** Sends requests for the selection (`[{id, action, kind, key}]`); answers what the selection holds then. */
     fun requests(requests: JSONArray): JSONObject = json("POST", "/requests", JSONObject().put("requests", requests))
+
+    /**
+     * The Mac's player (HTTPS), for playing music there from this device, or with `device` another device's through
+     * the Mac. With `after` (the version last seen), the Mac answers when something changes or after about 25 seconds.
+     * A [MacError] with status 403 when the Mac does not let this device control playback (its device page on the
+     * Mac), 404 when that device is no longer there.
+     */
+    fun remoteState(after: String? = null, device: String? = null): JSONObject =
+        json("GET", "/remote" + query("after" to after, "device" to device),
+            timeout = if (after == null) 15_000 else 40_000, signedPath = "/remote")
+
+    /** Asks the Mac's player (or `device`'s) to do something (`{"command": "pause"}`, ...); answers with its state after. */
+    fun remote(command: JSONObject, device: String? = null): JSONObject =
+        json("POST", "/remote" + query("device" to device), command, signedPath = "/remote")
+
+    /** The other devices music can play on now (phones with Groovelight open), through the Mac. */
+    fun remoteDevices(): List<RemoteDevice> {
+        val devices = json("GET", "/remote/devices").optJSONArray("devices") ?: JSONArray()
+        return (0 until devices.length()).map { RemoteDevice.from(devices.getJSONObject(it)) }
+    }
+
+    /**
+     * Commands for this device after `after` (the last one applied), waiting up to about 25 seconds for some; without
+     * `after`, at once: none, and the sequence number to start from (`last`). Waiting tells the Mac this device is there.
+     */
+    fun relayCommands(after: Int?): JSONObject =
+        json("GET", "/relay" + query("after" to after?.toString()), timeout = if (after == null) 15_000 else 40_000, signedPath = "/relay")
+
+    /** This device's player (null: nothing), for the devices controlling it, with the last command applied. */
+    fun relayState(state: JSONObject?, applied: Int) {
+        json("POST", "/relay/state", JSONObject().put("state", state ?: JSONObject.NULL).put("applied", applied))
+    }
+
+    private fun query(vararg items: Pair<String, String?>): String {
+        val pairs = items.filter { it.second != null }.map { "${it.first}=${URLEncoder.encode(it.second, "UTF-8")}" }.sorted()
+        return if (pairs.isEmpty()) "" else "?" + pairs.joinToString("&")
+    }
 
     private fun hex(data: ByteArray) = Pairing.hexString(MessageDigest.getInstance("SHA-256").digest(data))
 

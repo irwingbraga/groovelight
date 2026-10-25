@@ -107,6 +107,7 @@ fun LibraryHome() {
                 verticalAlignment = Alignment.CenterVertically) {
                 DownloadedFilter()
                 Spacer(Modifier.weight(1f))
+                PlayOnButton(LocalActions.current.player)
                 if (sortable) SortMenu(section)
             }
         } else {
@@ -114,6 +115,7 @@ fun LibraryHome() {
                 title = { Text("Library", fontWeight = FontWeight.SemiBold) },
                 actions = {
                     DownloadedFilter()
+                    PlayOnButton(LocalActions.current.player)
                     if (sortable) SortMenu(section)
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent, scrolledContainerColor = Color.Transparent),
@@ -256,10 +258,16 @@ private fun AlbumGrid(
 private fun ArtistsSection() {
     val actions = LocalActions.current
     val artists by actions.library.artists.collectAsStateWithLifecycle()
+    val albums by actions.library.albums.collectAsStateWithLifecycle()
+    val compilations = remember(albums) { albums.orEmpty().filter { it.isCompilation } }
     val list = rememberLazyListState()
     val all = artists.orEmpty()
     Box(Modifier.fillMaxSize()) {
         LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(top = LocalTopInset.current, bottom = 16.dp + LocalBottomInset.current)) {
+            // First, as on the Mac.
+            if (compilations.isNotEmpty()) item(key = "compilations") {
+                CompilationsRow(compilations.size) { Cover(actions.library.cover(compilations.first().artworkHash), it, round = true) }
+            }
             items(all, key = { it.name }) { artist ->
                 ListItem(
                     headlineContent = { Text(artist.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
@@ -274,6 +282,35 @@ private fun ArtistsSection() {
         val visible by remember { derivedStateOf { list.layoutInfo.visibleItemsInfo.size } }
         FastScroller(all.size, first, visible, list.isScrollInProgress, { list.scrollToItem(it) },
             { all.getOrNull(it)?.name?.let(::indexLetter) }, Modifier.align(Alignment.TopEnd).padding(top = LocalTopInset.current, bottom = LocalBottomInset.current))
+    }
+}
+
+/** The Compilations entry of Artists: albums by various artists. */
+@Composable
+fun CompilationsRow(albums: Int, cover: @Composable (Modifier) -> Unit) {
+    val actions = LocalActions.current
+    ListItem(
+        headlineContent = { Text("Compilations", maxLines = 1) },
+        supportingContent = { Text(if (albums == 1) "1 album" else "$albums albums") },
+        leadingContent = { cover(Modifier.size(52.dp)) },
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+        modifier = Modifier.clickable { actions.open(Route.Compilations) },
+    )
+}
+
+/** Albums by various artists; with the Mac's music, its compilations too (each opening here or on the Mac). */
+@Composable
+fun CompilationsPage() {
+    val actions = LocalActions.current
+    val source by actions.library.source.collectAsStateWithLifecycle()
+    GlassTop(bar = { PageBar("Compilations", showTitle = true) }) {
+        if (source == LibraryModel.Source.MAC) {
+            val albums by actions.library.mergedAlbums.collectAsStateWithLifecycle()
+            CatalogAlbumGrid(albums.orEmpty().filter { it.isCompilation })
+        } else {
+            val albums by actions.library.albums.collectAsStateWithLifecycle()
+            AlbumGrid(albums.orEmpty().filter { it.isCompilation }) { actions.open(Route.AlbumPage(it.key)) }
+        }
     }
 }
 
