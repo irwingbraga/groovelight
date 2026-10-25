@@ -96,13 +96,15 @@ struct ArtistPage: View {
         let tracks = local.flatMap { album in model.library.read { try LibraryDatabase.tracks($0, albumKey: album.albumKey) } ?? [] }
         let albumCount = catalog.showsMac ? mac.count : local.count
         let songCount = catalog.showsMac ? mac.reduce(0) { $0 + catalog.songsAnywhere(album: $1.key).count } : tracks.count
+        // Played on the Mac when it plays: all of them, here or not.
+        let macIds = model.playsOnMac && catalog.showsMac ? mac.flatMap { catalog.songsAnywhere(album: $0.key).map(\.id) } : []
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
                 Group {
                     if width >= 560 {
-                        HStack(alignment: .bottom, spacing: 28) { photo(local: local, mac: mac); header(albums: albumCount, songs: songCount, tracks: tracks) }
+                        HStack(alignment: .bottom, spacing: 28) { photo(local: local, mac: mac); header(albums: albumCount, songs: songCount, tracks: tracks, macIds: macIds) }
                     } else {
-                        VStack(alignment: .leading, spacing: 20) { photo(local: local, mac: mac); header(albums: albumCount, songs: songCount, tracks: tracks) }
+                        VStack(alignment: .leading, spacing: 20) { photo(local: local, mac: mac); header(albums: albumCount, songs: songCount, tracks: tracks, macIds: macIds) }
                     }
                 }
                 .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
@@ -136,21 +138,23 @@ struct ArtistPage: View {
         .shadow(color: .black.opacity(0.3), radius: 18, y: 10)
     }
 
-    private func header(albums: Int, songs: Int, tracks: [Track]) -> some View {
+    private func header(albums: Int, songs: Int, tracks: [Track], macIds: [Int64]) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(ArtistSummary.displayName(name)).font(.system(size: 34, weight: .bold)).lineLimit(2)
             Text("\(albums == 1 ? "1 album" : "\(albums) albums"), \(songs == 1 ? "1 song" : "\(songs) songs")").foregroundStyle(.secondary)
             HStack(spacing: 10) {
-                Button { model.play(tracks) } label: { Label("Play", systemImage: "play.fill") }
+                Button { macIds.isEmpty ? model.play(tracks) : model.playOnMac(macIds) } label: { Label("Play", systemImage: "play.fill") }
                     .buttonStyle(.glassProminent)
-                Button { model.play(tracks, shuffle: true) } label: { Label("Shuffle", systemImage: "shuffle") }
-                    .buttonStyle(.glass)
-                    // What is here plays; the Mac's albums are brought here first.
-                    .disabled(tracks.isEmpty)
+                Button { macIds.isEmpty ? model.play(tracks, shuffle: true) : model.playOnMac(macIds, shuffle: true) } label: {
+                    Label("Shuffle", systemImage: "shuffle")
+                }
+                .buttonStyle(.glass)
+                // What is here plays (or, on the Mac, everything); the Mac's albums are brought here first.
+                .disabled(tracks.isEmpty && macIds.isEmpty)
                 if model.catalog.showsMac, !isCompilations { ArtistTransferButton(name: name) }
             }
             .controlSize(.large)
-            .disabled(tracks.isEmpty && !model.catalog.showsMac)
+            .disabled(tracks.isEmpty && macIds.isEmpty && !model.catalog.showsMac)
             .padding(.top, 4)
             if model.catalog.isWaiting(artist: name) {
                 Text("Waiting for the Mac").font(.subheadline.weight(.medium)).foregroundStyle(Color.accentColor)
@@ -322,7 +326,11 @@ private struct MacArtistAlbumSection: View {
                           route: here ? .album(album.key) : .macAlbum(album.key)) { size in
             CatalogCover(hash: album.artworkHash, size: size, corner: 8)
         } buttons: {
-            if here {
+            if model.playsOnMac {
+                // On the Mac, which has it all.
+                Button { model.playOnMac(songs.map(\.id)) } label: { Label("Play", systemImage: "play.fill") }
+                Button { model.playOnMac(songs.map(\.id), shuffle: true) } label: { Label("Shuffle", systemImage: "shuffle") }
+            } else if here {
                 Button { model.play(tracks) } label: { Label("Play", systemImage: "play.fill") }
                 Button { model.play(tracks, shuffle: true) } label: { Label("Shuffle", systemImage: "shuffle") }
             }

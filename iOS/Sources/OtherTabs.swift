@@ -162,6 +162,10 @@ struct SyncSection: View {
         Section {
             if let mac = sync.mac {
                 LabeledContent("Paired with", value: mac.name)
+                if sync.isAway {
+                    Label("Connected away from home, through Tailscale", systemImage: "globe")
+                        .foregroundStyle(.secondary)
+                }
                 switch sync.phase {
                 case let .syncing(done, total, current):
                     VStack(alignment: .leading, spacing: 6) {
@@ -188,6 +192,9 @@ struct SyncSection: View {
                     }
                     Button("Sync Now") { sync.syncNow() }
                 }
+                if mac.awayHosts?.isEmpty == false {
+                    Toggle("Sync over Mobile Data", isOn: Binding(get: { sync.syncsOverMobileData }, set: { sync.syncsOverMobileData = $0 }))
+                }
                 Button("Forget This Mac", role: .destructive) { confirmingForget = true }
                     .confirmationDialog("Forget \(mac.name)?", isPresented: $confirmingForget) {
                         Button("Forget", role: .destructive) { sync.forget() }
@@ -200,7 +207,7 @@ struct SyncSection: View {
         } header: {
             Text("Mac")
         } footer: {
-            Text("What this device gets is chosen on the Mac, on its page under Devices.")
+            Text("What this device gets is chosen on the Mac, on its page under Devices. Away from home, this device reaches the Mac through Tailscale when it is on here and on the Mac, and the Mac allows it on that page.")
         }
     }
 }

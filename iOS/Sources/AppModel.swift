@@ -55,6 +55,8 @@ final class AppModel {
         player = PlayerStore(library: library)
         remote = RemoteStore(sync: sync)
         catalog = CatalogStore(library: library, sync: sync, folders: folders)
+        // A song playing elsewhere that is not here shows the Mac library's cover on the lock screen too.
+        player.coverElsewhere = { [catalog] in catalog.cachedCoverURL($0) }
         #if DEBUG
         if UserDefaults.standard.bool(forKey: "GLDebugNowPlaying") { debugSample = .sample }
         #endif
@@ -103,6 +105,15 @@ final class AppModel {
         case .thisDevice: player.play(tracks, startAt: index, shuffle: shuffle)
         case .mac, .device: remote.send(.play(songIds: tracks.compactMap(\.id), startAt: index, position: 0, shuffle: shuffle))
         }
+    }
+
+    /// Whether the Mac plays: it has every song of its library, here or not.
+    var playsOnMac: Bool { target == .mac }
+
+    /// Songs of the Mac's library, by its ids, on the Mac (which has them all, here or not); only when it plays.
+    func playOnMac(_ songIds: [Int64], startAt index: Int = 0, shuffle: Bool = false) {
+        guard playsOnMac, !songIds.isEmpty else { return }
+        remote.send(.play(songIds: songIds, startAt: index, position: 0, shuffle: shuffle))
     }
 
     func togglePlayPause() {
@@ -345,6 +356,18 @@ final class AppModel {
             }
             try? await Task.sleep(for: .seconds(handOff))
             await choose(.thisDevice)
+        }
+        // `-GLDebugPlayOnMac <album>`: plays on the Mac, then that album of its library (here or not), as a tap on
+        // its first song does.
+        if let title = UserDefaults.standard.string(forKey: "GLDebugPlayOnMac") {
+            await catalog.refresh()
+            await remote.check()
+            await choose(.mac)
+            guard let album = catalog.catalog?.albums.first(where: { $0.title == title }) else {
+                RemoteStore.log.error("No album \(title, privacy: .public) on the Mac")
+                return
+            }
+            playOnMac(catalog.songsAnywhere(album: album.key).map(\.id))
         }
         #endif
     }

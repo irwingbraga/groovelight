@@ -162,6 +162,11 @@ targets:
         UIBackgroundModes: [audio]
         NSLocalNetworkUsageDescription: Groovelight finds your Mac on the local network to sync your music with it.
         NSBonjourServices: [_groovelight._tcp]
+        # Away from home the Mac is reached at its Tailscale address, which App Transport Security does not count as
+        # local, with the Mac's own certificate, which no authority signs: the app talks to nothing but the Mac, pinning
+        # its certificate and signing every request itself (`MacClient`).
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
         # Every orientation: the layout follows the window (iPhone Duo's displays and poses, iPad multitasking).
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft,
                                            UIInterfaceOrientationLandscapeRight]

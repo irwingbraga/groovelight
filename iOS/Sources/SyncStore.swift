@@ -1,6 +1,7 @@
 import CryptoKit
 import Foundation
 import LibraryKit
+import Network
 import Observation
 import OSLog
 import Security
@@ -23,6 +24,14 @@ final class SyncStore {
     private(set) var lastSync: Date?
     /// This device, as the Mac knows it.
     let deviceId: String
+    /// The Mac was last reached away from home, at its Tailscale address.
+    private(set) var isAway = false
+    /// Away from home, songs come down over mobile data only when allowed (Settings).
+    var syncsOverMobileData: Bool {
+        didSet { defaults.set(syncsOverMobileData, forKey: "sync.mobileData") }
+    }
+    /// On mobile data, or another connection the system counts as expensive (a phone's hotspot).
+    private(set) var isOnMobileData = false
 
     @ObservationIgnored private let library: LibraryStore
     @ObservationIgnored private var task: Task<Void, Never>?
@@ -33,6 +42,7 @@ final class SyncStore {
     @ObservationIgnored private var eventsDelivered: [CheckedContinuation<Void, Never>] = []
     /// The system delivered them before anyone waited.
     @ObservationIgnored private var eventsArrived = false
+    @ObservationIgnored private let network = NWPathMonitor()
 
     static let downloadsIdentifier = "dev.irwingbraga.groovelight.downloads"
 
@@ -47,6 +57,7 @@ final class SyncStore {
         mac = defaults.data(forKey: "sync.mac").flatMap { try? JSONDecoder().decode(PairedMac.self, from: $0) }
         lastResult = defaults.string(forKey: "sync.lastResult")
         lastSync = defaults.object(forKey: "sync.lastSync") as? Date
+        syncsOverMobileData = defaults.bool(forKey: "sync.mobileData")
         downloads = .background(identifier: Self.downloadsIdentifier, musicFolder: library.musicFolder)
         // Paired once but the key is gone (the keychain was reset): pair again.
         if let mac, PairingKeychain.key(macId: mac.id) == nil { forget() }
@@ -55,6 +66,11 @@ final class SyncStore {
         downloads.onFinishedEvents { [weak self] in
             Task { @MainActor in self?.backgroundEventsDelivered() }
         }
+        network.pathUpdateHandler = { [weak self] path in
+            let expensive = path.isExpensive
+            Task { @MainActor in self?.isOnMobileData = expensive }
+        }
+        network.start(queue: DispatchQueue(label: "dev.irwingbraga.groovelight.network"))
     }
 
     var isPaired: Bool { mac != nil }
@@ -68,6 +84,13 @@ final class SyncStore {
            let port = Int(address[address.index(after: colon)...]) {
             let flow = PairingFlow(sync: self)
             await flow.pair(host: String(address[..<colon]), port: port, name: "Mac")
+        }
+        // `-GLDebugAway YES`: as away from home, the Mac's address at home unreachable and the Mac not found on the
+        // network, so only its Tailscale address answers.
+        if defaults.bool(forKey: "GLDebugAway"), var away = mac {
+            MacBrowser.debugFindsNothing = true
+            away.host = "192.0.2.1"
+            remember(away)
         }
         if defaults.bool(forKey: "GLDebugSync") { syncNow() }
         #endif
@@ -132,6 +155,10 @@ final class SyncStore {
             do {
                 let (client, connected) = try await mac.connect(deviceId: deviceId, key: key)
                 self?.remember(connected)
+                self?.isAway = client.isAway
+                if client.isAway, self?.isOnMobileData == true, self?.syncsOverMobileData == false {
+                    throw MacError("Away from home, syncing waits for Wi-Fi. To sync over mobile data, turn it on below.")
+                }
                 downloads.pin(connected.certificate)
                 let sync = CompanionSync(client: client, musicFolder: library.musicFolder, library: library.database, artwork: library.artwork,
                                          deviceName: name, model: model, downloads: downloads, journal: library.journal)
@@ -189,6 +216,7 @@ final class SyncStore {
         guard let mac, let key = PairingKeychain.key(macId: mac.id) else { throw MacError("Not paired with a Mac") }
         let (client, connected) = try await mac.connect(deviceId: deviceId, key: key)
         remember(connected)
+        isAway = client.isAway
         return client
     }
 

@@ -291,6 +291,13 @@ final class CatalogStore {
     // MARK: - Covers
 
     /// A cover: this device's when it has it, else the Mac's (fetched once, then kept).
+    /// A cover already here: this device's, or the Mac's library's fetched before (nil otherwise, without fetching).
+    func cachedCoverURL(_ hash: String?) -> URL? {
+        guard let hash else { return nil }
+        if let local = library.artworkURL(hash, size: .large) { return local }
+        return covers?.has(hash) == true ? covers?.url(for: hash, size: .small) : nil
+    }
+
     func coverURL(_ hash: String?) async -> URL? {
         guard let hash else { return nil }
         if let local = library.artworkURL(hash) { return local }

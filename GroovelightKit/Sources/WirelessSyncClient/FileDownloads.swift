@@ -93,16 +93,26 @@ public final class FileDownloads: NSObject, @unchecked Sendable {
         }
         return try await withTaskCancellationHandler {
             var outcomes: [String: Outcome] = [:]
-            for (identifier, path) in tasks {
-                // A retry is a new task: follow it until the file is done.
-                var current = identifier
-                var outcome: Outcome
-                repeat {
-                    outcome = await wait(for: current)
-                    if case .failure(let error) = outcome, error.status == Self.retried, let next = Int(error.message) { current = next } else { break }
-                } while true
-                outcomes[path] = outcome
-                progress(outcomes.count, (path as NSString).lastPathComponent)
+            // The system downloads several at once, in any order: each counts as soon as it is done.
+            await withTaskGroup(of: (String, Outcome).self) { group in
+                for (identifier, path) in tasks {
+                    group.addTask {
+                        // A retry is a new task: follow it until the file is done.
+                        var current = identifier
+                        while true {
+                            let outcome = await self.wait(for: current)
+                            if case .failure(let error) = outcome, error.status == Self.retried, let next = Int(error.message) {
+                                current = next
+                            } else {
+                                return (path, outcome)
+                            }
+                        }
+                    }
+                }
+                for await (path, outcome) in group {
+                    outcomes[path] = outcome
+                    progress(outcomes.count, (path as NSString).lastPathComponent)
+                }
             }
             try Task.checkCancellation()
             return outcomes

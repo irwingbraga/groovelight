@@ -43,8 +43,11 @@ struct Cover: View {
 
     private func load() async -> UIImage? {
         if let cached = ImageCache.image(hash, large: large) { return cached }
-        guard let url = model.library.artworkURL(hash, size: large ? .large : .small) else { return nil }
-        return await ImageCache.load(url, hash: hash, large: large)
+        if let url = model.library.artworkURL(hash, size: large ? .large : .small) { return await ImageCache.load(url, hash: hash, large: large) }
+        // Not here (a song of the Mac's library playing there): its cover as the Mac's pages show it.
+        if let cached = ImageCache.image(hash) { return cached }
+        guard let url = await model.catalog.coverURL(hash) else { return nil }
+        return await ImageCache.load(url, hash: hash)
     }
 }
 

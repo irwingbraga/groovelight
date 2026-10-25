@@ -264,6 +264,12 @@ struct MergedSongRow: View {
         }
         .contentShape(.rect)
         .onTapGesture {
+            if model.playsOnMac {
+                // On the Mac, which has it, with the rest of its album there.
+                let album = catalog.songsAnywhere(album: song.albumKey)
+                model.playOnMac(album.map(\.id), startAt: album.firstIndex { $0.id == song.id } ?? 0)
+                return
+            }
             guard let local else { return }
             // Played from this device's copy, with the rest of its album that is here.
             let album = model.library.read { try LibraryDatabase.tracks($0, albumKey: local.albumKey) } ?? [local]
@@ -314,6 +320,20 @@ struct MacAlbumView: View {
                             AvailabilityMark(availability: availability)
                             Text(availability == .onDevice && here > 0 && here < songs.count ? "\(here) of \(songs.count) songs on this device" : availability.text)
                                 .font(.subheadline.weight(.medium))
+                        }
+                        if model.playsOnMac {
+                            HStack(spacing: 12) {
+                                Button { model.playOnMac(songs.map(\.id)) } label: {
+                                    Label("Play on the Mac", systemImage: "play.fill").frame(maxWidth: .infinity)
+                                }
+                                .buttonStyle(.glassProminent)
+                                Button { model.playOnMac(songs.map(\.id), shuffle: true) } label: {
+                                    Label("Shuffle", systemImage: "shuffle").frame(maxWidth: .infinity)
+                                }
+                                .buttonStyle(.glass)
+                            }
+                            .controlSize(.large)
+                            .frame(maxWidth: 420)
                         }
                         AlbumTransferButtons(album: album, availability: availability)
                     }

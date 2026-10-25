@@ -49,6 +49,8 @@ final class PlayerStore {
         didSet { if elsewhere != oldValue { updateNowPlayingInfo() } }
     }
     @ObservationIgnored var remoteRoute: RemoteRoute?
+    /// The cover of a song playing elsewhere that is not here (the Mac library's), for the lock screen.
+    @ObservationIgnored var coverElsewhere: (String?) -> URL? = { _ in nil }
 
     /// The lock screen's buttons act elsewhere.
     private var routed: RemoteRoute? { elsewhere != nil ? remoteRoute : nil }
@@ -297,7 +299,7 @@ final class PlayerStore {
                 MPNowPlayingInfoPropertyDefaultPlaybackRate: 1.0,
                 MPNowPlayingInfoPropertyMediaType: MPNowPlayingInfoMediaType.audio.rawValue,
             ]
-            if let url = library.artworkURL(elsewhere.artworkHash, size: .large), let artwork = Self.artwork(url) {
+            if let url = coverElsewhere(elsewhere.artworkHash) ?? library.artworkURL(elsewhere.artworkHash, size: .large), let artwork = Self.artwork(url) {
                 info[MPMediaItemPropertyArtwork] = artwork
             }
             center.nowPlayingInfo = info
