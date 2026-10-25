@@ -40,6 +40,8 @@ public final class WirelessSyncServer: @unchecked Sendable {
         public var mayControl: @Sendable (String) async -> Bool
         /// A paired device's name, as other devices list it.
         public var deviceName: @Sendable (String) async -> String?
+        /// Whether a device may reach this Mac away from home (over Tailscale).
+        public var mayConnectAway: @Sendable (String) async -> Bool
 
         public init(info: @escaping @Sendable () -> WirelessProtocol.Info,
                     pairRequested: @escaping @Sendable (WirelessProtocol.PairRequest, WirelessProtocol.Pairing) async -> Void,
@@ -60,7 +62,8 @@ public final class WirelessSyncServer: @unchecked Sendable {
                     remoteState: @escaping @Sendable (String) async -> WirelessProtocol.RemoteState? = { _ in nil },
                     remote: @escaping @Sendable (String, WirelessProtocol.RemoteCommand) async -> WirelessProtocol.RemoteState? = { _, _ in nil },
                     mayControl: @escaping @Sendable (String) async -> Bool = { _ in false },
-                    deviceName: @escaping @Sendable (String) async -> String? = { _ in nil }) {
+                    deviceName: @escaping @Sendable (String) async -> String? = { _ in nil },
+                    mayConnectAway: @escaping @Sendable (String) async -> Bool = { _ in false }) {
             self.info = info
             self.pairRequested = pairRequested
             self.pairStatus = pairStatus
@@ -78,6 +81,7 @@ public final class WirelessSyncServer: @unchecked Sendable {
             self.remoteState = remoteState
             self.remote = remote
             self.mayControl = mayControl
+            self.mayConnectAway = mayConnectAway
             self.deviceName = deviceName
         }
     }
@@ -189,6 +193,8 @@ public final class WirelessSyncServer: @unchecked Sendable {
     private func info() -> WirelessProtocol.Info {
         var info = backend.info()
         info.tlsPort = lock.withLock { tlsPort.map(Int.init) }
+        let away = AwayNetwork.addresses()
+        info.awayAddresses = away.isEmpty ? nil : away
         return info
     }
 
@@ -199,6 +205,9 @@ public final class WirelessSyncServer: @unchecked Sendable {
         switch (request.method, parts.count, parts.first) {
         case ("GET", 1, "info"):
             return .json(info())
+        // Pairing only at home: away, a device can only reach a Mac it is already paired with.
+        case ("POST", 1, "pair") where request.isAway, ("GET", 2, "pair") where request.isAway:
+            return .error(403, Self.pairAtHome)
         case ("POST", 1, "pair"):
             return await pair(request)
         case ("GET", 2, "pair"):
@@ -210,9 +219,11 @@ public final class WirelessSyncServer: @unchecked Sendable {
         if request.method == "GET", parts.count >= 3, parts[0] == "sync", let token = request.headers[WirelessProtocol.Header.token] {
             guard request.secure, let session = lock.withLock({ sessions[parts[1]] }), session.expires > .now,
                   let expected = session.token, Self.equal(token, expected) else { return .error(401, "bad token") }
+            if request.isAway, !(await backend.mayConnectAway(session.deviceId)) { return .error(403, Self.notAllowedAway) }
             return await download(session: parts[1], parts: parts, deviceId: session.deviceId)
         }
         guard let deviceId = await verify(request) else { return .error(401, "not paired or bad signature") }
+        if request.isAway, !(await backend.mayConnectAway(deviceId)) { return .error(403, Self.notAllowedAway) }
         switch (request.method, parts.count, parts.first) {
         case ("GET", 1, "status"):
             return .json(await backend.status(deviceId))
@@ -304,6 +315,9 @@ public final class WirelessSyncServer: @unchecked Sendable {
     }
 
     static let remoteWait: TimeInterval = 25
+    /// Answers to a device away from home (shown on it).
+    public static let pairAtHome = "Pair at home, on the same network as the Mac."
+    public static let notAllowedAway = "This Mac does not allow this device away from home. Turn it on in the device's page on the Mac."
     /// How long a device counts as there after it last waited for commands (it asks again at once, so a few seconds
     /// cover a slow network; longer and it has gone).
     static let relayPresence: TimeInterval = 10

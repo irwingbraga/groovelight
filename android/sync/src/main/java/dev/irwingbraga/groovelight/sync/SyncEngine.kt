@@ -29,7 +29,8 @@ class SyncEngine(private val context: Context, private val prefs: Prefs) {
     }
 
     /**
-     * The paired Mac at its last address, or found again on the network (its address may have changed). Over HTTPS when
+     * The paired Mac at its last address, found again on the network (its address may have changed), or away from home
+     * at its Tailscale address. Over HTTPS when
      * the Mac offers it (protocol v2): its certificate is pinned the first time, with the Mac's proof that it holds the
      * pairing key, and from then on nothing else is accepted.
      */
@@ -37,6 +38,7 @@ class SyncEngine(private val context: Context, private val prefs: Prefs) {
         val key = prefs.key?.let { Pairing.fromBase64(it) } ?: throw MacError("Not paired with a Mac")
         val macId = prefs.macId ?: throw MacError("Not paired with a Mac")
         val (host, info) = locate(key, macId)
+        prefs.isAway = isTailscale(host)
         val tlsPort = info.optInt("tlsPort", 0)
         prefs.tlsPort = tlsPort
         if (tlsPort == 0) {
@@ -58,23 +60,39 @@ class SyncEngine(private val context: Context, private val prefs: Prefs) {
         return MacClient(host, prefs.port, prefs.deviceId, key, MacClient.Tls(tlsPort, fingerprint))
     }
 
-    /** Where the Mac is now, and its `/info`. */
+    /**
+     * Where the Mac is now (the host answering) and its `/info`: its last address on this network, the Mac found again
+     * on it, or its Tailscale addresses. [Prefs.host] stays its address at home, tried first next time.
+     */
     private suspend fun locate(key: ByteArray, macId: String): Pair<String, JSONObject> {
-        prefs.host?.let { host ->
-            val info = runCatching { MacClient(host, prefs.port, prefs.deviceId, key).info() }.getOrNull()
-            if (info?.optString("id") == macId) return host to info
+        fun probe(host: String, port: Int, timeout: Int): JSONObject? =
+            runCatching { MacClient(host, port, prefs.deviceId, key).info(timeout) }.getOrNull()?.takeIf { it.optString("id") == macId }
+        fun found(host: String, info: JSONObject): Pair<String, JSONObject> {
+            info.optJSONArray("awayAddresses")?.let { away -> prefs.awayHosts = (0 until away.length()).map { away.getString(it) } }
+            return host to info
         }
-        val found = withTimeoutOrNull(10_000) {
+        prefs.host?.let { host -> probe(host, prefs.port, 4_000)?.let { return found(host, it) } }
+        val mac = withTimeoutOrNull(5_000) {
             Discovery.macs(context).mapNotNull { macs -> macs.firstOrNull { it.id == macId } }.first()
-        } ?: throw MacError("${prefs.macName ?: "The Mac"} is not reachable. Is Groovelight open, with wireless sync on, on the same Wi-Fi?")
-        prefs.host = found.host
-        prefs.port = found.port
-        return found.host to MacClient(found.host, found.port, prefs.deviceId, key).info()
+        }
+        if (mac != null) {
+            probe(mac.host, mac.port, 8_000)?.let { info ->
+                prefs.host = mac.host
+                prefs.port = mac.port
+                return found(mac.host, info)
+            }
+        }
+        for (away in prefs.awayHosts) probe(away, prefs.port, 8_000)?.let { return found(away, it) }
+        throw MacError("${prefs.macName ?: "The Mac"} is not reachable. Is Groovelight open on the Mac, and this device on the same Wi-Fi (or, away from home, on Tailscale with the Mac allowing it)?")
     }
 
     suspend fun run(progress: (Progress) -> Unit): String {
         val tree = prefs.folder?.let(Uri::parse) ?: throw MacError("Choose a music folder first")
         val client = connect()
+        if (client.isAway && !prefs.syncsOverMobileData &&
+            context.getSystemService(android.net.ConnectivityManager::class.java).isActiveNetworkMetered) {
+            throw MacError("Away from home, syncing waits for Wi-Fi. To sync over mobile data, turn it on in Settings.")
+        }
         var missingCovers = 0
         // First what was done here: loves and ratings (so the Mac's snapshot has them) and requests (so this sync brings
         // what they asked for).

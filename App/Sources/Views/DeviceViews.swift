@@ -30,6 +30,9 @@ struct DeviceView: View {
                 if device.isPlayer {
                     RemotePlaybackSection(deviceId: String(device.id.dropFirst("wifi:".count)), deviceName: device.name)
                 }
+                if device.isWireless {
+                    AwayAccessSection(deviceId: String(device.id.dropFirst("wifi:".count)), deviceName: device.name)
+                }
                 Section {
                     HStack {
                         Text("Folders, covers, lyrics and playlists on devices are set in Settings, Devices.")
@@ -86,7 +89,28 @@ private struct RemotePlaybackSection: View {
             Toggle("Let \(deviceName) play music on this Mac and your other devices", isOn: Binding(get: { wireless.controlsPlayback(deviceId) },
                                                                            set: { wireless.setControlsPlayback(deviceId, $0) }))
         } footer: {
-            Text("The device can then choose this Mac, or another phone with Groovelight open, under Play On: start and pause songs there, skip, seek and set the volume, and take what plays there over to itself. Only while they are on the same Wi-Fi as this Mac, with Groovelight open here.")
+            Text("The device can then choose this Mac, or another phone with Groovelight open, under Play On: start and pause songs there, skip, seek and set the volume, and take what plays there over to itself. Only while they are on the same Wi-Fi as this Mac, or allowed away from home below, with Groovelight open here.")
+        }
+    }
+}
+
+/// Whether the device may reach this Mac away from home, through Tailscale on both.
+private struct AwayAccessSection: View {
+    var deviceId: String
+    var deviceName: String
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        let wireless = model.wireless!
+        Section {
+            Toggle("Let \(deviceName) connect away from home", isOn: Binding(get: { wireless.connectsAway(deviceId) },
+                                                                             set: { wireless.setConnectsAway(deviceId, $0) }))
+        } footer: {
+            if let address = wireless.awayAddress {
+                Text("Through Tailscale, with this Mac at \(address): the device syncs and plays as it does at home, once Tailscale is on there too. It learns the address at its next connection at home. Pairing is still only at home.")
+            } else {
+                Text("Through Tailscale, a private network between your devices: install it on this Mac and on the device, sign in to the same account, and the device syncs and plays as it does at home. Pairing is still only at home.")
+            }
         }
     }
 }

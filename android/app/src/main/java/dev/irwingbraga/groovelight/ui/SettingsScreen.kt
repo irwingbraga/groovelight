@@ -75,10 +75,22 @@ fun SettingsScreen(sync: SyncViewModel) {
                 detail = when {
                     mac == null -> "Pair with Groovelight on your Mac"
                     reachable == false -> listOfNotNull("The Mac is not reachable", last).joinToString(" · ")
+                    sync.prefs.isAway -> listOfNotNull("Away from home, through Tailscale", last).joinToString(" · ")
                     else -> last ?: "Not synced yet"
                 },
                 onClick = { actions.open(Route.Sync) },
             )
+            // Away from home (the Mac reached through Tailscale), songs come down over mobile data only when allowed.
+            if (mac != null && sync.prefs.awayHosts.isNotEmpty()) {
+                var mobileData by remember { mutableStateOf(sync.prefs.syncsOverMobileData) }
+                SettingsRow(
+                    icon = R.drawable.ic_download, title = "Sync over Mobile Data",
+                    detail = "Away from home, the Mac is reached through Tailscale when it is on here and on the Mac, and the Mac allows it on this device's page. Without this, syncing then waits for Wi-Fi.",
+                    onClick = { mobileData = !mobileData; sync.prefs.syncsOverMobileData = mobileData },
+                ) {
+                    Switch(checked = mobileData, onCheckedChange = { mobileData = it; sync.prefs.syncsOverMobileData = it })
+                }
+            }
 
             // The library: only what is here, or the Mac's music too (the Library's Downloaded filter).
             val source by actions.library.source.collectAsStateWithLifecycle()

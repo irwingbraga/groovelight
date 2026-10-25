@@ -79,10 +79,22 @@ class Prefs(context: Context) {
         set(value) = prefs.edit().putInt("tlsPort", value).apply()
     /** The pinned fingerprint (SHA-256, hex) of the Mac's certificate: once set, the Mac is only reached over HTTPS. */
     var certificate: String? by stringPref("certificate")
+    /** The Mac's Tailscale addresses, as it last gave them: tried when it is not on this network (away from home). */
+    var awayHosts: List<String>
+        get() = prefs.getString("awayHosts", null)?.split(',')?.filter { it.isNotEmpty() } ?: emptyList()
+        set(value) = prefs.edit().putString("awayHosts", value.joinToString(",")).apply()
+    /** The Mac was last reached away from home, at its Tailscale address. */
+    var isAway: Boolean
+        get() = prefs.getBoolean("away", false)
+        set(value) = prefs.edit().putBoolean("away", value).apply()
+    /** Away from home, songs come down over mobile data only when allowed (Settings). */
+    var syncsOverMobileData: Boolean
+        get() = prefs.getBoolean("mobileData", false)
+        set(value) = prefs.edit().putBoolean("mobileData", value).apply()
 
     fun forgetMac() {
         prefs.edit().remove("macId").remove("macName").remove("host").remove("port").remove("key").remove("tlsPort")
-            .remove("certificate").apply()
+            .remove("certificate").remove("awayHosts").remove("away").apply()
     }
 
     private fun stringPref(name: String) = object : kotlin.properties.ReadWriteProperty<Any?, String?> {
@@ -192,7 +204,10 @@ class MacClient(private val host: String, private val port: Int, private val dev
         return if (tls != null) URL("https://$name:${tls.port}$path") else URL("http://$name:$port$path")
     }
 
-    fun info(): JSONObject = json("GET", "/info", signed = false)
+    fun info(timeout: Int = 8_000): JSONObject = json("GET", "/info", signed = false, timeout = timeout)
+
+    /** Whether the Mac is reached away from home, at its Tailscale address. */
+    val isAway: Boolean get() = isTailscale(host)
 
     /**
      * The fingerprint of the certificate the Mac's HTTPS port serves, to pin before connecting to it. Asked over HTTP:
@@ -403,4 +418,15 @@ class MacClient(private val host: String, private val port: Int, private val dev
         }
         return connection
     }
+}
+
+/** Whether an address is Tailscale's (100.64.0.0/10, or fd7a:115c:a1e0::/48): the Mac reached away from home. */
+fun isTailscale(host: String): Boolean {
+    val parts = host.split('.')
+    if (parts.size == 4) {
+        val first = parts[0].toIntOrNull() ?: return false
+        val second = parts[1].toIntOrNull() ?: return false
+        return first == 100 && second in 64..127
+    }
+    return host.lowercase().startsWith("fd7a:115c:a1e0:")
 }

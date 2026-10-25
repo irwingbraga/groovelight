@@ -54,6 +54,36 @@ class MacIntegrationTest {
         folder.deleteRecursively()
     }
 
+    /**
+     * Away from home, at the Mac's Tailscale address (the tour run with `-GLDebugAllowAway YES`, Tailscale on): pairing
+     * is refused there, and a device paired at home reaches the Mac over its pinned HTTPS.
+     */
+    @Test
+    fun reachesTheMacAwayFromHome() {
+        val port = System.getenv("GL_MAC_PORT")?.toIntOrNull()
+        assumeTrue("Groovelight is not running for this test", port != null)
+        val deviceId = "jvm-away-" + System.nanoTime()
+        val open = MacClient("127.0.0.1", port!!, deviceId, null)
+        val info = open.info()
+        val away = info.optJSONArray("awayAddresses")?.optString(0)
+        assumeTrue("Tailscale is not on on the Mac", !away.isNullOrEmpty())
+        val keys = Pairing.newKeyPair()
+        val devicePublic = Pairing.rawPublic(keys)
+        val refused = runCatching { MacClient(away!!, port, deviceId, null).pair("JVM Test", "Desktop JVM", devicePublic) }.exceptionOrNull()
+        assertEquals(403, (refused as? MacError)?.status)
+
+        val answer = open.pair("JVM Test", "Desktop JVM", devicePublic)
+        val macPublic = Pairing.fromBase64(answer.getString("publicKey"))
+        val (key, _) = Pairing.derive(keys.private, macPublic, devicePublic, macPublic)
+        var status = "pending"
+        repeat(20) { if (status == "pending") { status = open.pairStatus(); Thread.sleep(250) } }
+        assertEquals("accepted", status)
+        val fingerprint = MacClient("127.0.0.1", port, deviceId, key).pinnedCertificate()
+        val client = MacClient(away!!, port, deviceId, key, MacClient.Tls(info.getInt("tlsPort"), fingerprint))
+        assertTrue(client.isAway)
+        assertTrue(client.status().has("syncRequested"))
+    }
+
     /** The engine's steps on plain files; returns (written, deleted). */
     private fun sync(client: MacClient, folder: File, cutFirstDownload: Boolean): Pair<Int, Int> {
         val manifestFile = File(folder, SyncEngine.MANIFEST)

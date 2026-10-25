@@ -40,8 +40,12 @@ public enum MacBrowser {
     }
 
     /// The first Mac with this id found within `timeout`, or nil.
+    /// Debug: no Mac is found on the network, as away from home.
+    nonisolated(unsafe) public static var debugFindsNothing = false
+
     public static func find(id: String, timeout: Duration = .seconds(10)) async -> FoundMac? {
-        await withTaskGroup(of: FoundMac?.self) { group in
+        if debugFindsNothing { return nil }
+        return await withTaskGroup(of: FoundMac?.self) { group in
             group.addTask {
                 for await macs in macs() {
                     if let mac = macs.first(where: { $0.id == id }) { return mac }

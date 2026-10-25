@@ -121,12 +121,15 @@ public enum WirelessProtocol {
         public var version: Int
         /// The HTTPS port (v2), when it is serving.
         public var tlsPort: Int?
+        /// The Mac's Tailscale addresses, where paired devices reach it away from home (when it allows them).
+        public var awayAddresses: [String]?
 
-        public init(id: String, name: String, version: Int = WirelessProtocol.version, tlsPort: Int? = nil) {
+        public init(id: String, name: String, version: Int = WirelessProtocol.version, tlsPort: Int? = nil, awayAddresses: [String]? = nil) {
             self.id = id
             self.name = name
             self.version = version
             self.tlsPort = tlsPort
+            self.awayAddresses = awayAddresses
         }
     }
 

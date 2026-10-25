@@ -29,6 +29,8 @@ final class WirelessSyncService {
         /// May play music on this Mac, and on the other devices with Groovelight open, from the device (its device page's
         /// switch, off until turned on).
         var controlsPlayback: Bool?
+        /// May reach this Mac away from home, over Tailscale (its device page's switch, off until turned on).
+        var connectsAway: Bool?
 
         var isPlayer: Bool { mode == "player" }
     }
@@ -238,7 +240,8 @@ final class WirelessSyncService {
             remoteState: { [weak self] id in await self?.remoteState(for: id) },
             remote: { [weak self] id, command in await self?.remote(command, from: id) },
             mayControl: { [weak self] id in await self?.controlsPlayback(id) ?? false },
-            deviceName: { [weak self] id in await self?.paired.first { $0.id == id }?.name })
+            deviceName: { [weak self] id in await self?.paired.first { $0.id == id }?.name },
+            mayConnectAway: { [weak self] id in await self?.connectsAway(id) ?? false })
     }
 
     /// Albums, artists and songs the Android app asked for (or to remove): its selection changes, as if chosen here,
@@ -275,6 +278,21 @@ final class WirelessSyncService {
         let store = model.equalizer
         return DeviceSnapshot.Equalizer(presets: store.userPresets.map(preset), current: preset(store.preset), isEnabled: store.isEnabled)
     }
+
+    // MARK: - Away from home
+
+    func connectsAway(_ id: String) -> Bool {
+        paired.first { $0.id == id }?.connectsAway == true
+    }
+
+    func setConnectsAway(_ id: String, _ allowed: Bool) {
+        guard let index = paired.firstIndex(where: { $0.id == id }) else { return }
+        paired[index].connectsAway = allowed
+        save()
+    }
+
+    /// This Mac's Tailscale address, when Tailscale is on.
+    var awayAddress: String? { AwayNetwork.addresses().first }
 
     // MARK: - Playing on this Mac from a device
 
@@ -337,6 +355,8 @@ final class WirelessSyncService {
             answerPairing(prompt, allow: true)
             // `-GLDebugAllowRemote YES`: the device may play music on this Mac too.
             if UserDefaults.standard.bool(forKey: "GLDebugAllowRemote") { setControlsPlayback(request.deviceId, true) }
+            // `-GLDebugAllowAway YES`: the device may reach this Mac away from home.
+            if UserDefaults.standard.bool(forKey: "GLDebugAllowAway") { setConnectsAway(request.deviceId, true) }
             try? "\(pairing.code)".write(toFile: NSTemporaryDirectory() + "groovelight-pair-code", atomically: true, encoding: .utf8)
             Task {
                 let albums = (try? await model.database.writer.read { try LibraryDatabase.albums($0, sort: .artist) }) ?? []
@@ -344,6 +364,16 @@ final class WirelessSyncService {
                 selection.albumKeys = Set(albums.prefix(3).map(\.albumKey))
                 selection.everything = UserDefaults.standard.bool(forKey: "GLDebugSyncEverything")
                 model.devices.setSelection(selection, for: DeviceStore.wirelessId(request.deviceId))
+                // `-GLDebugDropOnDevice YES`: 10 seconds later the 4th album and the 5th's first song are dropped on the
+                // device in the sidebar (as dragged there), and the selection is logged.
+                if UserDefaults.standard.bool(forKey: "GLDebugDropOnDevice"), albums.count >= 5 {
+                    try? await Task.sleep(for: .seconds(10))
+                    let song = (try? await model.database.writer.read { try LibraryDatabase.tracks($0, albumKey: albums[4].albumKey) })?.first?.id
+                    guard let device = model.devices.device(DeviceStore.wirelessId(request.deviceId)), let song else { return }
+                    model.devices.add([TrackTransfer(ids: [], albumKey: albums[3].albumKey), TrackTransfer(id: song)], to: device)
+                    let chosen = model.devices.selection(device.id)
+                    print("Dropped on \(device.name): albums \(chosen.albumKeys.sorted()), songs \(chosen.trackIds.sorted()), sync requested \(syncRequested.contains(request.deviceId))")
+                }
             }
             return
         }

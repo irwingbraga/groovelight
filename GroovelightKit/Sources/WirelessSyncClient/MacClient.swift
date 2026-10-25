@@ -60,10 +60,13 @@ public final class MacClient: Sendable {
     /// Whether requests go over HTTPS (protocol v2).
     public var isSecure: Bool { tls != nil }
 
+    /// Whether the Mac is reached away from home, at its Tailscale address.
+    public var isAway: Bool { AwayNetwork.isTailscale(host: host) }
+
     // MARK: - Pairing
 
-    public func info() async throws -> WirelessProtocol.Info {
-        try await json("GET", "/info", signed: false, timeout: 8)
+    public func info(timeout: TimeInterval = 8) async throws -> WirelessProtocol.Info {
+        try await json("GET", "/info", signed: false, timeout: timeout)
     }
 
     public func pair(name: String, model: String, publicKey: Data) async throws -> WirelessProtocol.PairResponse {

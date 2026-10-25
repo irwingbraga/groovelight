@@ -19,6 +19,8 @@ public final class LocalHTTPServer: @unchecked Sendable {
         public var remote: String
         /// Came over TLS.
         public var secure = false
+        /// Came from outside the Mac's local networks (Tailscale, a VPN, the internet): see `AwayNetwork`.
+        public var isAway = false
     }
 
     public struct Response: Sendable {
@@ -134,6 +136,7 @@ public final class LocalHTTPServer: @unchecked Sendable {
                     return
                 }
                 request.secure = self.identity != nil
+                request.isAway = AwayNetwork.isAway(connection.endpoint)
                 let length = Int(request.headers["content-length"] ?? "0") ?? 0
                 guard length <= Self.maximumBody else {
                     self.send(.error(413, "too large"), on: connection, request: nil)
