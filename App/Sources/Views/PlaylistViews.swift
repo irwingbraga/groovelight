@@ -240,7 +240,7 @@ struct PlaylistView: View {
         }
         .dropDestination(for: TrackTransfer.self) { items, _ in
             guard playlist?.isSmart != true else { return false }
-            try? model.database.addTracks(items.map(\.id), toPlaylist: playlistId)
+            try? model.database.addTracks(items.flatMap(\.ids), toPlaylist: playlistId)
             return true
         }
         .navigationTitle(playlist?.name ?? "Playlist")
@@ -282,7 +282,7 @@ struct LovedSongsView: View {
         }
         .coverWash { LovedSongsCover() }
         .dropDestination(for: TrackTransfer.self) { items, _ in
-            model.love(trackIds: items.map(\.id))
+            model.love(trackIds: items.flatMap(\.ids))
             return true
         }
         .navigationTitle("Loved Songs")

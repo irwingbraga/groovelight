@@ -133,6 +133,16 @@ struct CoverSize: Sendable {
     func reset() { UserDefaults.standard.removeObject(forKey: key) }
 }
 
+extension View {
+    /// The album dragged as a whole: onto a playlist or Loved Songs (its songs), or a device in the sidebar (the album).
+    func albumDraggable(_ album: AlbumSummary, model: AppModel) -> some View {
+        draggable(TrackTransfer(ids: (try? model.database.writer.read { try LibraryDatabase.tracks($0, albumKey: album.albumKey) })?
+            .compactMap(\.id) ?? [], albumKey: album.albumKey)) {
+            ArtworkImage(hash: album.artworkHash, size: .small, cornerRadius: 6).frame(width: 64, height: 64)
+        }
+    }
+}
+
 struct AlbumCard: View {
     var album: AlbumSummary
     var artworkSize: ArtworkCache.Size = .small
@@ -172,6 +182,7 @@ struct AlbumCard: View {
         }
         .contentShape(.rect)
         .onHover { hovering in withAnimation(.easeOut(duration: 0.15)) { isHovering = hovering } }
+        .albumDraggable(album, model: model)
         .contextMenu {
             Button("Play") { model.playAlbum(album) }
             Button("Shuffle") { model.playAlbum(album, shuffle: true) }
@@ -254,6 +265,7 @@ struct AlbumDetailView: View {
         ArtworkImage(hash: album.artworkHash, size: .large, cornerRadius: 12)
             .frame(width: 260, height: 260)
             .shadow(color: .black.opacity(0.3), radius: 18, y: 10)
+            .albumDraggable(album, model: model)
     }
 
     private var headerInfo: some View {

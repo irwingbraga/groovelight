@@ -326,6 +326,26 @@ final class DeviceStore {
         run(on: device, title: "Syncing", mode: .sync) { db in try LibraryDatabase.deviceContents(db, selection) }
     }
 
+    /// Songs or albums dropped on a device in the sidebar: they join what it holds (as if chosen on its page), and it
+    /// syncs (a wireless one when its app next checks in).
+    func add(_ items: [TrackTransfer], to device: Device) {
+        let requests = items.flatMap { item in
+            item.albumKey.map { [TransferRequest(id: UUID().uuidString, action: .add, kind: .album, key: $0)] }
+                ?? item.ids.map { TransferRequest(id: UUID().uuidString, action: .add, kind: .song, key: String($0)) }
+        }
+        guard !requests.isEmpty else { return }
+        let database = model.database
+        let selection = selection(device.id).applying(requests) { kind, key in
+            (try? database.writer.read { try LibraryDatabase.trackIds($0, of: kind, key: key) }) ?? []
+        }
+        setSelection(selection, for: device.id)
+        if job?.isRunning == true, !device.isWireless {
+            model.errorMessage = "Added to what “\(device.name)” holds. Sync it when the current copy has finished."
+            return
+        }
+        sync(device)
+    }
+
     /// Copies songs (and a playlist) to a device, without removing anything.
     func send(_ source: SendSource, to device: Device) {
         if device.isWireless {

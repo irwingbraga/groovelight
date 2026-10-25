@@ -246,6 +246,7 @@ private struct ArtistAlbumSection: View {
                 .shadow(color: .black.opacity(0.25), radius: 10, y: 5)
         }
         .buttonStyle(.plain)
+        .albumDraggable(album, model: model)
         .help("Show \(album.title)")
     }
 

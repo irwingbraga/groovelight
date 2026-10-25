@@ -31,7 +31,8 @@ struct TrackList: View {
                         if let id = track.id { selection = [id] }
                     })
                     .contextMenu { TrackContextMenu(tracks: selectedTracks(including: track), contextAlbumKey: albumKey) }
-                    .draggable(TrackTransfer(id: track.id ?? 0))
+                    // The selected songs when it is one of them.
+                    .draggable(TrackTransfer(ids: selectedTracks(including: track).compactMap(\.id)))
                 if index < tracks.count - 1 {
                     // Aligned with the title in both styles (padding + number column or cover + spacing).
                     Divider().padding(.leading, 56)

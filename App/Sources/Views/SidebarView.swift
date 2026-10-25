@@ -44,6 +44,11 @@ struct SidebarView: View {
                             }
                         }
                         .tag(SidebarItem.device(device.id))
+                        // Songs or an album dropped here join what the device holds, and it syncs.
+                        .dropDestination(for: TrackTransfer.self) { items, _ in
+                            model.devices.add(items, to: device)
+                            return true
+                        }
                         .contextMenu {
                             Button("Sync Now") { model.devices.sync(device) }
                                 .disabled(model.devices.job?.isRunning == true)
@@ -68,7 +73,7 @@ struct SidebarView: View {
                     Button("Export Playlist…") { model.playlistFiles.export(playlistId: nil) }
                 }
                 .dropDestination(for: TrackTransfer.self) { items, _ in
-                    model.love(trackIds: items.map(\.id))
+                    model.love(trackIds: items.flatMap(\.ids))
                     return true
                 }
                 ForEach(playlists) { summary in
@@ -104,7 +109,7 @@ struct SidebarView: View {
                         .dropDestination(for: TrackTransfer.self) { items, _ in
                             // Smart playlists are filled by their rules.
                             guard !playlist.isSmart else { return false }
-                            try? model.database.addTracks(items.map(\.id), toPlaylist: id)
+                            try? model.database.addTracks(items.flatMap(\.ids), toPlaylist: id)
                             return true
                         }
                     }
@@ -145,9 +150,19 @@ struct SidebarView: View {
     }
 }
 
-/// Drag payload for tracks (track ids).
+/// Drag payload for songs (their ids), or a whole album (its key too, so a device adds the album, not its songs one by one).
 struct TrackTransfer: Codable, Transferable {
-    var id: Int64
+    var ids: [Int64]
+    var albumKey: String?
+
+    init(id: Int64) {
+        ids = [id]
+    }
+
+    init(ids: [Int64], albumKey: String? = nil) {
+        self.ids = ids
+        self.albumKey = albumKey
+    }
 
     static var transferRepresentation: some TransferRepresentation {
         CodableRepresentation(contentType: .json)
