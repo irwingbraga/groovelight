@@ -29,7 +29,7 @@ Streaming apps treat local files as an afterthought, and audiophile players ofte
 - **A real equalizer.** 15 parametric bands (type, frequency, gain and Q), a draggable response curve, automatic preamp against clipping, presets, and AutoEq / Equalizer APO import for headphone correction.
 - **Your library, understood.** Musicians, producers and songwriters from MusicBrainz, with pages for each person; album and artist stories from Wikipedia; synced lyrics; missing tags fixed from MusicBrainz after you review every change; files renamed into a clean folder layout, with undo.
 - **Loudness that matches.** Sound Check style normalization from ReplayGain tags, and songs without them measured in the background (EBU R128).
-- **Take it with you.** Sync chosen playlists, artists, albums or genres to a DAP or SD card with covers, lyrics and playlists in the layout players expect, or wirelessly to Groovelight for Android, a full player for Android phones and DAPs with your library as the Mac knows it. Only what changed is copied.
+- **Take it with you.** Sync chosen playlists, artists, albums or genres to a DAP or SD card with covers, lyrics and playlists in the layout players expect, or wirelessly to Groovelight for Android, a full player for Android phones and DAPs with your library as the Mac knows it. Only what changed is copied. Drag an album or songs onto a device in the sidebar to add them and sync.
 - **Nostalgia, done properly.** Cover Flow with the flip to the track list, and full-screen Metal visualizers in the spirit of iTunes and Windows Media Player.
 - **Talk to your library.** Groovelight works with Claude: "play Living Inside Myself by Gino Vannelli", "make a playlist of his ten best songs", "import the album in my Downloads and fix its tags". It also has a command line tool for your own scripts. Changes to files always come as a preview you approve first. See [below](#works-with-claude-and-your-scripts).
 - **Local and open.** No account, no subscription, no cloud. Your music, your files, your history. Open source under the GPL.
@@ -132,10 +132,11 @@ Settings, General shows the one-line command that puts the tool in your PATH. Th
 - One layout for every device: folders and names, cover.jpg size, .lrc lyrics, M3U8 playlists. Names safe for FAT32 and exFAT; files over 4 GB left out of FAT32 cards.
 - Incremental: only new and changed files are copied; only Groovelight's own files are ever removed.
 - Send to: any song, album or playlist to a device or a folder, from its menu.
-- **Groovelight for Android** (Android 12+): pairs with a code shown on both screens, then syncs over Wi-Fi (encrypted) to internal storage or the SD card, by itself every 15 minutes if you like. Downloads resume.
+- **Groovelight for Android** (Android 12+): pairs with a code shown on both screens, then syncs over Wi-Fi (encrypted) to internal storage or the SD card, by itself every 15 minutes if you like. Downloads resume. Away from home, it reaches the Mac through Tailscale, for the devices you allow.
   - **A player** with the library as the Mac knows it: albums, artists, songs, playlists and smart playlists, credits, synced lyrics, loves and ratings, Sound Check, gapless playback and crossfade, the 15-band EQ with the Mac's presets, bit-perfect USB output, the Shelf and visualizers. Or **Sync only**, for another player app.
   - **Your whole Mac library** on the phone: add albums, artists or songs to it from there (asked for while the Mac is away, they go when it is back), in their original format or as Opus, AAC or MP3, album by album.
   - **Back to the Mac:** plays (scrobbled to Last.fm with their times), skips, loves, ratings and playlist edits made on the phone.
+  - **Play On:** play on the Mac, or on another phone with Groovelight open, from the phone: start, pause, skip, seek and set the volume there, hand the music over between them, and play anything of the Mac's library on the Mac, on the phone or not.
   - Home screen widgets, a Quick Settings tile, Android Auto and voice search ("play ... on Groovelight").
 
 ### Last.fm
