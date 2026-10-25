@@ -295,7 +295,11 @@ private fun CatalogSongRow(track: CatalogTrack, album: CatalogAlbum?, showCover:
         },
         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
         modifier = Modifier.combinedClickable(onClick = {
-            if (track.id in holdings.trackIds) scope.launch {
+            if (actions.player.playsOnMac) scope.launch {
+                // On the Mac, which has it, with the rest of its album there.
+                val songs = actions.library.catalogTracksOfAlbum(track.albumKey).first()
+                actions.player.playOnMac(songs.map { it.id }, songs.indexOfFirst { it.id == track.id }.coerceAtLeast(0))
+            } else if (track.id in holdings.trackIds) scope.launch {
                 // Here: played from the device's copy, with the rest of the album that is here.
                 val local = actions.library.tracksOfAlbum(track.albumKey).first()
                 val start = local.indexOfFirst { it.id == track.id }.coerceAtLeast(0)
@@ -353,6 +357,22 @@ fun MacAlbumPage(key: String) {
                         }, style = MaterialTheme.typography.labelLarge)
                     }
                     Spacer(Modifier.height(12.dp))
+                    // Played on the Mac when it plays: it has the whole album, here or not.
+                    val target by actions.player.target.collectAsStateWithLifecycle()
+                    if (target == PlayerModel.Target.MAC && tracks.isNotEmpty()) {
+                        Row(Modifier.widthIn(max = 420.dp).fillMaxWidth().padding(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Button(onClick = { actions.player.playOnMac(tracks.map { it.id }) }, modifier = Modifier.weight(1f)) {
+                                Icon(painterResource(R.drawable.ic_play), null, Modifier.size(20.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Play on the Mac")
+                            }
+                            FilledTonalButton(onClick = { actions.player.playOnMac(tracks.map { it.id }, shuffle = true) }, modifier = Modifier.weight(1f)) {
+                                Icon(painterResource(R.drawable.ic_shuffle), null, Modifier.size(20.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Shuffle")
+                            }
+                        }
+                    }
                     AlbumTransferButtons(current, availability, holdings)
                     Spacer(Modifier.height(8.dp))
                 }

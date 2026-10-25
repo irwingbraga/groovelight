@@ -36,6 +36,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import android.net.Uri as AndroidUri
 import dev.irwingbraga.groovelight.app.playerItems
 import dev.irwingbraga.groovelight.library.ArtworkStore
+import dev.irwingbraga.groovelight.sync.Transfers
 import dev.irwingbraga.groovelight.library.LibraryDatabase
 import dev.irwingbraga.groovelight.sync.RemoteCommand
 import dev.irwingbraga.groovelight.sync.RemoteDevice
@@ -113,8 +114,12 @@ class PlayerModel(application: Application) : AndroidViewModel(application) {
         is Target.Device -> target.device.name
     }
 
+    /** Covers of the Mac's library fetched for songs playing elsewhere: the song is shown again with its cover. */
+    private val coversFetched = MutableStateFlow(0)
+    private val coversAsked = mutableSetOf<String>()
+
     /** The song playing where music plays. */
-    val nowPlaying: StateFlow<NowPlaying?> = combine(state, targets, remote.state) { local, target, received ->
+    val nowPlaying: StateFlow<NowPlaying?> = combine(state, targets, remote.state, coversFetched) { local, target, received, _ ->
         if (target == Target.THIS_DEVICE) local else received?.state?.let(::remoteNowPlaying)
     }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
     /** What plays next where music plays (there, the songs this device knows: they are shown, not edited). */
@@ -189,6 +194,11 @@ class PlayerModel(application: Application) : AndroidViewModel(application) {
                 relay.start()
             }
         }, ContextCompat.getMainExecutor(application))
+        // Music playing elsewhere: the mini player follows that player's pauses, not this device's (paused meanwhile).
+        viewModelScope.launch {
+            combine(targets, remote.state) { target, received -> if (target == Target.THIS_DEVICE) null else received?.state?.playing }
+                .collect { playing -> if (playing != null) followPauses(playing) }
+        }
     }
 
     private fun update(player: Player) {
@@ -197,7 +207,7 @@ class PlayerModel(application: Application) : AndroidViewModel(application) {
             state.value = null
             return
         }
-        followPauses(player.isPlaying)
+        if (!isRemote) followPauses(player.isPlaying)
         val metadata = player.mediaMetadata
         val extras = item.mediaMetadata.extras
         val duration = player.duration.takeIf { it != C.TIME_UNSET } ?: item.mediaMetadata.durationMs ?: 0
@@ -282,6 +292,15 @@ class PlayerModel(application: Application) : AndroidViewModel(application) {
         player.setMediaItems(queue, if (shuffled) 0 else start, 0)
         player.prepare()
         player.play()
+    }
+
+    /** Whether the Mac plays: it has every song of its library, here or not. */
+    val playsOnMac: Boolean get() = targets.value == Target.MAC
+
+    /** Songs of the Mac's library, by its ids, on the Mac (which has them all, here or not); only when it plays. */
+    fun playOnMac(ids: List<Long>, start: Int = 0, shuffle: Boolean = false) {
+        if (!playsOnMac || ids.isEmpty()) return
+        remote.send(RemoteCommand.play(ids, start.coerceIn(0, ids.lastIndex), 0.0, shuffle))
     }
 
     /** Plays the songs right after the current one (the last one asked plays first, as on the Mac). */
@@ -398,7 +417,7 @@ class PlayerModel(application: Application) : AndroidViewModel(application) {
         hideMinutes.value = minutes
         prefs.edit { putInt("hideAfterMinutes", minutes) }
         wasPlaying = null
-        controller?.let { followPauses(it.isPlaying) }
+        if (isRemote) remote.state.value?.state?.let { followPauses(it.playing) } else controller?.let { followPauses(it.isPlaying) }
     }
 
     /**
@@ -626,7 +645,7 @@ class PlayerModel(application: Application) : AndroidViewModel(application) {
     /** The Mac's song as Now Playing shows it (its cover when the Mac sent it to this device). */
     private fun remoteNowPlaying(mac: RemoteState): NowPlaying? {
         val item = mac.item ?: return null
-        val cover = item.artworkHash?.let { ArtworkStore(getApplication()).file(it) }?.takeIf { it.exists() }?.let(AndroidUri::fromFile)
+        val cover = item.artworkHash?.let(::remoteCover)?.let(AndroidUri::fromFile)
         return NowPlaying(
             id = item.id, title = item.title, artist = item.artist, album = item.album, albumArtist = null, albumKey = item.albumKey,
             artwork = cover, source = null, isPlaying = mac.playing, isBuffering = false,
@@ -634,6 +653,19 @@ class PlayerModel(application: Application) : AndroidViewModel(application) {
             repeatMode = when (mac.repeatMode) { "all" -> Player.REPEAT_MODE_ALL; "one" -> Player.REPEAT_MODE_ONE; else -> Player.REPEAT_MODE_OFF },
             durationMs = (item.durationSeconds * 1000).toLong(), error = null, playingOn = targetName(),
         )
+    }
+
+    /**
+     * The cover of a song playing elsewhere: this device's (its album is here), else the Mac's library's as the Library
+     * shows it, fetched from the Mac the first time.
+     */
+    private fun remoteCover(hash: String): java.io.File? {
+        ArtworkStore(getApplication()).file(hash).takeIf { it.exists() }?.let { return it }
+        Transfers.covers(getApplication()).file(hash).takeIf { it.length() > 0 }?.let { return it }
+        if (coversAsked.add(hash)) viewModelScope.launch {
+            if (Transfers.fetchCover(getApplication(), hash)) coversFetched.value++
+        }
+        return null
     }
 
     private fun setShuffling(on: Boolean) {
