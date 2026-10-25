@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "GroovelightKit",
-    platforms: [.macOS(.v15)],
+    platforms: [.macOS(.v15), .iOS(.v26)],
     products: [
         .library(name: "PlayerCore", targets: ["PlayerCore"]),
         .library(name: "LibraryKit", targets: ["LibraryKit"]),
@@ -11,6 +11,7 @@ let package = Package(
         .library(name: "MetadataKit", targets: ["MetadataKit"]),
         .library(name: "Scrobbler", targets: ["Scrobbler"]),
         .library(name: "WirelessSync", targets: ["WirelessSync"]),
+        .library(name: "WirelessSyncClient", targets: ["WirelessSyncClient"]),
         .library(name: "ControlKit", targets: ["ControlKit"]),
     ],
     dependencies: [
@@ -45,11 +46,16 @@ let package = Package(
             name: "WirelessSync",
             dependencies: ["LibraryKit"]
         ),
+        // The device's side of wireless sync (Groovelight for iOS); builds on macOS too, so its tests run against the server.
+        .target(
+            name: "WirelessSyncClient",
+            dependencies: ["WirelessSync", "LibraryKit"]
+        ),
         // The command line tool talking to the app (no dependencies: the tool links only this).
         .target(name: "ControlKit"),
         .testTarget(
             name: "GroovelightKitTests",
-            dependencies: ["PlayerCore", "LibraryKit", "Visualizers", "MetadataKit", "Scrobbler", "WirelessSync", "ControlKit", .product(name: "SFBAudioEngine", package: "SFBAudioEngine"), .product(name: "GRDB", package: "GRDB.swift")],
+            dependencies: ["PlayerCore", "LibraryKit", "Visualizers", "MetadataKit", "Scrobbler", "WirelessSync", "WirelessSyncClient", "ControlKit", .product(name: "SFBAudioEngine", package: "SFBAudioEngine"), .product(name: "GRDB", package: "GRDB.swift")],
             resources: [.copy("Fixtures")]
         ),
     ]

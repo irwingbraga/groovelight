@@ -70,6 +70,32 @@ extension DeviceSnapshotTests {
         songs.trackIds = [tracks[1].id!]
         #expect(try database.writer.read { try LibraryDatabase.deviceContents($0, songs) }.tracks.map(\.id) == [tracks[1].id])
     }
+
+    @Test func requestsWaitingForTheMacShowWhereMusicWillStand() throws {
+        let album = DeviceCatalog.Album(key: "abbey", title: "Abbey Road", artist: "The Beatles", year: 1969, isCompilation: false)
+        let other = DeviceCatalog.Album(key: "ok", title: "OK Computer", artist: "Radiohead", year: 1997, isCompilation: false)
+        let songs: [String: [Int64]] = ["abbey": [1, 2], "ok": [3]]
+        var selection = DeviceSelection()
+        selection.albumKeys = ["abbey"]
+        let chosen = DeviceCatalog.Chosen(selection)
+        let ids = { (kind: TransferRequest.Kind, key: String) in kind == .album ? songs[key] ?? [] : Int64(key).map { [$0] } ?? [] }
+        let after = chosen.applying([TransferRequest(id: "1", action: .add, kind: .album, key: "ok", encoding: "opus160"),
+                                     TransferRequest(id: "2", action: .remove, kind: .song, key: "2")], songs: ids)
+        #expect(after.holds(other) && after.encoding(of: other) == "opus160")
+        #expect(after.holds(album, songs: [1, 2]) && after.excludedTrackIds == [2])
+        // All its songs taken off: the album is no longer held, and adding it again brings them back.
+        let removed = after.applying([TransferRequest(id: "3", action: .remove, kind: .song, key: "1")], songs: ids)
+        #expect(!removed.holds(album, songs: [1, 2]))
+        #expect(removed.applying([TransferRequest(id: "4", action: .add, kind: .album, key: "abbey")], songs: ids).holds(album, songs: [1, 2]))
+
+        #expect(CatalogAvailability.of(onDevice: false, chosen: chosen.holds(other), chosenAfter: after.holds(other), others: false) == .waiting)
+        #expect(CatalogAvailability.of(onDevice: true, chosen: true, chosenAfter: true, others: false) == .onDevice)
+        #expect(CatalogAvailability.of(onDevice: true, chosen: true, chosenAfter: true, others: false, removed: true) == .leaving)
+        #expect(CatalogAvailability.of(onDevice: true, chosen: false, chosenAfter: false, others: false) == .leaving)
+        #expect(CatalogAvailability.of(onDevice: true, chosen: false, chosenAfter: false, others: true) == .onDevice)
+        #expect(CatalogAvailability.of(onDevice: false, chosen: true, chosenAfter: true, others: false) == .arriving)
+        #expect(CatalogAvailability.of(onDevice: false, chosen: false, chosenAfter: false, others: false) == .onMac)
+    }
 }
 
 extension DeviceSnapshotTests {
@@ -146,6 +172,9 @@ extension DeviceSnapshotTests {
         try database.applyDeviceHistory([DeviceHistoryEvent(id: "4", kind: .playlistRename, atMs: at, playlistId: -5, name: "Road")],
                                         deviceId: "phone")
         let made = try #require(try playlist("Road")).id!
+        // On the device, edits to it are sent with the id it was made with; another device's mapping is not this one's.
+        #expect(try database.writer.read { try LibraryDatabase.sentPlaylistId($0, localId: made, deviceId: "phone") } == -5)
+        #expect(try database.writer.read { try LibraryDatabase.sentPlaylistId($0, localId: made, deviceId: "player") } == made)
         try database.applyDeviceHistory([DeviceHistoryEvent(id: "5", kind: .playlistAdd, atMs: at, playlistId: made, trackIds: [ids[1]])],
                                         deviceId: "phone")
         #expect(try songs("Road") == [ids[0], ids[2], ids[1]])

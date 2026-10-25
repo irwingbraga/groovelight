@@ -68,7 +68,7 @@ public enum LibraryBackup {
             try preferences.write(to: staging.appendingPathComponent("Preferences.plist"))
 
             let manifest = try database.writer.read { db in
-                Manifest(formatVersion: formatVersion, appVersion: appVersion, createdAt: .now, computerName: Host.current().localizedName,
+                Manifest(formatVersion: formatVersion, appVersion: appVersion, createdAt: .now, computerName: Self.computerName,
                          trackCount: try Track.fetchCount(db), playlistCount: try Playlist.fetchCount(db),
                          lovedCount: try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM track WHERE isLoved") ?? 0,
                          playCount: try Int.fetchOne(db, sql: "SELECT COALESCE(SUM(playCount), 0) FROM track") ?? 0,
@@ -151,5 +151,16 @@ extension LibraryDatabase {
 
     static func likePrefix(_ text: String) -> String {
         text.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "%", with: "\\%").replacingOccurrences(of: "_", with: "\\_")
+    }
+}
+
+extension LibraryBackup {
+    /// The name of the Mac (or device) a backup comes from.
+    static var computerName: String? {
+        #if os(macOS)
+        Host.current().localizedName
+        #else
+        ProcessInfo.processInfo.hostName
+        #endif
     }
 }

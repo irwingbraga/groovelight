@@ -18,9 +18,9 @@ final class DeviceStore {
         /// "MS-DOS (FAT32)", "ExFAT"...
         var format: String
         var isFAT32: Bool
-        /// A paired Android device, synced over the local network.
+        /// A paired phone, tablet or player (the Android or iOS app), synced over the local network.
         var isWireless = false
-        /// Groovelight for Android plays the music (Player mode), rather than another app.
+        /// Groovelight plays the music (the iOS app, or the Android app in Player mode), rather than another app.
         var isPlayer = false
         var isOnline = true
         /// Its storages (internal memory, SD cards), the one with the music folder marked.

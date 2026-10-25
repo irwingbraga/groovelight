@@ -1,3 +1,4 @@
+#if os(macOS)
 import AudioToolbox
 import CoreAudio
 import Foundation
@@ -170,3 +171,51 @@ public struct OutputDevice: Sendable, Equatable {
         }
     }
 }
+#else
+import AVFAudio
+import Foundation
+
+/// On iOS the audio session stands for the output device: it reports the route and its rate, and takes the song's
+/// rate as its preferred one (USB DACs follow it; the built-in speaker and Bluetooth keep theirs). There is no device
+/// volume an app may set and no exclusive access: those do nothing.
+public struct OutputDevice: Sendable, Equatable {
+    public init() {}
+
+    /// The route playing now.
+    public static var current: OutputDevice? { OutputDevice() }
+
+    public var name: String? { AVAudioSession.sharedInstance().currentRoute.outputs.first?.portName }
+
+    public var sampleRate: Double { AVAudioSession.sharedInstance().sampleRate }
+
+    /// The rates songs come in; the session asks for one, and the route decides what it gets.
+    public var availableSampleRates: [ClosedRange<Double>] {
+        [44_100, 48_000, 88_200, 96_000, 176_400, 192_000].map { $0...$0 }
+    }
+
+    public func supports(sampleRate rate: Double) -> Bool {
+        availableSampleRates.contains { $0.contains(rate) }
+    }
+
+    /// Asks for `rate`; returns whether the route now runs at it.
+    @discardableResult
+    public func switchTo(sampleRate rate: Double) -> Bool {
+        try? AVAudioSession.sharedInstance().setPreferredSampleRate(rate)
+        return abs(sampleRate - rate) < 1
+    }
+
+    /// Not reported by iOS.
+    public var bitDepth: Int? { nil }
+
+    /// The system's volume is the user's (buttons, Control Center): not set by apps.
+    public var volume: Float? { nil }
+
+    public func setVolume(_ volume: Float) {}
+
+    /// No exclusive access on iOS: always this app's, as far as the status goes.
+    public var hogOwner: pid_t { ProcessInfo.processInfo.processIdentifier }
+
+    @discardableResult
+    public func setExclusive(_ exclusive: Bool) -> Bool { true }
+}
+#endif

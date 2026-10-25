@@ -2,7 +2,7 @@ import LibraryKit
 import SwiftUI
 import WirelessSync
 
-/// Settings, Devices: the layout on every device, wireless sync with the Groovelight app on Android, and the
+/// Settings, Devices: the layout on every device, wireless sync with the Groovelight apps on Android and iOS, and the
 /// paired devices.
 struct DevicesSettings: View {
     @Environment(AppModel.self) private var model
@@ -14,7 +14,7 @@ struct DevicesSettings: View {
         Form {
             DeviceLayoutSection(profile: $layout)
             Section {
-                Toggle("Sync with Android devices over Wi-Fi", isOn: $wireless.isEnabled)
+                Toggle("Sync with phones and players over Wi-Fi", isOn: $wireless.isEnabled)
                 if wireless.isEnabled {
                     LabeledContent("This Mac") {
                         Text(wireless.port == nil ? "Starting…" : WirelessSyncService.macName)
@@ -32,7 +32,7 @@ struct DevicesSettings: View {
             } header: {
                 Text("Wireless Sync")
             } footer: {
-                Text("Install Groovelight for Android (attached to each release) on an Android 12 or later player or phone on the same Wi-Fi, open it and choose this Mac (or type the address above when it is not listed). Both screens show the same code: check it and allow the device here. Paired devices appear under Devices, with the same choices as memory cards, and sync whenever their app checks in.")
+                Text("Open Groovelight on an iPhone or iPad, or install Groovelight for Android (attached to each release) on an Android 12 or later player or phone, on the same Wi-Fi, and choose this Mac (or type the address above when it is not listed). Both screens show the same code: check it and allow the device here. Paired devices appear under Devices, with the same choices as memory cards, and sync whenever their app checks in.")
                     .foregroundStyle(.secondary)
             }
             if !wireless.paired.isEmpty {

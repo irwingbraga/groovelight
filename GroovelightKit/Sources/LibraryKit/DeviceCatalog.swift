@@ -22,6 +22,23 @@ public struct DeviceCatalog: Codable, Hashable, Sendable {
         public var genre: String?
         public var year: Int?
         public var artworkHash: String?
+
+        public init(id: Int64, title: String, artist: String, albumKey: String, discNumber: Int? = nil, trackNumber: Int? = nil, duration: Double,
+                    codec: String, sampleRate: Int? = nil, bitDepth: Int? = nil, genre: String? = nil, year: Int? = nil, artworkHash: String? = nil) {
+            self.id = id
+            self.title = title
+            self.artist = artist
+            self.albumKey = albumKey
+            self.discNumber = discNumber
+            self.trackNumber = trackNumber
+            self.duration = duration
+            self.codec = codec
+            self.sampleRate = sampleRate
+            self.bitDepth = bitDepth
+            self.genre = genre
+            self.year = year
+            self.artworkHash = artworkHash
+        }
     }
 
     public struct Album: Codable, Hashable, Sendable {
@@ -31,6 +48,15 @@ public struct DeviceCatalog: Codable, Hashable, Sendable {
         public var year: Int?
         public var isCompilation: Bool
         public var artworkHash: String?
+
+        public init(key: String, title: String, artist: String, year: Int? = nil, isCompilation: Bool = false, artworkHash: String? = nil) {
+            self.key = key
+            self.title = title
+            self.artist = artist
+            self.year = year
+            self.isCompilation = isCompilation
+            self.artworkHash = artworkHash
+        }
     }
 
     /// What the device's selection on the Mac holds, as the app can change it.
@@ -89,6 +115,75 @@ public struct DeviceCatalog: Codable, Hashable, Sendable {
             .map { DeviceSnapshot.Artist(name: $0.key, artworkHash: $0.value) }.sorted { $0.name < $1.name }
         return DeviceCatalog(songs: songs.sorted { $0.id < $1.id }, albums: albums.values.sorted { $0.key < $1.key },
                              chosen: Chosen(selection), encoding: encoding?.rawValue, artists: artists)
+    }
+}
+
+extension DeviceCatalog.Chosen {
+    /// With requests not sent yet applied, in order, as the Mac will apply them (`DeviceSelection.applying`): removing
+    /// leaves out the songs of what is removed (from `songs`: an album's, an artist's...), adding brings them back.
+    public func applying(_ requests: [TransferRequest], songs: (TransferRequest.Kind, String) -> [Int64] = { kind, key in
+        kind == .song ? Int64(key).map { [$0] } ?? [] : []
+    }) -> Self {
+        var albumKeys = Set(albumKeys), artists = Set(artists), trackIds = Set(trackIds), excluded = Set(excludedTrackIds)
+        var chosen = self
+        for request in requests {
+            let ids = songs(request.kind, request.key)
+            let add = request.action == .add
+            if add { excluded.subtract(ids) } else { excluded.formUnion(ids) }
+            // Adding sets its format (or the device's again, without one); removing forgets it.
+            if request.kind != .playlist { chosen.encodings[request.encodingKey] = add ? request.encoding : nil }
+            switch request.kind {
+            case .album: if add { albumKeys.insert(request.key) } else { albumKeys.remove(request.key) }
+            case .artist: if add { artists.insert(request.key) } else { artists.remove(request.key) }
+            case .song: if let id = Int64(request.key) { if add { trackIds.insert(id) } else { trackIds.remove(id) } }
+            case .playlist: break
+            }
+        }
+        chosen.albumKeys = albumKeys.sorted()
+        chosen.artists = artists.sorted()
+        chosen.trackIds = trackIds.sorted()
+        chosen.excludedTrackIds = excluded.sorted()
+        return chosen
+    }
+
+    /// Whether the album comes to the device (`songs`: its songs, to tell whether all were removed).
+    public func holds(_ album: DeviceCatalog.Album, songs: Set<Int64> = []) -> Bool {
+        (everything || albumKeys.contains(album.key) || artists.contains(album.artist)) && !(!songs.isEmpty && songs.isSubset(of: excludedTrackIds))
+    }
+
+    public func holds(_ song: DeviceCatalog.Song, album: DeviceCatalog.Album?) -> Bool {
+        !excludedTrackIds.contains(song.id) && (everything || trackIds.contains(song.id) || albumKeys.contains(song.albumKey)
+            || album.map { artists.contains($0.artist) } == true || artists.contains(song.artist))
+    }
+
+    /// The format chosen for an album (or its artist), nil for the device's own.
+    public func encoding(of album: DeviceCatalog.Album) -> String? {
+        encodings["album:\(album.key)"] ?? encodings["artist:\(album.artist)"]
+    }
+}
+
+/// Where an album or a song of the Mac's library stands for a device, as its library shows it.
+public enum CatalogAvailability: Sendable {
+    /// Here, and kept by the selection (or by a playlist or genre chosen on the Mac).
+    case onDevice
+    /// Asked for: the next sync brings it.
+    case arriving
+    /// Asked for (or let go) while the Mac is away: sent when it is reachable.
+    case waiting
+    /// No longer asked for: the next sync removes it.
+    case leaving
+    /// Only on the Mac.
+    case onMac
+
+    /// `onDevice`: it is in the device's library; `chosen` and `chosenAfter`: whether the selection holds it as the Mac
+    /// knows it and once the waiting requests are applied; `others`: playlists or genres chosen on the Mac may hold it
+    /// (so not being chosen does not mean it leaves); `removed`: taken off the device.
+    public static func of(onDevice: Bool, chosen: Bool, chosenAfter: Bool, others: Bool, removed: Bool = false) -> Self {
+        if chosenAfter != chosen { return .waiting }
+        if onDevice && removed { return .leaving }
+        if onDevice && !chosen && !others { return .leaving }
+        if onDevice { return .onDevice }
+        return chosen ? .arriving : .onMac
     }
 }
 
@@ -278,6 +373,14 @@ extension LibraryDatabase {
             changes.loves = changed.map { ($0.key, $0.value) }.sorted { $0.trackId < $1.trackId }
             return changes
         }
+    }
+
+    /// On a device: the id the Mac knows one of its playlists by. A playlist made on the device (from an edit applied with
+    /// `applyDeviceHistory`) is known by the negative id it was made with, until a snapshot brings the Mac's.
+    public static func sentPlaylistId(_ db: Database, localId: Int64, deviceId: String = "") throws -> Int64 {
+        try Int64.fetchOne(db, sql: """
+            SELECT localPlaylistId FROM deviceHistoryEvent WHERE deviceId = ? AND playlistId = ? AND localPlaylistId IS NOT NULL
+            """, arguments: [deviceId, localId]) ?? localId
     }
 
     /// Notes the event as applied; false when it was already (a resend after a lost answer).

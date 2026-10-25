@@ -1,3 +1,4 @@
+#if os(macOS)
 import Foundation
 
 /// Archives of music (zip, 7z, rar, tar and its compressed forms), extracted before an import with the system's bsdtar
@@ -64,3 +65,4 @@ public enum ArchiveExtractor {
         for link in links { try? FileManager.default.removeItem(at: link) }
     }
 }
+#endif

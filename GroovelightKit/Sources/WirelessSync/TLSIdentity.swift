@@ -1,3 +1,4 @@
+#if os(macOS)
 import CryptoKit
 import Foundation
 import Security
@@ -195,3 +196,4 @@ enum DER {
         return tlv(0x18, Data(formatter.string(from: date).utf8))
     }
 }
+#endif

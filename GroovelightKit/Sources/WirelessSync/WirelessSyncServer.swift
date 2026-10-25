@@ -2,7 +2,7 @@ import CryptoKit
 import Foundation
 import LibraryKit
 
-/// Groovelight's side of wireless sync: routes requests from the Android app, checks their signatures, and serves the
+/// Groovelight's side of wireless sync: routes requests from the Android and iOS apps, checks their signatures, and serves the
 /// files of a plan. What it knows about the library comes from `Backend`, provided by the app.
 public final class WirelessSyncServer: @unchecked Sendable {
     public struct Backend: Sendable {
@@ -32,6 +32,14 @@ public final class WirelessSyncServer: @unchecked Sendable {
         public var requests: @Sendable (String, [TransferRequest]) async -> DeviceCatalog.Chosen
         /// Applies a device's loves and ratings to the library.
         public var history: @Sendable (String, [DeviceHistoryEvent]) async throws -> Void
+        /// The Mac's player for a device allowed to control it, or nil when it is not.
+        public var remoteState: @Sendable (String) async -> WirelessProtocol.RemoteState?
+        /// Does what a device allowed to control the player asks; returns the state after it, or nil when not allowed.
+        public var remote: @Sendable (String, WirelessProtocol.RemoteCommand) async -> WirelessProtocol.RemoteState?
+        /// Whether a device may control playback (the Mac's and, through it, other devices').
+        public var mayControl: @Sendable (String) async -> Bool
+        /// A paired device's name, as other devices list it.
+        public var deviceName: @Sendable (String) async -> String?
 
         public init(info: @escaping @Sendable () -> WirelessProtocol.Info,
                     pairRequested: @escaping @Sendable (WirelessProtocol.PairRequest, WirelessProtocol.Pairing) async -> Void,
@@ -48,7 +56,11 @@ public final class WirelessSyncServer: @unchecked Sendable {
                     requests: @escaping @Sendable (String, [TransferRequest]) async -> DeviceCatalog.Chosen = { _, _ in
                         DeviceCatalog.Chosen(DeviceSelection())
                     },
-                    history: @escaping @Sendable (String, [DeviceHistoryEvent]) async throws -> Void = { _, _ in }) {
+                    history: @escaping @Sendable (String, [DeviceHistoryEvent]) async throws -> Void = { _, _ in },
+                    remoteState: @escaping @Sendable (String) async -> WirelessProtocol.RemoteState? = { _ in nil },
+                    remote: @escaping @Sendable (String, WirelessProtocol.RemoteCommand) async -> WirelessProtocol.RemoteState? = { _, _ in nil },
+                    mayControl: @escaping @Sendable (String) async -> Bool = { _ in false },
+                    deviceName: @escaping @Sendable (String) async -> String? = { _ in nil }) {
             self.info = info
             self.pairRequested = pairRequested
             self.pairStatus = pairStatus
@@ -63,6 +75,10 @@ public final class WirelessSyncServer: @unchecked Sendable {
             self.catalog = catalog
             self.requests = requests
             self.history = history
+            self.remoteState = remoteState
+            self.remote = remote
+            self.mayControl = mayControl
+            self.deviceName = deviceName
         }
     }
 
@@ -78,7 +94,33 @@ public final class WirelessSyncServer: @unchecked Sendable {
         var hashes: [Int: String] = [:]
     }
 
+    /// A device music can play on through this Mac: there while it waits for commands (or did lately).
+    private struct RelayTarget {
+        var name: String
+        var lastSeen: Date
+        var waiting = 0
+        var commands: [WirelessProtocol.RelayedCommand] = []
+        var lastSeq = 0
+        var applied = 0
+        var state: WirelessProtocol.RemoteState?
+        var stateAt = Date.now
+
+        var isPresent: Bool { waiting > 0 || Date.now.timeIntervalSince(lastSeen) < WirelessSyncServer.relayPresence }
+
+        /// Its state as of now: the position moved on while it plays, as the device would show it.
+        func current(now: Date) -> WirelessProtocol.RemoteState? {
+            guard var state else { return nil }
+            if state.playing {
+                let moved = state.position + now.timeIntervalSince(stateAt) * state.rate
+                state.position = min(moved, state.item?.duration ?? moved)
+            }
+            state.version = state.signature(now: now)
+            return state
+        }
+    }
+
     private let backend: Backend
+    private var relay: [String: RelayTarget] = [:]
     private let lock = NSLock()
     private var sessions: [String: Session] = [:]
     /// Nonces seen lately (requests are valid for five minutes either way): a captured request cannot be sent again.
@@ -197,6 +239,40 @@ public final class WirelessSyncServer: @unchecked Sendable {
                 return .error(400, "bad requests")
             }
             return .json(await backend.requests(deviceId, body.requests))
+        // Playing on the Mac from the device (HTTPS only): the player's state, waited on, and commands; with
+        // `?device=<id>`, another device's, passed on through the relay.
+        case ("GET", 1, "remote"):
+            guard request.secure else { return .error(403, "HTTPS only") }
+            if let target = request.query["device"] {
+                return await relayedState(deviceId: deviceId, target: target, after: request.query["after"])
+            }
+            return await remoteState(deviceId: deviceId, after: request.query["after"])
+        case ("GET", 2, "remote") where parts[1] == "devices":
+            guard request.secure else { return .error(403, "HTTPS only") }
+            guard await backend.mayControl(deviceId) else { return .error(403, "not allowed to control playback") }
+            return .json(WirelessProtocol.RemoteDevices(devices: relayDevices(except: deviceId)))
+        case ("POST", 1, "remote"):
+            guard request.secure else { return .error(403, "HTTPS only") }
+            guard let command = try? WirelessProtocol.decoder.decode(WirelessProtocol.RemoteCommand.self, from: request.body) else {
+                return .error(400, "bad command")
+            }
+            if let target = request.query["device"] {
+                return await relay(command, from: deviceId, to: target)
+            }
+            guard var state = await backend.remote(deviceId, command) else { return .error(403, "not allowed to control playback") }
+            state.version = state.signature(now: .now)
+            return .json(state)
+        // A device music can play on: its commands, waited on, and its player after them.
+        case ("GET", 1, "relay"):
+            guard request.secure else { return .error(403, "HTTPS only") }
+            return await relayCommands(deviceId: deviceId, after: request.query["after"].flatMap { Int($0) })
+        case ("POST", 2, "relay") where parts[1] == "state":
+            guard request.secure else { return .error(403, "HTTPS only") }
+            guard let body = try? WirelessProtocol.decoder.decode(WirelessProtocol.RelayState.self, from: request.body) else {
+                return .error(400, "bad state")
+            }
+            await relayStateArrived(body, from: deviceId)
+            return .json(["ok": true])
         case ("POST", 1, "history"):
             guard request.secure else { return .error(403, "HTTPS only") }
             guard let body = try? WirelessProtocol.decoder.decode(WirelessProtocol.History.self, from: request.body) else {
@@ -210,6 +286,127 @@ public final class WirelessSyncServer: @unchecked Sendable {
             }
         default:
             return .error(404, "unknown request")
+        }
+    }
+
+    /// The player's state; with `after` (the version the device has), held until it changes or for 25 seconds, so the
+    /// device follows the Mac without asking over and over.
+    private func remoteState(deviceId: String, after: String?) async -> LocalHTTPServer.Response {
+        let deadline = Date.now.addingTimeInterval(after == nil ? 0 : Self.remoteWait)
+        while true {
+            guard var state = await backend.remoteState(deviceId) else { return .error(403, "not allowed to control playback") }
+            let now = Date.now
+            state.version = state.signature(now: now)
+            if state.version != after || now >= deadline { return .json(state) }
+            try? await Task.sleep(for: .milliseconds(200))
+            if Task.isCancelled { return .json(state) }
+        }
+    }
+
+    static let remoteWait: TimeInterval = 25
+    /// How long a device counts as there after it last waited for commands (it asks again at once, so a few seconds
+    /// cover a slow network; longer and it has gone).
+    static let relayPresence: TimeInterval = 10
+    /// How long a command waits for the device to apply it.
+    static let relayAnswerWait: TimeInterval = 5
+
+    // MARK: - Relay (devices playing on each other through the Mac)
+
+    /// A device playing nothing.
+    private static func idle(now: Date) -> WirelessProtocol.RemoteState {
+        var state = WirelessProtocol.RemoteState(item: nil, playing: false, position: 0, volume: 1, shuffle: false, repeatMode: "off",
+                                                 queue: [], queueIndex: nil)
+        state.version = state.signature(now: now)
+        return state
+    }
+
+    private func relayDevices(except deviceId: String) -> [WirelessProtocol.RemoteDevice] {
+        lock.withLock {
+            relay.filter { $0.key != deviceId && $0.value.isPresent }
+                .map { WirelessProtocol.RemoteDevice(id: $0.key, name: $0.value.name) }
+                .sorted { $0.name < $1.name }
+        }
+    }
+
+    /// A device waiting for commands: answered with those after `after` as soon as there are some, or with none after
+    /// 25 seconds. Without `after` (it just started), at once with none and the newest sequence number.
+    private func relayCommands(deviceId: String, after: Int?) async -> LocalHTTPServer.Response {
+        let name = await backend.deviceName(deviceId) ?? "Device"
+        let deadline = Date.now.addingTimeInterval(after == nil ? 0 : Self.remoteWait)
+        lock.withLock {
+            var target = relay[deviceId] ?? RelayTarget(name: name, lastSeen: .now)
+            target.name = name
+            target.lastSeen = .now
+            target.waiting += 1
+            relay[deviceId] = target
+        }
+        defer {
+            lock.withLock {
+                relay[deviceId]?.waiting -= 1
+                relay[deviceId]?.lastSeen = .now
+            }
+        }
+        while true {
+            let answer = lock.withLock { () -> WirelessProtocol.RelayCommands in
+                let target = relay[deviceId]
+                let last = target?.lastSeq ?? 0
+                return WirelessProtocol.RelayCommands(commands: (target?.commands ?? []).filter { $0.seq > (after ?? last) }, last: last)
+            }
+            if !answer.commands.isEmpty || Date.now >= deadline || Task.isCancelled { return .json(answer) }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+    }
+
+    private func relayStateArrived(_ body: WirelessProtocol.RelayState, from deviceId: String) async {
+        let name = await backend.deviceName(deviceId) ?? "Device"
+        lock.withLock {
+            var target = relay[deviceId] ?? RelayTarget(name: name, lastSeen: .now)
+            target.state = body.state
+            target.stateAt = .now
+            target.applied = max(target.applied, body.applied)
+            // Applied commands are no longer kept.
+            target.commands.removeAll { $0.seq <= target.applied }
+            relay[deviceId] = target
+        }
+    }
+
+    /// Passes a command on and waits (a few seconds) for the device to apply it; answers with its player then.
+    private func relay(_ command: WirelessProtocol.RemoteCommand, from deviceId: String, to target: String) async -> LocalHTTPServer.Response {
+        guard await backend.mayControl(deviceId) else { return .error(403, "not allowed to control playback") }
+        let fromName = await backend.deviceName(deviceId) ?? "Device"
+        let seq = lock.withLock { () -> Int? in
+            guard var device = relay[target], device.isPresent else { return nil }
+            device.lastSeq += 1
+            device.commands.append(WirelessProtocol.RelayedCommand(seq: device.lastSeq, from: deviceId, fromName: fromName, command: command))
+            relay[target] = device
+            return device.lastSeq
+        }
+        guard let seq else { return .error(404, "that device is not there") }
+        let deadline = Date.now.addingTimeInterval(Self.relayAnswerWait)
+        while Date.now < deadline, !Task.isCancelled {
+            let state = lock.withLock { () -> (applied: Bool, state: WirelessProtocol.RemoteState?)? in
+                guard let device = relay[target] else { return nil }
+                return (device.applied >= seq, device.current(now: .now))
+            }
+            if let state, state.applied { return .json(state.state ?? Self.idle(now: .now)) }
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        return .error(504, "that device did not answer")
+    }
+
+    /// Another device's player; with `after`, held until it changes or for 25 seconds (as for the Mac's).
+    private func relayedState(deviceId: String, target: String, after: String?) async -> LocalHTTPServer.Response {
+        guard await backend.mayControl(deviceId) else { return .error(403, "not allowed to control playback") }
+        let deadline = Date.now.addingTimeInterval(after == nil ? 0 : Self.remoteWait)
+        while true {
+            let now = Date.now
+            let found = lock.withLock { () -> (present: Bool, state: WirelessProtocol.RemoteState?)? in
+                relay[target].map { ($0.isPresent, $0.current(now: now)) }
+            }
+            guard let found, found.present else { return .error(404, "that device is not there") }
+            let answer = found.state ?? Self.idle(now: now)
+            if answer.version != after || now >= deadline || Task.isCancelled { return .json(answer) }
+            try? await Task.sleep(for: .milliseconds(200))
         }
     }
 
@@ -351,7 +548,8 @@ public final class WirelessSyncServer: @unchecked Sendable {
     private func fileResponse(_ url: URL, session id: String, index: Int, cached: String?) -> LocalHTTPServer.Response {
         guard let hash = cached ?? Self.sha256(file: url) else { return .error(404, "missing file") }
         if cached == nil { lock.withLock { sessions[id]?.hashes[index] = hash } }
-        return LocalHTTPServer.Response(headers: [WirelessProtocol.Header.sha256: hash], body: .file(url))
+        // The SHA-256 as the ETag too, so a device's download system can resume a cut download (it needs a validator).
+        return LocalHTTPServer.Response(headers: [WirelessProtocol.Header.sha256: hash, "ETag": "\"\(hash)\""], body: .file(url))
     }
 
     /// The library snapshot for the songs the device will hold after this sync.

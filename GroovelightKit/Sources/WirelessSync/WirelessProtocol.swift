@@ -2,7 +2,7 @@ import CryptoKit
 import Foundation
 import LibraryKit
 
-/// The protocol between Groovelight on the Mac and Groovelight for Android, over the local network.
+/// The protocol between Groovelight on the Mac and Groovelight for Android and iOS, over the local network.
 ///
 /// The Mac serves (Bonjour `_groovelight._tcp`); the Android app finds it, pairs once, and then pulls: it sends what
 /// it holds, gets a plan, downloads the files and reports back. Every request after pairing is signed with a key both
@@ -318,6 +318,206 @@ public enum WirelessProtocol {
         public init(syncRequested: Bool, pendingSends: Int) {
             self.syncRequested = syncRequested
             self.pendingSends = pendingSends
+        }
+    }
+
+    // MARK: - Playing on the Mac (remote control)
+
+    /// The Mac's player as a paired device sees it (`GET /remote`, HTTPS): what plays, where, and the queue, for a phone
+    /// that plays music on the Mac rather than on itself. Positions are as of the answer: the device moves them on with
+    /// its own clock, so the two clocks need not agree.
+    public struct RemoteState: Codable, Hashable, Sendable {
+        public struct Item: Codable, Hashable, Sendable {
+            public var id: Int64
+            public var title: String
+            public var artist: String
+            public var album: String
+            public var albumKey: String?
+            public var artworkHash: String?
+            public var duration: Double
+
+            public init(id: Int64, title: String, artist: String, album: String, albumKey: String?, artworkHash: String?, duration: Double) {
+                self.id = id
+                self.title = title
+                self.artist = artist
+                self.album = album
+                self.albumKey = albumKey
+                self.artworkHash = artworkHash
+                self.duration = duration
+            }
+        }
+
+        public var item: Item?
+        public var playing: Bool
+        /// Seconds into `item`.
+        public var position: Double
+        /// The playing speed (1 is normal), to move `position` on.
+        public var rate: Double
+        /// 0 to 1.
+        public var volume: Double
+        public var shuffle: Bool
+        /// "off", "all" or "one".
+        public var repeatMode: String
+        /// Song ids in play order, and where the current one is: to take the queue over to the device.
+        public var queue: [Int64]
+        public var queueIndex: Int?
+        /// Changes when anything but the steady progress of the song changes (a seek does): the device waits with it.
+        public var version: String = ""
+
+        public init(item: Item?, playing: Bool, position: Double, rate: Double = 1, volume: Double, shuffle: Bool, repeatMode: String,
+                    queue: [Int64], queueIndex: Int?) {
+            self.item = item
+            self.playing = playing
+            self.position = position
+            self.rate = rate
+            self.volume = volume
+            self.shuffle = shuffle
+            self.repeatMode = repeatMode
+            self.queue = queue
+            self.queueIndex = queueIndex
+        }
+
+        /// What `version` is made from, as of `now`: while playing, the moment the song started (rounded), which a
+        /// seek moves and steady playing does not.
+        public func signature(now: Date) -> String {
+            let anchor = playing ? (now.timeIntervalSince1970 - position / max(rate, 0.01)).rounded() : position.rounded()
+            let queueHash = queue.reduce(into: Hasher()) { $0.combine($1) }.finalize()
+            return [item.map { "\($0.id)" } ?? "-", playing ? "p" : "s", "\(Int64(anchor))", String(format: "%.2f", volume),
+                    shuffle ? "1" : "0", repeatMode, "\(queueHash)", queueIndex.map { "\($0)" } ?? "-"].joined(separator: "|")
+        }
+    }
+
+    /// Another device that music can play on (`GET /remote/devices`): a phone with Groovelight open, reached through the
+    /// Mac. Commands and state for it go through the same `/remote` routes with `?device=<id>`.
+    public struct RemoteDevice: Codable, Hashable, Sendable {
+        public var id: String
+        public var name: String
+
+        public init(id: String, name: String) {
+            self.id = id
+            self.name = name
+        }
+    }
+
+    public struct RemoteDevices: Codable, Sendable {
+        public var devices: [RemoteDevice]
+
+        public init(devices: [RemoteDevice]) {
+            self.devices = devices
+        }
+    }
+
+    /// A command for a device that music plays on, passed on by the Mac from the device that sent it.
+    public struct RelayedCommand: Codable, Hashable, Sendable {
+        /// Counts up for each device: it answers with the last one it applied.
+        public var seq: Int
+        /// The device that sent it, and its name.
+        public var from: String
+        public var fromName: String
+        public var command: RemoteCommand
+
+        public init(seq: Int, from: String, fromName: String, command: RemoteCommand) {
+            self.seq = seq
+            self.from = from
+            self.fromName = fromName
+            self.command = command
+        }
+    }
+
+    /// The commands for a device after the last one it has (`GET /relay?after=<seq>`, held until there are some).
+    /// `last` is the newest sequence number: a device that just started takes it as where to begin, so it never
+    /// applies commands sent before it was there.
+    public struct RelayCommands: Codable, Sendable {
+        public var commands: [RelayedCommand]
+        public var last: Int
+
+        public init(commands: [RelayedCommand], last: Int) {
+            self.commands = commands
+            self.last = last
+        }
+    }
+
+    /// A device's own player, for the devices controlling it (`POST /relay/state`), with the last command it applied.
+    public struct RelayState: Codable, Sendable {
+        public var state: RemoteState?
+        public var applied: Int
+
+        public init(state: RemoteState?, applied: Int) {
+            self.state = state
+            self.applied = applied
+        }
+    }
+
+    /// What a device asks the Mac's player to do (`POST /remote`, HTTPS), answered with the state after it. In JSON a
+    /// flat object, easy to make on Android: `{"command": "seek", "position": 42}`, `{"command": "play", "songIds": [...],
+    /// "startAt": 0, "position": 0, "shuffle": false}`, `{"command": "volume", "volume": 0.5}`, `{"command": "shuffle",
+    /// "on": true}`, `{"command": "repeatMode", "mode": "all"}`, or only the command for the others.
+    public enum RemoteCommand: Codable, Hashable, Sendable {
+        /// Plays these songs (by id) from `startAt`, at `position` seconds into it: a queue handed over from the device.
+        case play(songIds: [Int64], startAt: Int, position: Double, shuffle: Bool)
+        case pause
+        case resume
+        case next
+        case previous
+        case seek(Double)
+        case volume(Double)
+        case shuffle(Bool)
+        case repeatMode(String)
+        case stop
+
+        private enum Keys: String, CodingKey {
+            case command, songIds, startAt, position, shuffle, volume, on, mode
+        }
+
+        public init(from decoder: any Decoder) throws {
+            let container = try decoder.container(keyedBy: Keys.self)
+            let command = try container.decode(String.self, forKey: .command)
+            switch command {
+            case "play":
+                self = .play(songIds: try container.decode([Int64].self, forKey: .songIds),
+                             startAt: try container.decodeIfPresent(Int.self, forKey: .startAt) ?? 0,
+                             position: try container.decodeIfPresent(Double.self, forKey: .position) ?? 0,
+                             shuffle: try container.decodeIfPresent(Bool.self, forKey: .shuffle) ?? false)
+            case "pause": self = .pause
+            case "resume": self = .resume
+            case "next": self = .next
+            case "previous": self = .previous
+            case "seek": self = .seek(try container.decode(Double.self, forKey: .position))
+            case "volume": self = .volume(try container.decode(Double.self, forKey: .volume))
+            case "shuffle": self = .shuffle(try container.decode(Bool.self, forKey: .on))
+            case "repeatMode": self = .repeatMode(try container.decode(String.self, forKey: .mode))
+            case "stop": self = .stop
+            default: throw DecodingError.dataCorruptedError(forKey: .command, in: container, debugDescription: "Unknown command \(command)")
+            }
+        }
+
+        public func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: Keys.self)
+            switch self {
+            case let .play(songIds, startAt, position, shuffle):
+                try container.encode("play", forKey: .command)
+                try container.encode(songIds, forKey: .songIds)
+                try container.encode(startAt, forKey: .startAt)
+                try container.encode(position, forKey: .position)
+                try container.encode(shuffle, forKey: .shuffle)
+            case .pause: try container.encode("pause", forKey: .command)
+            case .resume: try container.encode("resume", forKey: .command)
+            case .next: try container.encode("next", forKey: .command)
+            case .previous: try container.encode("previous", forKey: .command)
+            case .seek(let position):
+                try container.encode("seek", forKey: .command)
+                try container.encode(position, forKey: .position)
+            case .volume(let volume):
+                try container.encode("volume", forKey: .command)
+                try container.encode(volume, forKey: .volume)
+            case .shuffle(let on):
+                try container.encode("shuffle", forKey: .command)
+                try container.encode(on, forKey: .on)
+            case .repeatMode(let mode):
+                try container.encode("repeatMode", forKey: .command)
+                try container.encode(mode, forKey: .mode)
+            case .stop: try container.encode("stop", forKey: .command)
+            }
         }
     }
 }

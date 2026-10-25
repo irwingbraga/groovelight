@@ -20,6 +20,9 @@ public final class LibraryDatabase: Sendable {
     static var configuration: Configuration {
         var config = Configuration()
         config.foreignKeysEnabled = true
+        // Another Groovelight on this library (a debug build beside the installed app, or one still quitting) may be
+        // writing: wait for it rather than fail, which at launch would stop the app.
+        config.busyMode = .timeout(10)
         config.prepareDatabase { db in
             // Used by smart playlist "Quality" rules.
             db.add(function: SmartPlaylistSQL.qualityTierFunction)

@@ -162,6 +162,15 @@ struct WirelessSyncTests {
         let (tail, tailResponse) = try await call("GET", filePath, key: key, headers: ["Range": "bytes=2000000-"])
         #expect(tailResponse.statusCode == 206)
         #expect(tail == bytes.suffix(from: 2_000_000))
+        // A resumed download names its version (the ETag): the same one gets the rest, another one the whole file.
+        let tag = try #require(wholeResponse.value(forHTTPHeaderField: "ETag"))
+        #expect(tag == "\"\(wholeResponse.value(forHTTPHeaderField: WirelessProtocol.Header.sha256) ?? "")\"")
+        let (resumed, resumedResponse) = try await call("GET", filePath, key: key, headers: ["Range": "bytes=2000000-", "If-Range": tag])
+        #expect(resumedResponse.statusCode == 206)
+        #expect(resumed == bytes.suffix(from: 2_000_000))
+        let (changed, changedResponse) = try await call("GET", filePath, key: key, headers: ["Range": "bytes=2000000-", "If-Range": "\"old\""])
+        #expect(changedResponse.statusCode == 200)
+        #expect(changed == bytes)
         let (playlist, _) = try await call("GET", "/sync/\(plan.session)/file/1", key: key)
         #expect(String(data: playlist, encoding: .utf8)?.contains("../Music/Band/LP (1969)/01 Song.flac") == true)
 
@@ -209,9 +218,9 @@ struct WirelessSyncTests {
 
         let label = "dev.irwingbraga.groovelight.test-\(UUID().uuidString)"
         defer { TLSIdentity.remove(label: label) }
-        let tls = try TLSIdentity.load(label: label)
+        let tls = try TestKeychain.identity(label: label)
         // Loading again gives the same certificate.
-        #expect(try TLSIdentity.load(label: label).fingerprint == tls.fingerprint)
+        #expect(try TestKeychain.identity(label: label).fingerprint == tls.fingerprint)
 
         let key = SymmetricKey(size: .bits256)
         final class Seen: @unchecked Sendable {

@@ -1733,6 +1733,26 @@ enum DebugTour {
         lines.append("")
         _ = press("2", .command); try? await Task.sleep(for: .seconds(0.5))
         lines.append("⌘2: selection \(String(describing: model.selection))")
+        // The windows' shortcuts: each opens its window (the key is matched as the layout types it, Option included).
+        keyCodes["e"] = 14
+        func equalizerShown() -> Bool { NSApp.windows.contains { $0.identifier?.rawValue.hasPrefix(WindowID.equalizer) == true && $0.isVisible } }
+        func closeEqualizer() { NSApp.windows.first { $0.identifier?.rawValue.hasPrefix(WindowID.equalizer) == true }?.close() }
+        let pressedEqualizer = press("e", [.command, .option]); try? await Task.sleep(for: .seconds(1))
+        lines.append("⌥⌘E: handled \(pressedEqualizer), equalizer window \(equalizerShown())")
+        closeEqualizer(); try? await Task.sleep(for: .seconds(0.5))
+        // Queued as the keyboard would send it, through the key window first.
+        mainWindows().first?.makeKeyAndOrderFront(nil)
+        for down in [true, false] {
+            guard let cgEvent = CGEvent(keyboardEventSource: nil, virtualKey: 14, keyDown: down) else { continue }
+            cgEvent.flags = [.maskCommand, .maskAlternate]
+            if let event = NSEvent(cgEvent: cgEvent) {
+                if down { lines.append("⌥⌘E event: characters '\(event.characters ?? "")', ignoring modifiers '\(event.charactersIgnoringModifiers ?? "")'") }
+                NSApp.postEvent(event, atStart: false)
+            }
+        }
+        try? await Task.sleep(for: .seconds(1))
+        lines.append("⌥⌘E queued: equalizer window \(equalizerShown()), key window \(NSApp.keyWindow?.identifier?.rawValue ?? "none")")
+        closeEqualizer()
         let tracks: [Track] = (try? await model.database.writer.read { db in
             try LibraryKitQueries.firstAlbum(db).map { try LibraryKitQueries.tracks(db, albumKey: $0) } ?? []
         }) ?? []

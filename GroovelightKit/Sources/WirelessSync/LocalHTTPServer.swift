@@ -208,7 +208,9 @@ public final class LocalHTTPServer: @unchecked Sendable {
             headers["Accept-Ranges"] = "bytes"
             headers["Content-Type"] = headers["Content-Type"] ?? "application/octet-stream"
             var start = 0, end = size - 1
-            if let range = request?.headers["range"], let parsed = Self.parseRange(range, size: size) {
+            // A resumed download names the version it has (If-Range): another version of the file starts over.
+            let sameVersion = request?.headers["if-range"].map { $0 == headers["ETag"] } ?? true
+            if sameVersion, let range = request?.headers["range"], let parsed = Self.parseRange(range, size: size) {
                 (start, end) = parsed
                 status = 206
                 headers["Content-Range"] = "bytes \(start)-\(end)/\(size)"

@@ -27,6 +27,9 @@ struct DeviceView: View {
                 }
                 DeviceSelectionSection(selection: $selection)
                 DeviceFormatSection(deviceId: deviceId, isPlayer: device.isPlayer)
+                if device.isPlayer {
+                    RemotePlaybackSection(deviceId: String(device.id.dropFirst("wifi:".count)), deviceName: device.name)
+                }
                 Section {
                     HStack {
                         Text("Folders, covers, lyrics and playlists on devices are set in Settings, Devices.")
@@ -67,6 +70,23 @@ struct DeviceView: View {
             }
         } else {
             ContentUnavailableView("Device Not Connected", systemImage: "sdcard")
+        }
+    }
+}
+
+/// Whether the device may play music on this Mac and on the other devices (choosing one in its Play On list).
+private struct RemotePlaybackSection: View {
+    var deviceId: String
+    var deviceName: String
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        let wireless = model.wireless!
+        Section {
+            Toggle("Let \(deviceName) play music on this Mac and your other devices", isOn: Binding(get: { wireless.controlsPlayback(deviceId) },
+                                                                           set: { wireless.setControlsPlayback(deviceId, $0) }))
+        } footer: {
+            Text("The device can then choose this Mac, or another phone with Groovelight open, under Play On: start and pause songs there, skip, seek and set the volume, and take what plays there over to itself. Only while they are on the same Wi-Fi as this Mac, with Groovelight open here.")
         }
     }
 }
@@ -403,7 +423,7 @@ struct DeviceLayoutSection: View {
         } header: {
             Text("Layout on Devices")
         } footer: {
-            Text("For memory cards, players and Android devices. The music folder applies to cards and players; on Android, songs go in the folder chosen in the Groovelight app. Names are made safe for any file system, and FAT32 cards leave out files over 4 GB. Many players read cover.jpg and .lrc files; smaller covers load faster on players with little memory. Changes apply at the next sync.")
+            Text("For memory cards, players, and phones and tablets with Groovelight. The music folder applies to cards and players; on Android, songs go in the folder chosen in the Groovelight app, and on iPhone and iPad in the app's own storage. Names are made safe for any file system, and FAT32 cards leave out files over 4 GB. Many players read cover.jpg and .lrc files; smaller covers load faster on players with little memory. Changes apply at the next sync.")
                 .foregroundStyle(.secondary)
         }
     }

@@ -1,3 +1,4 @@
+#if os(macOS)
 import CoreServices
 import Foundation
 
@@ -112,3 +113,4 @@ public enum FolderAccess {
         return (url, isStale ? try? makeBookmark(for: url) : nil)
     }
 }
+#endif

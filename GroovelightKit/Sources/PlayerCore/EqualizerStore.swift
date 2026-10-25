@@ -1,37 +1,36 @@
 import Foundation
 import Observation
-import PlayerCore
 
 /// Persists equalizer state (current curve, on/off, user presets) and pushes changes to the player.
 @MainActor
 @Observable
-final class EqualizerStore {
-    var preset: EQPreset {
+public final class EqualizerStore {
+    public var preset: EQPreset {
         didSet {
             player.equalizerPreset = preset
             save(preset, key: Keys.current)
         }
     }
 
-    var isEnabled: Bool {
+    public var isEnabled: Bool {
         didSet {
             player.equalizerEnabled = isEnabled
             UserDefaults.standard.set(isEnabled, forKey: Keys.enabled)
         }
     }
 
-    var autoPreamp: Bool {
+    public var autoPreamp: Bool {
         didSet {
             UserDefaults.standard.set(autoPreamp, forKey: Keys.autoPreamp)
             if autoPreamp { applyAutoPreamp() }
         }
     }
 
-    private(set) var userPresets: [EQPreset] {
+    public private(set) var userPresets: [EQPreset] {
         didSet { save(userPresets, key: Keys.userPresets) }
     }
 
-    var allPresets: [EQPreset] { EQPreset.builtIns + userPresets }
+    public var allPresets: [EQPreset] { EQPreset.builtIns + userPresets }
 
     @ObservationIgnored private let player: PlaybackController
 
@@ -42,7 +41,7 @@ final class EqualizerStore {
         static let userPresets = "eq.userPresets"
     }
 
-    init(player: PlaybackController) {
+    public init(player: PlaybackController) {
         self.player = player
         let defaults = UserDefaults.standard
         preset = Self.load(EQPreset.self, key: Keys.current) ?? .flat
@@ -54,19 +53,19 @@ final class EqualizerStore {
     }
 
     /// Picks up equalizer settings written to the preferences (after restoring a backup).
-    func reloadFromDefaults() {
+    public func reloadFromDefaults() {
         preset = Self.load(EQPreset.self, key: Keys.current) ?? .flat
         isEnabled = UserDefaults.standard.bool(forKey: Keys.enabled)
         autoPreamp = UserDefaults.standard.object(forKey: Keys.autoPreamp) as? Bool ?? true
         userPresets = Self.load([EQPreset].self, key: Keys.userPresets) ?? []
     }
 
-    func select(_ newPreset: EQPreset) {
+    public func select(_ newPreset: EQPreset) {
         preset = newPreset
         if autoPreamp { applyAutoPreamp() }
     }
 
-    func updateBand(_ index: Int, _ change: (inout EQBand) -> Void) {
+    public func updateBand(_ index: Int, _ change: (inout EQBand) -> Void) {
         guard preset.bands.indices.contains(index) else { return }
         var updated = preset
         change(&updated.bands[index])
@@ -77,16 +76,16 @@ final class EqualizerStore {
         preset = updated
     }
 
-    func setPreamp(_ value: Double) {
+    public func setPreamp(_ value: Double) {
         autoPreamp = false
         preset.preamp = value
     }
 
-    func reset() {
+    public func reset() {
         select(.flat)
     }
 
-    func saveCurrent(as name: String) {
+    public func saveCurrent(as name: String) {
         var saved = preset
         saved.name = name
         userPresets.removeAll { $0.name == name }
@@ -94,11 +93,11 @@ final class EqualizerStore {
         preset = saved
     }
 
-    func deleteUserPreset(_ target: EQPreset) {
+    public func deleteUserPreset(_ target: EQPreset) {
         userPresets.removeAll { $0.name == target.name }
     }
 
-    func importParametricEQ(from url: URL) throws {
+    public func importParametricEQ(from url: URL) throws {
         let text = try String(contentsOf: url, encoding: .utf8)
         let name = url.deletingPathExtension().lastPathComponent
         guard let imported = ParametricEQFile.parse(text, name: name) else {
@@ -111,7 +110,7 @@ final class EqualizerStore {
         isEnabled = true
     }
 
-    func exportParametricEQ(to url: URL) throws {
+    public func exportParametricEQ(to url: URL) throws {
         try ParametricEQFile.export(preset).write(to: url, atomically: true, encoding: .utf8)
     }
 

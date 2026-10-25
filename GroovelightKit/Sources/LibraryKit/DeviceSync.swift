@@ -39,9 +39,9 @@ public struct DeviceSelection: Codable, Hashable, Sendable {
     public var artists: Set<String> = []
     public var albumKeys: Set<String> = []
     public var genres: Set<String> = []
-    /// Songs chosen one by one (from the Android app's view of the whole library).
+    /// Songs chosen one by one (from the phone app's view of the whole library).
     public var trackIds: Set<Int64> = []
-    /// Songs removed from this device (from the Android app): left out whatever brings them (an album, an artist, a
+    /// Songs removed from this device (from the phone app): left out whatever brings them (an album, an artist, a
     /// playlist, all music, a send), and their files deleted from the device. Only the device changes: the library
     /// keeps them. Adding them again (their album, artist or the song) brings them back.
     public var excludedTrackIds: Set<Int64> = []
@@ -242,7 +242,7 @@ public enum DeviceSync {
         return LossyEncoding(rawValue: suffix)?.codec
     }
 
-    /// A device where Groovelight itself plays the music (Groovelight for Android in Player mode): it gets the songs
+    /// A device where Groovelight itself plays the music (Groovelight for Android in Player mode, Groovelight for iOS): it gets the songs
     /// only (their covers, lyrics and playlists come with the library snapshot), and songs in formats it cannot decode
     /// are converted to FLAC.
     public struct Player: Hashable, Sendable {
@@ -258,8 +258,8 @@ public enum DeviceSync {
             let codec = AudioSpec.Codec(formatName: track.format)
             if decodes.contains(codec.rawValue) { return .asIs }
             switch codec {
-            case .dsf, .dsdiff: return .skip("DSD is not supported on Android yet")
-            case .module: return .skip("tracker modules do not play on Android")
+            case .dsf, .dsdiff: return .skip("DSD does not play on this device yet")
+            case .module: return .skip("tracker modules do not play on this device")
             default: return .flac
             }
         }

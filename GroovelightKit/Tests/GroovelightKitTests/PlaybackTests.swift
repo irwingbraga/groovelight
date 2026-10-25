@@ -181,6 +181,20 @@ struct PlaybackTests {
         player.stop()
     }
 
+    /// A queue taken over from another device starts where it was there, once the song plays (a seek sent at once
+    /// would be lost while the decoder starts).
+    @Test(.timeLimit(.minutes(1))) func startsAtAPosition() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("groovelight-start-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let items = try Self.tones(10, albums: ["A"], in: directory)
+        let player = PlaybackController()
+        player.volume = 0
+        player.play(items, position: 6)
+        try await Task.sleep(for: .seconds(1))
+        #expect(player.currentTime > 6 && player.currentTime < 8, "at \(player.currentTime) s")
+        player.stop()
+    }
+
     @Test(.timeLimit(.minutes(1))) func playsFaster() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("groovelight-rate-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: directory) }

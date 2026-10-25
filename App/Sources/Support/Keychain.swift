@@ -13,7 +13,7 @@ enum Keychain {
         return id == "dev.irwingbraga.groovelight" ? "" : "." + id
     }()
     static let service = "dev.irwingbraga.groovelight.lastfm" + suffix
-    /// Keys shared with paired Android devices, by device id.
+    /// Keys shared with paired devices (the Android and iOS apps), by device id.
     static let wirelessService = "dev.irwingbraga.groovelight.wireless" + suffix
     /// The key and certificate wireless sync serves HTTPS with (protocol v2), in the login keychain. Only the build that
     /// made a key uses it without macOS asking: a release keeps its signature across updates, but each unsandboxed

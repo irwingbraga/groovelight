@@ -3,6 +3,7 @@ options:
   bundleIdPrefix: dev.irwingbraga
   deploymentTarget:
     macOS: "15.0"
+    iOS: "26.1"
   createIntermediateGroups: true
 settings:
   base:
@@ -23,6 +24,8 @@ targets:
   Groovelight:
     type: application
     platform: macOS
+    # A shared scheme, so `xcodebuild -scheme Groovelight` works on a freshly generated project.
+    scheme: {}
     sources:
       - App/Sources
       - path: App/Resources
@@ -83,6 +86,10 @@ targets:
         LSApplicationCategoryType: public.app-category.music
         NSLocalNetworkUsageDescription: Groovelight syncs music with the Groovelight Sync app on your Android players and phones over the local network.
         NSBonjourServices: [_groovelight._tcp]
+        # The Mac is reached by its address on the local network: pairing over HTTP, then HTTPS with its pinned
+        # certificate (which no public authority signs).
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
         # Updates (Sparkle): the appcast published with each GitHub release, signed with the EdDSA key below.
         SUFeedURL: https://github.com/irwingbraga/groovelight/releases/latest/download/appcast.xml
         SUPublicEDKey: twg01yBaUF9k29yow7s+wAGu5Iucbw7btMg2Panx7D0=
@@ -112,6 +119,63 @@ targets:
         CODE_SIGN_STYLE: Manual
         CODE_SIGN_IDENTITY: "-"
         ENABLE_HARDENED_RUNTIME: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: Groovelight
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        GENERATE_INFOPLIST_FILE: NO
+
+  # Groovelight for iPhone, iPad and iPhone Duo (see the plan in Obsidian, "Groovelight for iOS and iPadOS").
+  Groovelight iOS:
+    type: application
+    platform: iOS
+    scheme: {}
+    sources:
+      - iOS/Sources
+      - path: App/Resources/Assets.xcassets
+      # The same Icon Composer icon as the Mac's.
+      - path: App/Resources/Groovelight.icon
+        type: file
+        buildPhase: resources
+    dependencies:
+      - package: GroovelightKit
+        product: PlayerCore
+      - package: GroovelightKit
+        product: LibraryKit
+      - package: GroovelightKit
+        product: WirelessSync
+      - package: GroovelightKit
+        product: WirelessSyncClient
+      - package: GroovelightKit
+        product: MetadataKit
+      - package: GroovelightKit
+        product: Visualizers
+    info:
+      path: iOS/Info.plist
+      properties:
+        CFBundleDisplayName: Groovelight
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSApplicationCategoryType: public.app-category.music
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: true
+        # Plays with the screen off and the app in the background.
+        UIBackgroundModes: [audio]
+        NSLocalNetworkUsageDescription: Groovelight finds your Mac on the local network to sync your music with it.
+        NSBonjourServices: [_groovelight._tcp]
+        # Every orientation: the layout follows the window (iPhone Duo's displays and poses, iPad multitasking).
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft,
+                                           UIInterfaceOrientationLandscapeRight]
+        UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown,
+                                                UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        ITSAppUsesNonExemptEncryption: false
+    settings:
+      base:
+        PRODUCT_NAME: Groovelight
+        PRODUCT_BUNDLE_IDENTIFIER: dev.irwingbraga.groovelight
+        # iPhone (iPhone Duo included) and iPad.
+        TARGETED_DEVICE_FAMILY: "1,2"
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: MHW58UT524
         ASSETCATALOG_COMPILER_APPICON_NAME: Groovelight
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         GENERATE_INFOPLIST_FILE: NO

@@ -367,9 +367,9 @@ final class AppModel {
                      albumGain: track.replayGainAlbumGain, bitDepth: track.bitDepth)
     }
 
-    func play(_ tracks: [Track], startAt index: Int = 0, shuffle: Bool = false) {
+    func play(_ tracks: [Track], startAt index: Int = 0, shuffle: Bool = false, position: TimeInterval = 0) {
         guard !tracks.isEmpty else { return }
-        player.play(tracks.map(playableItem), startAt: index, shuffle: shuffle)
+        player.play(tracks.map(playableItem), startAt: index, shuffle: shuffle, position: position)
     }
 
     func playNext(_ tracks: [Track]) {

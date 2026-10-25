@@ -173,7 +173,7 @@ struct DeviceSyncTests {
         #expect(songs[2]?.path.hasSuffix("02 Paranoid Android.flac") == true)
         #expect(songs[2]?.entry.fingerprint.hasSuffix("|flac") == true)
         #expect(songs[3] == nil)
-        #expect(plan.skipped.map(\.reason) == ["DSD is not supported on Android yet"])
+        #expect(plan.skipped.map(\.reason) == ["DSD does not play on this device yet"])
         // A song of a CUE album arrives as a FLAC of its own: its region of the album's file, with its own tags.
         #expect(songs[4]?.content == .converted(.cueTrack(cue)))
         #expect(songs[4]?.path.hasSuffix("04 Exit Music.flac") == true)

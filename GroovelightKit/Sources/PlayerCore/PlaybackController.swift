@@ -1,5 +1,7 @@
 import AVFAudio
+#if os(macOS)
 import CoreAudio
+#endif
 import Foundation
 import Observation
 import SFBAudioEngine
@@ -115,7 +117,12 @@ public final class PlaybackController {
         didSet { deck.setGain(gain(for: queue.current)) }
     }
 
+    #if os(macOS)
     private var device: OutputDevice? { OutputDevice(id: deck.player.outputDeviceID) }
+    #else
+    /// The audio session's route ([OutputDevice] on iOS).
+    private var device: OutputDevice? { OutputDevice.current }
+    #endif
 
     /// Called when the volume changes (to remember it across launches).
     @ObservationIgnored public var onVolumeChanged: ((Float) -> Void)?
@@ -152,16 +159,7 @@ public final class PlaybackController {
     }
 
     /// Name of the current output device ("MacBook Pro Speakers", a DAC, ...).
-    public var outputDeviceName: String? {
-        var address = AudioObjectPropertyAddress(mSelector: kAudioObjectPropertyName,
-                                                 mScope: kAudioObjectPropertyScopeGlobal,
-                                                 mElement: kAudioObjectPropertyElementMain)
-        var name: Unmanaged<CFString>?
-        var size = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
-        let status = AudioObjectGetPropertyData(deck.player.outputDeviceID, &address, 0, nil, &size, &name)
-        guard status == noErr, let name else { return nil }
-        return name.takeRetainedValue() as String
-    }
+    public var outputDeviceName: String? { device?.name }
 
     /// Called when an item starts playing (manual start or gapless transition).
     @ObservationIgnored public var onItemStarted: ((PlayableItem) -> Void)?
@@ -202,10 +200,12 @@ public final class PlaybackController {
 
     // MARK: - Transport
 
-    public func play(_ items: [PlayableItem], startAt index: Int = 0, shuffle: Bool = false) {
+    /// `position`: seconds into the first song (a queue taken over from another device), applied once it plays.
+    public func play(_ items: [PlayableItem], startAt index: Int = 0, shuffle: Bool = false, position: TimeInterval = 0) {
         completeFade()
         finishCurrentForReporting()
         queue.set(items, startAt: index, shuffle: shuffle)
+        if position > 0 { pendingStartTime = position }
         startCurrent()
     }
 
@@ -326,6 +326,9 @@ public final class PlaybackController {
             let decoder = try Self.makeDecoder(for: item)
             if bitPerfect { prepareDevice(for: decoder) }
             deck.setGain(gain(for: item))
+            // A song taken over from another device starts where it was: the decoder is moved there before it plays,
+            // rather than playing from the start and jumping (a click, then a retry every tick until the engine seeks).
+            let startedAt = Self.seekBeforePlaying(decoder, to: pendingStartTime)
             try player.play(decoder)
             currentDecoder = ObjectIdentifier(decoder)
             enqueuedNext = nil
@@ -333,6 +336,11 @@ public final class PlaybackController {
             state = .playing
             lastError = nil
             beginItem(item)
+            if let startedAt {
+                pendingStartTime = nil
+                currentTime = startedAt
+                lastTickTime = startedAt
+            }
             enqueueNextForGapless()
             startTicker()
             applyPendingStart()
@@ -382,6 +390,22 @@ public final class PlaybackController {
 
     /// A decoder for the whole file, or for a CUE track only its region (sample accurate, so consecutive tracks of one
     /// file play gaplessly; the engine then reports time and duration relative to the track).
+    /// Moves a decoder to `time` before it plays; returns the time when it could.
+    static func seekBeforePlaying(_ decoder: any PCMDecoding, to time: TimeInterval?) -> TimeInterval? {
+        guard let time, time > 0 else { return nil }
+        do {
+            if !decoder.isOpen { try decoder.open() }
+            let rate = decoder.processingFormat.sampleRate
+            guard decoder.supportsSeeking, rate > 0 else { return nil }
+            let frame = AVAudioFramePosition((time * rate).rounded())
+            guard frame < decoder.length else { return nil }
+            try decoder.seek(to: frame)
+            return time
+        } catch {
+            return nil
+        }
+    }
+
     static func makeDecoder(for item: PlayableItem) throws -> any PCMDecoding {
         if let start = item.startTime, let rate = item.sampleRate, rate > 0 {
             let startFrame = AVAudioFramePosition((start * rate).rounded())

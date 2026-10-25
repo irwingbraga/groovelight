@@ -1,13 +1,5 @@
+#if os(macOS)
 import Foundation
-
-/// What part of a library folder a scan looks at.
-public enum ScanScope: Sendable, Equatable {
-    /// Every file of the folder.
-    case full
-    /// Only these folders (and what is below them). Songs in `artworkFolders` are read again even if their files did not
-    /// change, because a cover image beside them did.
-    case folders(Set<String>, artworkFolders: Set<String> = [])
-}
 
 /// Library folder changes waiting to be scanned, gathered from file system events. Nothing is dropped: events that come
 /// in while a scan runs wait here for the next one.
@@ -150,3 +142,4 @@ public struct LibraryChanges: Sendable {
         path.count > 1 && path.hasSuffix("/") ? String(path.dropLast()) : path
     }
 }
+#endif

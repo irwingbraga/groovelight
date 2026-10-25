@@ -43,6 +43,37 @@ public final class ArtworkCache: Sendable {
         }
     }
 
+    /// Stores an image under a hash given elsewhere (a cover from the Mac keeps the Mac's hash, which the snapshot names,
+    /// though the copy sent is smaller). False when it is not a valid image.
+    @discardableResult
+    public func store(_ data: Data, as hash: String) -> Bool {
+        let original = url(for: hash, size: nil)
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil), CGImageSourceGetCount(source) > 0 else { return false }
+        do {
+            try data.write(to: original, options: .atomic)
+            for size in Size.allCases {
+                try writeThumbnail(from: source, size: size.rawValue, to: url(for: hash, size: size))
+            }
+            return true
+        } catch {
+            try? FileManager.default.removeItem(at: original)
+            return false
+        }
+    }
+
+    public func has(_ hash: String) -> Bool {
+        FileManager.default.fileExists(atPath: url(for: hash, size: .small).path)
+    }
+
+    /// Removes every image but `hashes` (covers of songs no longer on a device).
+    public func prune(keeping hashes: Set<String>) {
+        guard let files = try? FileManager.default.contentsOfDirectory(atPath: directory.path) else { return }
+        for file in files {
+            let hash = String(file.prefix { $0 != "." && $0 != "_" })
+            if !hashes.contains(hash) { try? FileManager.default.removeItem(at: directory.appendingPathComponent(file)) }
+        }
+    }
+
     private func writeThumbnail(from source: CGImageSource, size: Int, to destinationURL: URL) throws {
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,

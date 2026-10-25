@@ -5,7 +5,7 @@ import Observation
 import PlayerCore
 import WirelessSync
 
-/// Wireless sync with the Groovelight app on Android (players and phones): the Mac serves on the local network,
+/// Wireless sync with the Groovelight apps on Android (players and phones) and iOS: the Mac serves on the local network,
 /// devices pair once (a code shown on both screens) and then pull their music. Paired devices appear under Devices
 /// with the same page as memory cards.
 @MainActor
@@ -26,6 +26,9 @@ final class WirelessSyncService {
         var volumes: [WirelessProtocol.Volume]?
         /// "player" when Groovelight plays the music on the device, "sync" (or nil, older apps) when another app does.
         var mode: String?
+        /// May play music on this Mac, and on the other devices with Groovelight open, from the device (its device page's
+        /// switch, off until turned on).
+        var controlsPlayback: Bool?
 
         var isPlayer: Bool { mode == "player" }
     }
@@ -231,7 +234,11 @@ final class WirelessSyncService {
             requests: { [weak self] id, requests in
                 await self?.applyRequests(requests, from: id) ?? DeviceCatalog.Chosen(DeviceSelection())
             },
-            history: { [weak self] id, events in try await self?.applyHistory(events, from: id) })
+            history: { [weak self] id, events in try await self?.applyHistory(events, from: id) },
+            remoteState: { [weak self] id in await self?.remoteState(for: id) },
+            remote: { [weak self] id, command in await self?.remote(command, from: id) },
+            mayControl: { [weak self] id in await self?.controlsPlayback(id) ?? false },
+            deviceName: { [weak self] id in await self?.paired.first { $0.id == id }?.name })
     }
 
     /// Albums, artists and songs the Android app asked for (or to remove): its selection changes, as if chosen here,
@@ -269,6 +276,55 @@ final class WirelessSyncService {
         return DeviceSnapshot.Equalizer(presets: store.userPresets.map(preset), current: preset(store.preset), isEnabled: store.isEnabled)
     }
 
+    // MARK: - Playing on this Mac from a device
+
+    func controlsPlayback(_ id: String) -> Bool {
+        paired.first { $0.id == id }?.controlsPlayback == true
+    }
+
+    func setControlsPlayback(_ id: String, _ allowed: Bool) {
+        guard let index = paired.firstIndex(where: { $0.id == id }) else { return }
+        paired[index].controlsPlayback = allowed
+        save()
+    }
+
+    /// The player as the device shows it, when the device may control it.
+    private func remoteState(for id: String) -> WirelessProtocol.RemoteState? {
+        guard controlsPlayback(id) else { return nil }
+        let player = model.player
+        let item = player.current.map { item in
+            let hash = (try? model.database.writer.read { try LibraryDatabase.track($0, id: item.id) })??.artworkHash
+            return WirelessProtocol.RemoteState.Item(id: item.id, title: item.title, artist: item.artist, album: item.album, albumKey: item.albumKey,
+                                                     artworkHash: hash, duration: item.duration)
+        }
+        return WirelessProtocol.RemoteState(item: item, playing: player.state == .playing, position: player.estimatedTime(at: .now),
+                                            rate: Double(player.rate), volume: Double(player.volume), shuffle: player.isShuffled,
+                                            repeatMode: player.repeatMode.rawValue, queue: player.queue.items.prefix(5000).map(\.id),
+                                            queueIndex: player.queue.currentIndex)
+    }
+
+    private func remote(_ command: WirelessProtocol.RemoteCommand, from id: String) -> WirelessProtocol.RemoteState? {
+        guard controlsPlayback(id) else { return nil }
+        let player = model.player
+        switch command {
+        case let .play(ids, startAt, position, shuffle):
+            // The device's queue, with the songs this Mac has (all of them, unless the library changed meanwhile).
+            let tracks = (try? model.database.writer.read { db in try ids.compactMap { try LibraryDatabase.track(db, id: $0) } }) ?? []
+            let start = ids.indices.contains(startAt) ? tracks.firstIndex { $0.id == ids[startAt] } ?? 0 : 0
+            model.play(tracks, startAt: start, shuffle: shuffle, position: position > 1 ? position : 0)
+        case .pause: player.pause()
+        case .resume: player.state == .stopped ? player.togglePlayPause() : player.resume()
+        case .next: player.next()
+        case .previous: player.previous()
+        case .seek(let position): player.seek(to: position)
+        case .volume(let volume): player.volume = Float(min(max(volume, 0), 1))
+        case .shuffle(let on): player.setShuffle(on)
+        case .repeatMode(let mode): if let mode = RepeatMode(rawValue: mode) { player.repeatMode = mode }
+        case .stop: player.stop()
+        }
+        return remoteState(for: id)
+    }
+
     // MARK: - Pairing
 
     private func pairRequested(_ request: WirelessProtocol.PairRequest, _ pairing: WirelessProtocol.Pairing) {
@@ -279,6 +335,8 @@ final class WirelessSyncService {
         // with `-GLDebugSyncEverything YES`).
         if UserDefaults.standard.bool(forKey: "GLDebugAutoPair") {
             answerPairing(prompt, allow: true)
+            // `-GLDebugAllowRemote YES`: the device may play music on this Mac too.
+            if UserDefaults.standard.bool(forKey: "GLDebugAllowRemote") { setControlsPlayback(request.deviceId, true) }
             try? "\(pairing.code)".write(toFile: NSTemporaryDirectory() + "groovelight-pair-code", atomically: true, encoding: .utf8)
             Task {
                 let albums = (try? await model.database.writer.read { try LibraryDatabase.albums($0, sort: .artist) }) ?? []

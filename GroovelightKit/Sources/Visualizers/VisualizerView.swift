@@ -2,8 +2,14 @@ import MetalKit
 import PlayerCore
 import SwiftUI
 
-/// SwiftUI host for the Metal visualizers.
-public struct VisualizerView: NSViewRepresentable {
+#if os(macOS)
+typealias PlatformViewRepresentable = NSViewRepresentable
+#else
+typealias PlatformViewRepresentable = UIViewRepresentable
+#endif
+
+/// SwiftUI host for the Metal visualizers (AppKit's view on the Mac, UIKit's on iPhone and iPad).
+public struct VisualizerView: PlatformViewRepresentable {
     public var style: VisualizerStyle
     public var analyzer: SpectrumAnalyzer
     public var isPaused: Bool
@@ -16,7 +22,15 @@ public struct VisualizerView: NSViewRepresentable {
 
     public func makeCoordinator() -> Coordinator { Coordinator() }
 
-    public func makeNSView(context: Context) -> MTKView {
+    #if os(macOS)
+    public func makeNSView(context: Context) -> MTKView { makeView(context: context) }
+    public func updateNSView(_ view: MTKView, context: Context) { update(view, context: context) }
+    #else
+    public func makeUIView(context: Context) -> MTKView { makeView(context: context) }
+    public func updateUIView(_ view: MTKView, context: Context) { update(view, context: context) }
+    #endif
+
+    private func makeView(context: Context) -> MTKView {
         let view = MTKView()
         view.device = MTLCreateSystemDefaultDevice()
         view.colorPixelFormat = .bgra8Unorm
@@ -29,10 +43,6 @@ public struct VisualizerView: NSViewRepresentable {
         view.delegate = context.coordinator.renderer
         update(view, context: context)
         return view
-    }
-
-    public func updateNSView(_ view: MTKView, context: Context) {
-        update(view, context: context)
     }
 
     private func update(_ view: MTKView, context: Context) {
