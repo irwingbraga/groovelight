@@ -209,28 +209,38 @@ fun CatalogArtists() {
     val localNames = remember(local) { local.orEmpty().map { it.name }.toSet() }
     val albums by actions.library.mergedAlbums.collectAsStateWithLifecycle()
     val compilations = remember(albums) { albums.orEmpty().filter { it.isCompilation } }
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = LocalTopInset.current, bottom = 16.dp + LocalBottomInset.current)) {
-        // First, as on the Mac.
-        if (compilations.isNotEmpty()) item(key = "compilations") {
-            CompilationsRow(compilations.size) { CatalogCover(compilations.first().artworkHash, it, round = true) }
+    val all = artists.orEmpty()
+    val list = rememberLazyListState()
+    val indexed = all.size >= ALPHABET_INDEX_MINIMUM
+    val starts = remember(all, compilations.isNotEmpty()) { letterStarts(all, if (compilations.isNotEmpty()) 1 else 0) { it.name } }
+    Box(Modifier.fillMaxSize()) {
+        LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(top = LocalTopInset.current,
+            bottom = 16.dp + LocalBottomInset.current, end = if (indexed) ALPHABET_INDEX_WIDTH else 0.dp)) {
+            // First, as on the Mac.
+            if (compilations.isNotEmpty()) item(key = "compilations") {
+                CompilationsRow(compilations.size) { CatalogCover(compilations.first().artworkHash, it, round = true) }
+            }
+            items(all, key = { it.name }) { artist ->
+                ListItem(
+                    headlineContent = { Text(artist.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    supportingContent = { Text(if (artist.albums == 1) "1 album" else "${artist.albums} albums") },
+                    leadingContent = {
+                        val shared = if (artist.name in localNames) "artist:${artist.name}" else "macartist:${artist.name}"
+                        CatalogCover(artist.artworkHash, Modifier.sharedCover(shared).size(52.dp), round = true)
+                    },
+                    trailingContent = {
+                        when {
+                            (artist.name in holdings.after.artists) != (artist.name in holdings.chosen.artists) -> AvailabilityMark(Availability.WAITING)
+                            artist.name in localNames -> AvailabilityMark(Availability.ON_DEVICE)
+                        }
+                    },
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    modifier = Modifier.clickable { actions.open(if (artist.name in localNames) Route.ArtistPage(artist.name) else Route.MacArtistPage(artist.name)) },
+                )
+            }
         }
-        items(artists.orEmpty(), key = { it.name }) { artist ->
-            ListItem(
-                headlineContent = { Text(artist.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                supportingContent = { Text(if (artist.albums == 1) "1 album" else "${artist.albums} albums") },
-                leadingContent = {
-                    val shared = if (artist.name in localNames) "artist:${artist.name}" else "macartist:${artist.name}"
-                    CatalogCover(artist.artworkHash, Modifier.sharedCover(shared).size(52.dp), round = true)
-                },
-                trailingContent = {
-                    when {
-                        (artist.name in holdings.after.artists) != (artist.name in holdings.chosen.artists) -> AvailabilityMark(Availability.WAITING)
-                        artist.name in localNames -> AvailabilityMark(Availability.ON_DEVICE)
-                    }
-                },
-                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                modifier = Modifier.clickable { actions.open(if (artist.name in localNames) Route.ArtistPage(artist.name) else Route.MacArtistPage(artist.name)) },
-            )
+        if (indexed) {
+            AlphabetIndex(starts, { list.scrollToItem(it) }, Modifier.align(Alignment.TopEnd).padding(top = LocalTopInset.current, bottom = LocalBottomInset.current))
         }
     }
 }
@@ -240,9 +250,34 @@ fun CatalogSongs() {
     val actions = LocalActions.current
     val tracks by actions.library.mergedTracks.collectAsStateWithLifecycle()
     val albums by actions.library.catalogAlbumsByKey.collectAsStateWithLifecycle()
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = LocalTopInset.current, bottom = 16.dp + LocalBottomInset.current)) {
-        items(tracks.orEmpty(), key = { it.id }) { track ->
-            CatalogSongRow(track, albums[track.albumKey], showCover = true)
+    val order by actions.library.songOrder.collectAsStateWithLifecycle()
+    val all = tracks.orEmpty()
+    val list = rememberLazyListState()
+    // Sorted by name, the A to Z index; by date added, the fast scroller.
+    val indexed = order != LibraryModel.SongOrder.RECENT && all.size >= ALPHABET_INDEX_MINIMUM
+    val starts = remember(all, order, albums) {
+        letterStarts(all) { track ->
+            when (order) {
+                LibraryModel.SongOrder.ARTIST -> track.artist
+                LibraryModel.SongOrder.ALBUM -> albums[track.albumKey]?.title ?: ""
+                else -> track.title
+            }
+        }
+    }
+    Box(Modifier.fillMaxSize()) {
+        LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(top = LocalTopInset.current,
+            bottom = 16.dp + LocalBottomInset.current, end = if (indexed) ALPHABET_INDEX_WIDTH else 0.dp)) {
+            items(all, key = { it.id }) { track ->
+                CatalogSongRow(track, albums[track.albumKey], showCover = true)
+            }
+        }
+        val edges = Modifier.align(Alignment.TopEnd).padding(top = LocalTopInset.current, bottom = LocalBottomInset.current)
+        if (indexed) {
+            AlphabetIndex(starts, { list.scrollToItem(it) }, edges)
+        } else {
+            val first by remember { derivedStateOf { list.firstVisibleItemIndex } }
+            val visible by remember { derivedStateOf { list.layoutInfo.visibleItemsInfo.size } }
+            FastScroller(all.size, first, visible, list.isScrollInProgress, { list.scrollToItem(it) }, { null }, edges)
         }
     }
 }

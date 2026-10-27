@@ -268,8 +268,11 @@ private fun ArtistsSection() {
     val compilations = remember(albums) { albums.orEmpty().filter { it.isCompilation } }
     val list = rememberLazyListState()
     val all = artists.orEmpty()
+    val indexed = all.size >= ALPHABET_INDEX_MINIMUM
+    val starts = remember(all, compilations.isNotEmpty()) { letterStarts(all, if (compilations.isNotEmpty()) 1 else 0) { it.name } }
     Box(Modifier.fillMaxSize()) {
-        LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(top = LocalTopInset.current, bottom = 16.dp + LocalBottomInset.current)) {
+        LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(top = LocalTopInset.current,
+            bottom = 16.dp + LocalBottomInset.current, end = if (indexed) ALPHABET_INDEX_WIDTH else 0.dp)) {
             // First, as on the Mac.
             if (compilations.isNotEmpty()) item(key = "compilations") {
                 CompilationsRow(compilations.size) { Cover(actions.library.cover(compilations.first().artworkHash), it, round = true) }
@@ -284,10 +287,9 @@ private fun ArtistsSection() {
                 )
             }
         }
-        val first by remember { derivedStateOf { list.firstVisibleItemIndex } }
-        val visible by remember { derivedStateOf { list.layoutInfo.visibleItemsInfo.size } }
-        FastScroller(all.size, first, visible, list.isScrollInProgress, { list.scrollToItem(it) },
-            { all.getOrNull(it)?.name?.let(::indexLetter) }, Modifier.align(Alignment.TopEnd).padding(top = LocalTopInset.current, bottom = LocalBottomInset.current))
+        if (indexed) {
+            AlphabetIndex(starts, { list.scrollToItem(it) }, Modifier.align(Alignment.TopEnd).padding(top = LocalTopInset.current, bottom = LocalBottomInset.current))
+        }
     }
 }
 
@@ -330,8 +332,20 @@ private fun SongsSection() {
     LaunchedEffect(Unit) { actions.library.songOrder.drop(1).collect { list.scrollToItem(0) } }
     val all = tracks.orEmpty()
     val play = { start: Int, shuffle: Boolean? -> actions.player.play(actions.library.mediaItems(all, "Songs"), start, shuffle) }
+    // Sorted by name, the A to Z index; by date added, the fast scroller.
+    val indexed = order != LibraryModel.SongOrder.RECENT && all.size >= ALPHABET_INDEX_MINIMUM
+    val starts = remember(all, order, albums) {
+        letterStarts(all, offset = 1) { track ->
+            when (order) {
+                LibraryModel.SongOrder.ARTIST -> track.artist
+                LibraryModel.SongOrder.ALBUM -> albums[track.albumKey]?.title ?: ""
+                else -> track.title
+            }
+        }
+    }
     Box(Modifier.fillMaxSize()) {
-        LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(top = LocalTopInset.current, bottom = 16.dp + LocalBottomInset.current)) {
+        LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(top = LocalTopInset.current,
+            bottom = 16.dp + LocalBottomInset.current, end = if (indexed) ALPHABET_INDEX_WIDTH else 0.dp)) {
             item(key = "buttons") {
                 PlayButtons(onPlay = { play(0, false) }, onShuffle = { play(0, true) }, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
             }
@@ -339,19 +353,14 @@ private fun SongsSection() {
                 SongRow(track, listOfNotNull(track.artist, albums[track.albumKey]?.title).joinToString(" · "), onClick = { play(index, null) })
             }
         }
-        val first by remember { derivedStateOf { (list.firstVisibleItemIndex - 1).coerceAtLeast(0) } }
-        val visible by remember { derivedStateOf { list.layoutInfo.visibleItemsInfo.size } }
-        FastScroller(all.size, first, visible, list.isScrollInProgress, { list.scrollToItem(it + 1) },
-            { index ->
-                all.getOrNull(index)?.let { track ->
-                    when (order) {
-                        LibraryModel.SongOrder.TITLE -> indexLetter(track.title)
-                        LibraryModel.SongOrder.ARTIST -> indexLetter(track.artist)
-                        LibraryModel.SongOrder.ALBUM -> indexLetter(albums[track.albumKey]?.title ?: "")
-                        LibraryModel.SongOrder.RECENT -> null
-                    }
-                }
-            }, Modifier.align(Alignment.TopEnd).padding(top = LocalTopInset.current, bottom = LocalBottomInset.current))
+        val edges = Modifier.align(Alignment.TopEnd).padding(top = LocalTopInset.current, bottom = LocalBottomInset.current)
+        if (indexed) {
+            AlphabetIndex(starts, { list.scrollToItem(it) }, edges)
+        } else {
+            val first by remember { derivedStateOf { (list.firstVisibleItemIndex - 1).coerceAtLeast(0) } }
+            val visible by remember { derivedStateOf { list.layoutInfo.visibleItemsInfo.size } }
+            FastScroller(all.size, first, visible, list.isScrollInProgress, { list.scrollToItem(it + 1) }, { null }, edges)
+        }
     }
 }
 

@@ -623,10 +623,11 @@ fun FastScroller(
     }
 }
 
-/** The letter a name is filed under in the fast scroller ("#" for digits and symbols). */
+/** The letter a name is filed under in the A to Z index and the fast scroller: its first letter without accents ("É" under E), or "#" for digits, symbols and other scripts. */
 fun indexLetter(text: String): String {
     val first = text.trimStart().firstOrNull { it.isLetterOrDigit() } ?: return "#"
-    return if (first.isLetter()) first.uppercaseChar().toString() else "#"
+    val folded = java.text.Normalizer.normalize(first.toString(), java.text.Normalizer.Form.NFD).first().uppercaseChar()
+    return if (folded in 'A'..'Z') folded.toString() else "#"
 }
 
 /** "Hi-Res Lossless", "Lossless" or nothing, from the files on the device (as the Mac's badge). */
