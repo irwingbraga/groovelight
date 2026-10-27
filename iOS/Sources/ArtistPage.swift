@@ -396,7 +396,8 @@ struct ArtistDestination: View {
     var body: some View {
         if sizeClass == .regular {
             ArtistPage(name: name)
-        } else if onMac || (model.catalog.showsMac && !model.catalog.isHere(artist: name)) {
+        } else if onMac || model.catalog.showsMac {
+            // With the Mac's library shown, all of the artist's albums, here or not (the phone's page has only those here).
             MacArtistView(name: name)
         } else {
             ArtistDetail(name: name)
