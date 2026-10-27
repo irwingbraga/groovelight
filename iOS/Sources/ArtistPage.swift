@@ -31,34 +31,20 @@ struct ArtistColumn: View {
     var body: some View {
         let entries = entries
         let catalog = model.catalog
-        List(entries, selection: $selection) { entry in
-            HStack(spacing: 12) {
-                Group {
-                    if entry.name == ArtistSummary.compilations {
-                        CompilationsArtwork()
-                    } else if catalog.showsMac {
-                        CatalogCover(hash: entry.artworkHash, size: 40, corner: 20)
-                    } else {
-                        Cover(hash: entry.artworkHash, size: 40, corner: 20, symbol: "music.microphone")
-                    }
+        // Compilations first, then the artists with the A to Z index on the side, as in Contacts.
+        let compilations = entries.first { $0.name == ArtistSummary.compilations }
+        let artists = entries.filter { $0.name != ArtistSummary.compilations }
+        let sections = SectionIndex.sections(artists, by: \.name)
+        List(selection: $selection) {
+            if let compilations { row(compilations) }
+            ForEach(sections) { section in
+                Section {
+                    ForEach(section.items, id: \.element.id) { _, entry in row(entry) }
                 }
-                .frame(width: 40, height: 40)
-                .clipShape(.circle)
-                VStack(alignment: .leading) {
-                    Text(ArtistSummary.displayName(entry.name)).lineLimit(1)
-                    Text(entry.albums == 1 ? "1 album" : "\(entry.albums) albums").font(.caption).foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 0)
-                if catalog.showsMac, entry.name != ArtistSummary.compilations {
-                    if catalog.isWaiting(artist: entry.name) {
-                        AvailabilityMark(availability: .waiting)
-                    } else if catalog.isHere(artist: entry.name) {
-                        AvailabilityMark(availability: .onDevice)
-                    }
-                }
+                .sectionIndexLabel(section.letter)
             }
-            .tag(entry.name)
         }
+        .listSectionIndexVisibility(SectionIndex.visibility(count: artists.count, sections: sections.count))
         .overlay {
             if entries.isEmpty {
                 if catalog.showsMac, catalog.catalog == nil { MacLibraryUnavailable() } else { ContentUnavailableView("No Artists", systemImage: "music.microphone") }
@@ -77,6 +63,36 @@ struct ArtistColumn: View {
             }
             if selection == nil { selection = names.first }
         }
+    }
+
+    private func row(_ entry: Entry) -> some View {
+        let catalog = model.catalog
+        return HStack(spacing: 12) {
+            Group {
+                if entry.name == ArtistSummary.compilations {
+                    CompilationsArtwork()
+                } else if catalog.showsMac {
+                    CatalogCover(hash: entry.artworkHash, size: 40, corner: 20)
+                } else {
+                    Cover(hash: entry.artworkHash, size: 40, corner: 20, symbol: "music.microphone")
+                }
+            }
+            .frame(width: 40, height: 40)
+            .clipShape(.circle)
+            VStack(alignment: .leading) {
+                Text(ArtistSummary.displayName(entry.name)).lineLimit(1)
+                Text(entry.albums == 1 ? "1 album" : "\(entry.albums) albums").font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+            if catalog.showsMac, entry.name != ArtistSummary.compilations {
+                if catalog.isWaiting(artist: entry.name) {
+                    AvailabilityMark(availability: .waiting)
+                } else if catalog.isHere(artist: entry.name) {
+                    AvailabilityMark(availability: .onDevice)
+                }
+            }
+        }
+        .tag(entry.name)
     }
 }
 

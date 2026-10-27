@@ -81,15 +81,28 @@ struct ArtistList: View {
     let compilations: ArtistSummary?
 
     var body: some View {
+        let sections = SectionIndex.sections(artists, by: \.name)
         List {
             // Compilations first, as on the Mac.
-            ForEach((compilations.map { [$0] } ?? []) + artists) { artist in
-                NavigationLink(value: LibraryRoute.artist(artist.name)) {
-                    ArtistRow(artist: artist)
+            if let compilations {
+                NavigationLink(value: LibraryRoute.artist(compilations.name)) {
+                    ArtistRow(artist: compilations)
                 }
+            }
+            // The A to Z index on the side, as in Contacts.
+            ForEach(sections) { section in
+                Section {
+                    ForEach(section.items, id: \.element.id) { _, artist in
+                        NavigationLink(value: LibraryRoute.artist(artist.name)) {
+                            ArtistRow(artist: artist)
+                        }
+                    }
+                }
+                .sectionIndexLabel(section.letter)
             }
         }
         .listStyle(.plain)
+        .listSectionIndexVisibility(SectionIndex.visibility(count: artists.count, sections: sections.count))
     }
 }
 
@@ -108,28 +121,36 @@ struct ArtistRow: View {
     }
 }
 
-/// Songs in order; a tap plays them from there.
+/// Songs in order; a tap plays them from there. Sorted by title (Songs), they have the A to Z index on the side.
 struct SongList: View {
     @Environment(AppModel.self) private var model
     let tracks: [Track]
     var showsArtwork = false
     var showsNumbers = false
+    var indexed = false
 
     var body: some View {
+        let sections = indexed ? SectionIndex.sections(tracks, by: \.title) : [IndexSection(id: 0, letter: "", items: Array(tracks.enumerated()))]
         List {
-            ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
-                Button {
-                    model.play(tracks, startAt: index)
-                } label: {
-                    SongRow(track: track, showsArtwork: showsArtwork, showsNumber: showsNumbers,
-                            isCurrent: model.currentSongId == track.id)
+            ForEach(sections) { section in
+                Section {
+                    ForEach(section.items, id: \.element.id) { index, track in
+                        Button {
+                            model.play(tracks, startAt: index)
+                        } label: {
+                            SongRow(track: track, showsArtwork: showsArtwork, showsNumber: showsNumbers,
+                                    isCurrent: model.currentSongId == track.id)
+                        }
+                        .buttonStyle(.plain)
+                        .draggable(SongsTransfer(ids: track.id.map { [$0] } ?? []))
+                        .contextMenu { SongMenu(track: track) }
+                    }
                 }
-                .buttonStyle(.plain)
-                .draggable(SongsTransfer(ids: track.id.map { [$0] } ?? []))
-                .contextMenu { SongMenu(track: track) }
+                .sectionIndexLabel(indexed ? section.letter : nil)
             }
         }
         .listStyle(.plain)
+        .listSectionIndexVisibility(indexed ? SectionIndex.visibility(count: tracks.count, sections: sections.count) : .hidden)
     }
 }
 

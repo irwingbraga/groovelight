@@ -68,7 +68,7 @@ struct MergedLibrarySection: View {
                 switch item {
                 case .recentlyAdded: MergedAlbumGrid(albums: catalog.albums(recentFirst: true))
                 case .artists: MergedArtistList()
-                case .songs: MergedSongList(songs: catalog.songs, showsCover: true)
+                case .songs: MergedSongList(songs: catalog.songs, showsCover: true, indexed: true)
                 case .genres: MergedGenreList()
                 default: MergedAlbumGrid(albums: catalog.albums())
                 }
@@ -158,6 +158,8 @@ struct MergedArtistList: View {
     var body: some View {
         let catalog = model.catalog
         let compilations = catalog.compilations
+        let artists = catalog.artists
+        let sections = SectionIndex.sections(artists, by: \.name)
         List {
             // First, as on the Mac: albums by various artists, here and on the Mac.
             if !compilations.isEmpty {
@@ -171,25 +173,32 @@ struct MergedArtistList: View {
                     }
                 }
             }
-            ForEach(catalog.artists, id: \.name) { artist in
-            NavigationLink(value: catalog.isHere(artist: artist.name) ? LibraryRoute.artist(artist.name) : LibraryRoute.macArtist(artist.name)) {
-                HStack(spacing: 12) {
-                    CatalogCover(hash: artist.artworkHash, size: 44, corner: 22)
-                    VStack(alignment: .leading) {
-                        Text(artist.name)
-                        Text(artist.albums == 1 ? "1 album" : "\(artist.albums) albums").font(.caption).foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    if catalog.isWaiting(artist: artist.name) {
-                        AvailabilityMark(availability: .waiting)
-                    } else if catalog.isHere(artist: artist.name) {
-                        AvailabilityMark(availability: .onDevice)
+            // The A to Z index on the side, as in Contacts.
+            ForEach(sections) { section in
+                Section {
+                    ForEach(section.items, id: \.element.name) { _, artist in
+                        NavigationLink(value: catalog.isHere(artist: artist.name) ? LibraryRoute.artist(artist.name) : LibraryRoute.macArtist(artist.name)) {
+                            HStack(spacing: 12) {
+                                CatalogCover(hash: artist.artworkHash, size: 44, corner: 22)
+                                VStack(alignment: .leading) {
+                                    Text(artist.name)
+                                    Text(artist.albums == 1 ? "1 album" : "\(artist.albums) albums").font(.caption).foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                if catalog.isWaiting(artist: artist.name) {
+                                    AvailabilityMark(availability: .waiting)
+                                } else if catalog.isHere(artist: artist.name) {
+                                    AvailabilityMark(availability: .onDevice)
+                                }
+                            }
+                        }
                     }
                 }
-            }
+                .sectionIndexLabel(section.letter)
             }
         }
         .listStyle(.plain)
+        .listSectionIndexVisibility(SectionIndex.visibility(count: artists.count, sections: sections.count))
     }
 }
 
@@ -210,17 +219,34 @@ struct MergedGenreList: View {
 }
 
 /// Songs of the Mac's library: one here plays (with the rest of its album that is here) and has its menu; one that is
-/// not has a button to bring it here.
+/// not has a button to bring it here. Sorted by title (Songs), they have the A to Z index on the side.
 struct MergedSongList: View {
     @Environment(AppModel.self) private var model
     let songs: [DeviceCatalog.Song]
     var showsCover = false
+    var indexed = false
 
     var body: some View {
-        List(songs, id: \.id) { song in
-            MergedSongRow(song: song, showsCover: showsCover)
+        if indexed {
+            let sections = SectionIndex.sections(songs, by: \.title)
+            List {
+                ForEach(sections) { section in
+                    Section {
+                        ForEach(section.items, id: \.element.id) { _, song in
+                            MergedSongRow(song: song, showsCover: showsCover)
+                        }
+                    }
+                    .sectionIndexLabel(section.letter)
+                }
+            }
+            .listStyle(.plain)
+            .listSectionIndexVisibility(SectionIndex.visibility(count: songs.count, sections: sections.count))
+        } else {
+            List(songs, id: \.id) { song in
+                MergedSongRow(song: song, showsCover: showsCover)
+            }
+            .listStyle(.plain)
         }
-        .listStyle(.plain)
     }
 }
 

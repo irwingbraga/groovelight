@@ -93,7 +93,7 @@ struct SidebarItemContent: View {
                 case .recentlyAdded: AlbumGrid(albums: contents.recentlyAdded)
                 case .albums: AlbumGrid(albums: contents.albums)
                 case .artists: ArtistList(artists: contents.artists, compilations: contents.compilations)
-                case .songs: SongList(tracks: contents.songs, showsArtwork: true)
+                case .songs: SongList(tracks: contents.songs, showsArtwork: true, indexed: true)
                 case .genres: GenreList()
                 case .shelf: ShelfContent()
                 case .allPlaylists: PlaylistList(playlists: contents.playlists, lovedCount: contents.lovedCount)
