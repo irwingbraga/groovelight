@@ -204,6 +204,29 @@ struct AnimatedArtworkBackdrop: View {
     }
 }
 
+/// Shuffle or Repeat beside Now Playing's transport, as in the player bar: bright on a light circle while on, dimmed
+/// while off.
+private struct NowPlayingModeButton: View {
+    var systemImage: String
+    var help: String
+    var isOn: Bool
+    var scale: CGFloat
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 17 * scale, weight: .semibold))
+                .contentTransition(.symbolEffect(.replace))
+                .foregroundStyle(.white.opacity(isOn ? 1 : 0.55))
+                .frame(width: 34 * scale, height: 34 * scale)
+                .background(Circle().fill(.white.opacity(isOn ? 0.2 : 0)))
+                .contentShape(.circle)
+        }
+        .help(help)
+    }
+}
+
 struct BigTransport: View {
     var scale: CGFloat = 1
     @Environment(AppModel.self) private var model
@@ -231,7 +254,11 @@ struct BigTransport: View {
                 .foregroundStyle(.white.opacity(0.6))
             }
 
-            HStack(spacing: 44 * scale) {
+            HStack(spacing: 36 * scale) {
+                NowPlayingModeButton(systemImage: "shuffle", help: "Shuffle" + model.shortcuts.hint(.shuffle), isOn: player.isShuffled,
+                                     scale: scale) {
+                    player.setShuffle(!player.isShuffled)
+                }
                 Button { player.previous() } label: { Image(systemName: "backward.fill") }
                 Button { player.togglePlayPause() } label: {
                     Image(systemName: player.state == .playing ? "pause.fill" : "play.fill")
@@ -239,6 +266,14 @@ struct BigTransport: View {
                         .contentTransition(.symbolEffect(.replace))
                 }
                 Button { player.next() } label: { Image(systemName: "forward.fill") }
+                NowPlayingModeButton(systemImage: player.repeatMode == .one ? "repeat.1" : "repeat",
+                                     help: "Repeat" + model.shortcuts.hint(.cycleRepeat), isOn: player.repeatMode != .off, scale: scale) {
+                    player.repeatMode = switch player.repeatMode {
+                    case .off: .all
+                    case .all: .one
+                    case .one: .off
+                    }
+                }
             }
             .font(.system(size: 28 * scale))
             .buttonStyle(.plain)
