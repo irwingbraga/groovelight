@@ -42,6 +42,8 @@ public final class WirelessSyncServer: @unchecked Sendable {
         public var deviceName: @Sendable (String) async -> String?
         /// Whether a device may reach this Mac away from home (over Tailscale).
         public var mayConnectAway: @Sendable (String) async -> Bool
+        /// A song's lyrics (LRC or plain text), for a device showing a song it does not have (playing on the Mac).
+        public var lyrics: @Sendable (Int64) async -> String?
 
         public init(info: @escaping @Sendable () -> WirelessProtocol.Info,
                     pairRequested: @escaping @Sendable (WirelessProtocol.PairRequest, WirelessProtocol.Pairing) async -> Void,
@@ -63,7 +65,8 @@ public final class WirelessSyncServer: @unchecked Sendable {
                     remote: @escaping @Sendable (String, WirelessProtocol.RemoteCommand) async -> WirelessProtocol.RemoteState? = { _, _ in nil },
                     mayControl: @escaping @Sendable (String) async -> Bool = { _ in false },
                     deviceName: @escaping @Sendable (String) async -> String? = { _ in nil },
-                    mayConnectAway: @escaping @Sendable (String) async -> Bool = { _ in false }) {
+                    mayConnectAway: @escaping @Sendable (String) async -> Bool = { _ in false },
+                    lyrics: @escaping @Sendable (Int64) async -> String? = { _ in nil }) {
             self.info = info
             self.pairRequested = pairRequested
             self.pairStatus = pairStatus
@@ -83,6 +86,7 @@ public final class WirelessSyncServer: @unchecked Sendable {
             self.mayControl = mayControl
             self.mayConnectAway = mayConnectAway
             self.deviceName = deviceName
+            self.lyrics = lyrics
         }
     }
 
@@ -244,6 +248,10 @@ public final class WirelessSyncServer: @unchecked Sendable {
             guard let data = backend.cover(parts[2], 300) else { return .error(404, "no cover") }
             return LocalHTTPServer.Response(headers: ["Content-Type": "image/jpeg", WirelessProtocol.Header.sha256: Self.sha256(data)],
                                             body: .data(data))
+        case ("GET", 3, "catalog") where parts[1] == "lyrics":
+            guard request.secure else { return .error(403, "HTTPS only") }
+            guard let id = Int64(parts[2]), let lyrics = await backend.lyrics(id) else { return .error(404, "no lyrics") }
+            return LocalHTTPServer.Response(headers: ["Content-Type": "text/plain; charset=utf-8"], body: .data(Data(lyrics.utf8)))
         case ("POST", 1, "requests"):
             guard request.secure else { return .error(403, "HTTPS only") }
             guard let body = try? WirelessProtocol.decoder.decode(WirelessProtocol.Requests.self, from: request.body) else {

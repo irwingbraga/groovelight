@@ -338,8 +338,11 @@ public enum WirelessProtocol {
             public var albumKey: String?
             public var artworkHash: String?
             public var duration: Double
+            /// Loved where it plays (nil from an older app).
+            public var loved: Bool?
 
-            public init(id: Int64, title: String, artist: String, album: String, albumKey: String?, artworkHash: String?, duration: Double) {
+            public init(id: Int64, title: String, artist: String, album: String, albumKey: String?, artworkHash: String?, duration: Double,
+                        loved: Bool? = nil) {
                 self.id = id
                 self.title = title
                 self.artist = artist
@@ -347,6 +350,7 @@ public enum WirelessProtocol {
                 self.albumKey = albumKey
                 self.artworkHash = artworkHash
                 self.duration = duration
+                self.loved = loved
             }
         }
 

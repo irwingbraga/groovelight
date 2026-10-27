@@ -241,7 +241,20 @@ final class WirelessSyncService {
             remote: { [weak self] id, command in await self?.remote(command, from: id) },
             mayControl: { [weak self] id in await self?.controlsPlayback(id) ?? false },
             deviceName: { [weak self] id in await self?.paired.first { $0.id == id }?.name },
-            mayConnectAway: { [weak self] id in await self?.connectsAway(id) ?? false })
+            mayConnectAway: { [weak self] id in await self?.connectsAway(id) ?? false },
+            lyrics: { [weak self] id in await self?.lyrics(of: id) })
+    }
+
+    /// A song's lyrics for a device showing it without having it (music playing on this Mac, or on another device
+    /// through it): looked up online first when the library has none, as when the song plays here.
+    private func lyrics(of id: Int64) async -> String? {
+        let database = model.database
+        let found = try? await database.writer.read { try LibraryDatabase.track($0, id: id) }
+        guard let track = found ?? nil else { return nil }
+        if let lyrics = track.displayLyrics { return lyrics }
+        guard await model.metadata.ensureLyrics(for: track) else { return nil }
+        let fetched = try? await database.writer.read { try LibraryDatabase.track($0, id: id) }
+        return (fetched ?? nil)?.displayLyrics
     }
 
     /// Albums, artists and songs the Android app asked for (or to remove): its selection changes, as if chosen here,
@@ -311,9 +324,9 @@ final class WirelessSyncService {
         guard controlsPlayback(id) else { return nil }
         let player = model.player
         let item = player.current.map { item in
-            let hash = (try? model.database.writer.read { try LibraryDatabase.track($0, id: item.id) })??.artworkHash
+            let track = (try? model.database.writer.read { try LibraryDatabase.track($0, id: item.id) }) ?? nil
             return WirelessProtocol.RemoteState.Item(id: item.id, title: item.title, artist: item.artist, album: item.album, albumKey: item.albumKey,
-                                                     artworkHash: hash, duration: item.duration)
+                                                     artworkHash: track?.artworkHash, duration: item.duration, loved: track?.isLoved)
         }
         return WirelessProtocol.RemoteState(item: item, playing: player.state == .playing, position: player.estimatedTime(at: .now),
                                             rate: Double(player.rate), volume: Double(player.volume), shuffle: player.isShuffled,

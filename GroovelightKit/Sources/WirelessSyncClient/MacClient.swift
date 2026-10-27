@@ -163,6 +163,16 @@ public final class MacClient: Sendable {
         return data
     }
 
+    /// A song's lyrics from the Mac's library (LRC or plain text; the Mac looks them up online first when it has none),
+    /// for a song playing elsewhere that this device does not have; nil when there are none.
+    public func catalogLyrics(_ id: Int64) async throws -> String? {
+        let request = try makeRequest("GET", "/catalog/lyrics/\(id)", signed: true, timeout: 30)
+        let (data, response) = try await session.data(for: request)
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+        let text = String(decoding: data, as: UTF8.self)
+        return text.isEmpty ? nil : text
+    }
+
     /// Asks the Mac to add albums, artists or songs to this device (or take them off); answers with what its selection
     /// holds then. The Mac then asks this device to sync.
     public func requests(_ requests: [TransferRequest]) async throws -> DeviceCatalog.Chosen {
