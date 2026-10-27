@@ -655,6 +655,19 @@ class PlayerModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
+    /** Lyrics of the Mac's songs not on this device, fetched for Now Playing while they play elsewhere (by song id). */
+    val macLyrics = MutableStateFlow<Map<Long, String>>(emptyMap())
+    private val lyricsAsked = mutableSetOf<Long>()
+
+    /** Fetches a song's lyrics from the Mac once (the Mac looks them up online first when it has none); they land in `macLyrics`. */
+    fun fetchLyrics(id: Long) {
+        if (!lyricsAsked.add(id)) return
+        viewModelScope.launch {
+            val text = Transfers.fetchLyrics(getApplication(), id)
+            if (text != null) macLyrics.value = macLyrics.value + (id to text) else lyricsAsked.remove(id)
+        }
+    }
+
     /**
      * The cover of a song playing elsewhere: this device's (its album is here), else the Mac's library's as the Library
      * shows it, fetched from the Mac the first time.

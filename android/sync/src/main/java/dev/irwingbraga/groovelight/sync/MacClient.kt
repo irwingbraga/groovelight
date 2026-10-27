@@ -289,6 +289,20 @@ class MacClient(private val host: String, private val port: Int, private val dev
         }
     }
 
+    /**
+     * A song's lyrics from the Mac's library (LRC or plain text; the Mac looks them up online first when it has none), for
+     * a song playing elsewhere that the device does not have; null when there are none.
+     */
+    fun catalogLyrics(id: Long): String? {
+        val connection = open("GET", "/catalog/lyrics/$id", ByteArray(0), signed = true, timeout = 30_000)
+        try {
+            if (connection.responseCode != 200) return null
+            return connection.inputStream.use { it.readBytes() }.toString(Charsets.UTF_8).ifEmpty { null }
+        } finally {
+            connection.disconnect()
+        }
+    }
+
     /** Sends loves and ratings made on the device (`[{id, trackId, kind, value, atMs}]`) to the Mac's library. */
     fun history(events: JSONArray): JSONObject = json("POST", "/history", JSONObject().put("events", events))
 

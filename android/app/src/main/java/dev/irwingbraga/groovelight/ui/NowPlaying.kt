@@ -148,7 +148,8 @@ private enum class Panel { COVER, LYRICS, QUEUE }
  * to `onDrag` (null when let go), which moves the transition with the finger.
  */
 @Composable
-fun NowPlaying(transition: Transition<Boolean>, player: PlayerModel, onClose: () -> Unit, onDrag: (Float?) -> Unit) {
+fun NowPlaying(transition: Transition<Boolean>, player: PlayerModel, onClose: () -> Unit, onDrag: (Float?) -> Unit,
+               requestedPanel: String? = null, onPanelShown: () -> Unit = {}) {
     var backProgress by remember { mutableFloatStateOf(0f) }
     PredictiveBackHandler(enabled = transition.currentState && transition.targetState) { events ->
         try {
@@ -189,7 +190,7 @@ fun NowPlaying(transition: Transition<Boolean>, player: PlayerModel, onClose: ()
                         onDrag(null)
                     }),
             ) {
-                NowPlayingContent(song, player, onClose)
+                NowPlayingContent(song, player, onClose, requestedPanel, onPanelShown)
             }
         }
     }
@@ -235,7 +236,8 @@ fun Modifier.sharedPlayer(open: Boolean): Modifier {
 }
 
 @Composable
-private fun NowPlayingContent(song: PlayerModel.NowPlaying, player: PlayerModel, onClose: () -> Unit) {
+private fun NowPlayingContent(song: PlayerModel.NowPlaying, player: PlayerModel, onClose: () -> Unit, requestedPanel: String?,
+                              onPanelShown: () -> Unit) {
     val cover = song.artwork?.path?.let(::File)
     val colors = rememberArtworkColors(cover)
     val background by animateColorAsState(colors?.background ?: Color(0xFF151A2C), tween(600), label = "background")
@@ -260,11 +262,17 @@ private fun NowPlayingContent(song: PlayerModel.NowPlaying, player: PlayerModel,
             var details by rememberSaveable { mutableStateOf(false) }
             var dialog by rememberSaveable { mutableStateOf<Dialog?>(null) }
             val togglePanel = { shown: Panel -> panel = if (panel == shown) Panel.COVER else shown }
+            // Lyrics or Up Next asked for from the player bar (wide windows).
+            LaunchedEffect(requestedPanel) {
+                requestedPanel?.let { asked -> Panel.entries.firstOrNull { it.name == asked }?.let { panel = it } }
+                if (requestedPanel != null) onPanelShown()
+            }
             // The layout follows the window, not the phone's orientation: split screen beside a map in a car leaves a
             // half or a third of a landscape screen.
             BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding()) {
             val layout = when {
                 maxHeight < 560.dp && maxWidth < 640.dp -> Layout.COMPACT
+                maxWidth >= 840.dp && maxHeight >= 560.dp -> Layout.TABLET
                 maxWidth >= 640.dp && maxWidth > maxHeight -> Layout.SIDE_BY_SIDE
                 maxWidth < 360.dp -> Layout.COMPACT
                 else -> Layout.PORTRAIT
@@ -276,6 +284,19 @@ private fun NowPlayingContent(song: PlayerModel.NowPlaying, player: PlayerModel,
                     panels = if (layout == Layout.COMPACT) panel else null, onPanel = togglePanel, showSource = roomForSource)
                 if (layout == Layout.COMPACT) {
                     CompactBody(panel, song, player, cover, wide, onDetails = { details = true }, onDialog = { dialog = it })
+                } else if (layout == Layout.TABLET) {
+                    // As on the iPad: the cover with the song and the controls, and beside them the lyrics, or Up Next.
+                    val side = if (panel == Panel.QUEUE) Panel.QUEUE else Panel.LYRICS
+                    Row(Modifier.fillMaxSize().padding(horizontal = 32.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(48.dp)) {
+                        Column(Modifier.weight(1f).fillMaxHeight(), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Column(Modifier.widthIn(max = 520.dp).fillMaxHeight()) {
+                                Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { PanelContent(Panel.COVER, song, player, cover) }
+                                Controls(song, player, side, onPanel = { panel = if (it == Panel.QUEUE && panel == Panel.QUEUE) Panel.LYRICS else it },
+                                    onDetails = { details = true }, onDialog = { dialog = it })
+                            }
+                        }
+                        Box(Modifier.weight(1f).fillMaxHeight()) { PanelContent(side, song, player, cover) }
+                    }
                 } else if (layout == Layout.SIDE_BY_SIDE) {
                     Row(Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(32.dp)) {
                         Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) { PanelContent(panel, song, player, cover) }
@@ -285,10 +306,12 @@ private fun NowPlayingContent(song: PlayerModel.NowPlaying, player: PlayerModel,
                         }
                     }
                 } else {
-                    Box(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 24.dp), contentAlignment = Alignment.Center) {
+                    // A tall unfolded screen keeps the phone's proportions in its middle.
+                    Box(Modifier.weight(1f).widthIn(max = 640.dp).fillMaxWidth().align(Alignment.CenterHorizontally).padding(horizontal = 24.dp),
+                        contentAlignment = Alignment.Center) {
                         PanelContent(panel, song, player, cover)
                     }
-                    Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 12.dp)) {
+                    Column(Modifier.widthIn(max = 640.dp).align(Alignment.CenterHorizontally).padding(horizontal = 24.dp).padding(bottom = 12.dp)) {
                         Controls(song, player, panel, onPanel = { panel = if (panel == it) Panel.COVER else it }, onDetails = { details = true },
                             onDialog = { dialog = it })
                     }
@@ -391,10 +414,11 @@ private fun artistOf(song: PlayerModel.NowPlaying): String? =
 private fun PanelContent(panel: Panel, song: PlayerModel.NowPlaying, player: PlayerModel, cover: File?) {
     AnimatedContent(panel, transitionSpec = { fadeIn(tween(220)) togetherWith fadeOut(tween(180)) }, label = "panel") { shown ->
         when (shown) {
-            Panel.COVER -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Panel.COVER -> BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 // Paused, the cover steps back a little.
                 val scale by animateFloatAsState(if (song.isPlaying || song.isBuffering) 1f else 0.86f, spring(dampingRatio = 0.6f), label = "cover")
-                Cover(cover, Modifier.sharedCover(PLAYER_COVER).widthIn(max = 480.dp).fillMaxWidth().graphicsLayer { scaleX = scale; scaleY = scale }
+                // Square, as big as the room allows: a short screen (a passport-shaped cover screen) has less height than width.
+                Cover(cover, Modifier.sharedCover(PLAYER_COVER).size(minOf(maxWidth, maxHeight, 480.dp)).graphicsLayer { scaleX = scale; scaleY = scale }
                     .shadow(24.dp, RoundedCornerShape(12.dp)), corner = 12.dp)
             }
             Panel.LYRICS -> LyricsPanel(song, player)
@@ -562,13 +586,19 @@ private fun SeekBar(player: PlayerModel) {
 
 /**
  * The song's lyrics: synced ones follow the song (the line sung is bright and kept in view; tapping a line goes
- * there), plain ones scroll.
+ * there), plain ones scroll. A song playing elsewhere that this device does not have gets them from the Mac.
  */
 @Composable
 private fun LyricsPanel(song: PlayerModel.NowPlaying, player: PlayerModel) {
     val actions = LocalActions.current
     val track by remember(song.id) { song.id?.let { actions.library.track(it) } ?: flowOf(null) }.collectAsStateWithLifecycle(null)
-    val lyrics = remember(track?.lyrics) { Lyrics.parse(track?.lyrics) }
+    val fromMac by player.macLyrics.collectAsStateWithLifecycle()
+    val text = track?.lyrics?.takeIf { it.isNotBlank() } ?: song.id?.let { fromMac[it] }
+    LaunchedEffect(song.id, song.playingOn, track?.lyrics) {
+        val id = song.id ?: return@LaunchedEffect
+        if (song.playingOn != null && track?.lyrics.isNullOrBlank()) player.fetchLyrics(id)
+    }
+    val lyrics = remember(text) { Lyrics.parse(text) }
     when (lyrics) {
         null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text("No lyrics for this song", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -969,7 +999,7 @@ private fun RatingDialog(id: Long, onDismiss: () -> Unit) {
     )
 }
 
-private enum class Layout { PORTRAIT, SIDE_BY_SIDE, COMPACT }
+private enum class Layout { PORTRAIT, SIDE_BY_SIDE, TABLET, COMPACT }
 
 /**
  * Now Playing in a small window (a half or a third of a landscape screen, beside a map): the controls on their own, or

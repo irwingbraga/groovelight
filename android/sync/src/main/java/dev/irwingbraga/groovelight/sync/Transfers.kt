@@ -132,6 +132,23 @@ object Transfers {
         return true
     }
 
+    /**
+     * A song's lyrics from the Mac, over the covers' connection: for a song playing elsewhere that this device does not
+     * have. Null when the Mac has none or is not reachable.
+     */
+    suspend fun fetchLyrics(context: Context, id: Long): String? = fetching.withLock {
+        val client = coverClient ?: run {
+            if (System.currentTimeMillis() < unreachableUntil) return null
+            runCatching { withContext(Dispatchers.IO) { SyncEngine(context, Prefs(context)).connect() } }.getOrNull().also {
+                if (it == null) unreachableUntil = System.currentTimeMillis() + 60_000
+            }
+        } ?: return null
+        coverClient = client
+        val lyrics = runCatching { withContext(Dispatchers.IO) { client.catalogLyrics(id) } }
+        if (lyrics.isFailure) coverClient = null
+        lyrics.getOrNull()
+    }
+
     /** A new chance for covers that could not be fetched (the Mac is reachable again). */
     fun retryCovers() = missing.clear()
 

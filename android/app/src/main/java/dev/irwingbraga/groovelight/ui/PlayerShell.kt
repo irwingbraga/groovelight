@@ -1,6 +1,13 @@
 package dev.irwingbraga.groovelight.ui
 
 import androidx.compose.animation.ExitTransition
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.media3.common.Player
+import kotlinx.coroutines.flow.flowOf
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.core.SeekableTransitionState
 import androidx.compose.animation.core.rememberTransition
@@ -38,6 +45,7 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.ShortNavigationBar
 import androidx.compose.material3.ShortNavigationBarItem
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.Color
 import androidx.activity.compose.BackHandler
@@ -68,6 +76,8 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -98,6 +108,9 @@ import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.material3.Surface
+import androidx.compose.material3.FilledIconButton
+import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.painterResource
@@ -246,10 +259,20 @@ fun PlayerShell(sync: SyncViewModel, player: PlayerModel = viewModel(), library:
         else -> NavigationSuiteType.NavigationBar
     }
     val bar = layout == NavigationSuiteType.NavigationBar || layout == NavigationSuiteType.ShortNavigationBarCompact
+    // An unfolded foldable or a tablet held wide: the iPad's sidebar in place of the tabs. From a medium width, the
+    // iPad's player bar in place of the mini player.
+    val sidebar = windowWidth >= 840f && !compact.short
+    val playerBar = !bar && windowWidth >= 600f && !compact.short
+    var librarySection by rememberSaveable { mutableStateOf(LibrarySection.ALBUMS) }
+    // Lyrics or Up Next asked for from the player bar, for Now Playing to open on.
+    var openPanel by remember { mutableStateOf<String?>(null) }
     // Bars are drawn over the content, as glass (what scrolls behind them shows through, blurred): their height, once
     // measured, is left free at the bottom of every list.
     val haze = rememberHazeState()
     var barHeight by remember { mutableStateOf(0.dp) }
+    // The mini player's (or the player bar's) height as drawn: larger text or display sizes make it taller than planned.
+    var playerHeight by remember { mutableStateOf(0.dp) }
+    val density = LocalDensity.current
     // The Shelf fills a short (landscape) screen, as Cover Flow did: no mini player over it.
     val shelfFullScreen = tab == Tab.SHELF && stacks.getValue(Tab.SHELF).lastOrNull() == Route.Shelf &&
         !window.isHeightAtLeastBreakpoint(WindowSizeClass.HEIGHT_DP_MEDIUM_LOWER_BOUND)
@@ -277,18 +300,51 @@ fun PlayerShell(sync: SyncViewModel, player: PlayerModel = viewModel(), library:
     // A rail leaves the gesture bar to the content.
     val systemBottom = if (bar) 0.dp else WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val above = systemBottom + if (bar) barHeight else 0.dp
-    val bottomInset = above + if (showMini) (if (compact.short) 64.dp else 80.dp) else 0.dp
+    // The player bar is docked: it covers the gesture bar itself, and the page ends at its top edge.
+    val bottomInset = when {
+        !showMini -> above
+        playerBar -> maxOf(systemBottom + 76.dp, playerHeight)
+        else -> above + maxOf(if (compact.short) 64.dp else 80.dp, playerHeight + 8.dp)
+    }
     val select = { item: Tab ->
         if (tab == item) stacks.getValue(item).run { while (size > 1) removeAt(lastIndex) } else tab = item
     }
+    // The sidebar's places: the tabs, the Library's sections, and Loved Songs and the playlists (opened over Playlists).
+    val libraryStack = stacks.getValue(Tab.LIBRARY)
+    val place: SidebarPlace = when (tab) {
+        Tab.SEARCH -> SidebarPlace.Search
+        Tab.SHELF -> SidebarPlace.Shelf
+        Tab.SETTINGS -> SidebarPlace.Settings
+        Tab.LIBRARY -> when (val page = libraryStack.getOrNull(1)) {
+            Route.LovedSongs -> SidebarPlace.LovedSongs
+            is Route.PlaylistPage -> SidebarPlace.Playlist(page.id)
+            else -> SidebarPlace.Section(librarySection)
+        }
+    }
+    val choose: (SidebarPlace) -> Unit = { chosen ->
+        when (chosen) {
+            SidebarPlace.Search -> select(Tab.SEARCH)
+            SidebarPlace.Shelf -> select(Tab.SHELF)
+            SidebarPlace.Settings -> select(Tab.SETTINGS)
+            else -> {
+                tab = Tab.LIBRARY
+                libraryStack.run { while (size > 1) removeAt(lastIndex) }
+                when (chosen) {
+                    is SidebarPlace.Section -> librarySection = chosen.section
+                    is SidebarPlace.Playlist -> { librarySection = LibrarySection.PLAYLISTS; libraryStack.add(Route.PlaylistPage(chosen.id)) }
+                    else -> { librarySection = LibrarySection.PLAYLISTS; libraryStack.add(Route.LovedSongs) }
+                }
+            }
+        }
+    }
 
     CompositionLocalProvider(LocalActions provides actions, LocalNowPlaying provides nowPlaying, LocalBottomInset provides bottomInset,
-        LocalWindowShape provides compact) {
+        LocalWindowShape provides compact, LocalLibrarySection provides if (sidebar) librarySection else null) {
         SharedTransitionLayout(Modifier.fillMaxSize()) {
         val playerLayout = this
         Box(Modifier.fillMaxSize()) {
             NavigationSuiteScaffold(
-                layoutType = if (bar) NavigationSuiteType.None else layout,
+                layoutType = if (bar || sidebar) NavigationSuiteType.None else layout,
                 navigationSuiteItems = {
                     Tab.entries.forEach { item ->
                         item(
@@ -301,7 +357,9 @@ fun PlayerShell(sync: SyncViewModel, player: PlayerModel = viewModel(), library:
                     }
                 },
             ) {
-                Box(Modifier.fillMaxSize()) {
+                Row(Modifier.fillMaxSize()) {
+                if (sidebar) Sidebar(place, choose)
+                Box(Modifier.weight(1f).fillMaxHeight()) {
                     Box(Modifier.fillMaxSize().hazeSource(haze)) {
                     // Back from another tab's first screen goes to the Library before leaving the app.
                     BackHandler(enabled = tab != Tab.LIBRARY && stacks.getValue(tab).size == 1) { tab = Tab.LIBRARY }
@@ -356,15 +414,20 @@ fun PlayerShell(sync: SyncViewModel, player: PlayerModel = viewModel(), library:
                     }
                     }
                     GroovelightTheme(dark = onShelf || Appearance.isDark()) {
-                    Column(Modifier.align(Alignment.BottomCenter).padding(bottom = above)) {
+                    Column(Modifier.align(Alignment.BottomCenter).padding(bottom = if (playerBar && showMini) 0.dp else above)) {
                         SnackbarHost(snackbar)
-                        AnimatedVisibility(showMini, enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut()) {
+                        AnimatedVisibility(showMini, enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut(),
+                            modifier = Modifier.onSizeChanged { if (it.height > 0) playerHeight = with(density) { it.height.toDp() } }) {
                             // Gone while Now Playing is open: it grows into it, and comes back out of it.
                             playerTransition.AnimatedVisibility(visible = { !it }, enter = EnterTransition.None, exit = ExitTransition.None) {
                                 CompositionLocalProvider(LocalSharedTransition provides playerLayout, LocalPageScope provides this) {
                                     nowPlaying?.let {
-                                        MiniPlayer(it, player, haze, onOpen = { expanded = true }, onClose = closePlayer,
-                                            onPeek = { fraction -> follow(true, fraction) })
+                                        if (playerBar) {
+                                            PlayerBar(it, player, onOpen = { panel -> openPanel = panel; expanded = true }, onClose = closePlayer)
+                                        } else {
+                                            MiniPlayer(it, player, haze, onOpen = { expanded = true }, onClose = closePlayer,
+                                                onPeek = { fraction -> follow(true, fraction) })
+                                        }
                                     }
                                 }
                             }
@@ -376,9 +439,11 @@ fun PlayerShell(sync: SyncViewModel, player: PlayerModel = viewModel(), library:
                     }
                     }
                 }
+                }
             }
             CompositionLocalProvider(LocalSharedTransition provides playerLayout) {
-                NowPlaying(playerTransition, player = player, onClose = { expanded = false }, onDrag = { fraction -> follow(false, fraction) })
+                NowPlaying(playerTransition, player = player, onClose = { expanded = false }, onDrag = { fraction -> follow(false, fraction) },
+                    requestedPanel = openPanel, onPanelShown = { openPanel = null })
             }
         }
         }
@@ -515,6 +580,125 @@ private fun MiniPlayer(song: PlayerModel.NowPlaying, player: PlayerModel, haze: 
             .clip(RoundedCornerShape(1.dp)).background(MaterialTheme.colorScheme.primary))
     }
     if (sheet) PlayerSheet(song, player, onOpen = onOpen, onClose = onClose) { sheet = false }
+}
+
+/**
+ * The mini player of wide windows, docked along the bottom of the page as Material's large screen media apps have it: a
+ * tonal surface the width of the page (under the gesture bar too), how far the song is as a line along its top edge, the
+ * song on the left (its cover, title and artist), the transport in the middle (shuffle, previous, play, next, repeat), and
+ * Lyrics, Play On and Up Next on the right. Controls drop out as the page narrows. Tapping the song opens Now Playing
+ * (Lyrics and Up Next open it on theirs: `onOpen` gets the panel), swiping the bar up opens it too, down closes the
+ * player, and long press offers its sheet.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun PlayerBar(song: PlayerModel.NowPlaying, player: PlayerModel, onOpen: (String?) -> Unit, onClose: () -> Unit) {
+    val actions = LocalActions.current
+    val progress by player.progress.collectAsStateWithLifecycle(PlayerModel.Progress(0, 0))
+    val shuffle by player.shuffle.collectAsStateWithLifecycle()
+    val path by player.audioPath.collectAsStateWithLifecycle()
+    val track by remember(song.id) { song.id?.let { actions.library.track(it) } ?: flowOf(null) }.collectAsStateWithLifecycle(null)
+    val problem = song.error ?: path.unsupported?.let { "This device cannot decode $it" }
+    val haptics = LocalHapticFeedback.current
+    var sheet by remember { mutableStateOf(false) }
+    Surface(
+        Modifier.fillMaxWidth()
+            .sharedPlayer(open = false)
+            .pointerInput(Unit) {
+                var dy = 0f
+                detectVerticalDragGestures(onDragStart = { dy = 0f }, onDragEnd = {
+                    if (dy > 40.dp.toPx()) onClose() else if (dy < -40.dp.toPx()) onOpen(null)
+                }) { _, amount -> dy += amount }
+            },
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        shadowElevation = 3.dp,
+    ) {
+        Column {
+            // How far the song is, along the top edge.
+            val total = progress.durationMs
+            val fraction = if (total > 0) (progress.positionMs.toFloat() / total).coerceIn(0f, 1f) else 0f
+            Box(Modifier.fillMaxWidth().height(3.dp).background(MaterialTheme.colorScheme.surfaceContainerHighest)) {
+                Box(Modifier.fillMaxWidth(fraction).fillMaxHeight().background(MaterialTheme.colorScheme.primary))
+            }
+            BoxWithConstraints(Modifier.fillMaxWidth()) {
+                val full = maxWidth >= 640.dp
+                val medium = maxWidth >= 520.dp
+                val timed = maxWidth >= 840.dp
+                Row(
+                    Modifier.fillMaxWidth().heightIn(min = 72.dp).height(IntrinsicSize.Min).padding(horizontal = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    val onColor = MaterialTheme.colorScheme.primary
+                    val offColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    val tint = { on: Boolean -> if (on) onColor else offColor }
+                    // The song: opens Now Playing.
+                    Row(
+                        Modifier.weight(1f).fillMaxHeight().padding(vertical = 8.dp).clip(RoundedCornerShape(12.dp))
+                            .combinedClickable(onClick = { onOpen(null) }, onClickLabel = "Open Now Playing", onLongClick = {
+                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                sheet = true
+                            }, onLongClickLabel = "Player options")
+                            .semantics { customActions = listOf(CustomAccessibilityAction("Close player") { onClose(); true }) }
+                            .padding(horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Cover(song.artwork?.path?.let(::File), Modifier.sharedCover(PLAYER_COVER).size(48.dp), corner = 8.dp)
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(song.title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false))
+                                if (full && problem == null) track?.let { quality(listOf(it)) }?.let { badge ->
+                                    Spacer(Modifier.width(6.dp))
+                                    QualityBadge(badge)
+                                }
+                            }
+                            Text(problem ?: listOfNotNull(song.playingOn?.let { "On $it" }, song.artist).joinToString(" · "),
+                                style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                color = if (problem != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    // The transport, with the time beside it where there is room.
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        if (full) IconButton(onClick = player::toggleShuffle) {
+                            Icon(painterResource(R.drawable.ic_shuffle), contentDescription = if (shuffle) "Shuffle on" else "Shuffle off", tint = tint(shuffle))
+                        }
+                        if (medium) IconButton(onClick = player::previous) {
+                            Icon(painterResource(R.drawable.ic_skip_previous), contentDescription = "Previous")
+                        }
+                        FilledIconButton(onClick = player::togglePlayPause, modifier = Modifier.size(48.dp)) {
+                            Icon(painterResource(if (song.isPlaying) R.drawable.ic_pause else R.drawable.ic_play),
+                                contentDescription = if (song.isPlaying) "Pause" else "Play", modifier = Modifier.size(28.dp))
+                        }
+                        IconButton(onClick = player::next, enabled = song.hasNext || song.repeatMode != Player.REPEAT_MODE_OFF) {
+                            Icon(painterResource(R.drawable.ic_skip_next), contentDescription = "Next")
+                        }
+                        if (full) IconButton(onClick = player::cycleRepeat) {
+                            Icon(painterResource(if (song.repeatMode == Player.REPEAT_MODE_ONE) R.drawable.ic_repeat_one else R.drawable.ic_repeat),
+                                contentDescription = when (song.repeatMode) {
+                                    Player.REPEAT_MODE_ONE -> "Repeat one"
+                                    Player.REPEAT_MODE_ALL -> "Repeat all"
+                                    else -> "Repeat off"
+                                }, tint = tint(song.repeatMode != Player.REPEAT_MODE_OFF))
+                        }
+                    }
+                    Row(Modifier.weight(1f), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+                        if (timed) {
+                            Text("${duration(progress.positionMs)} / ${duration(total)}", style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, modifier = Modifier.padding(end = 8.dp))
+                        }
+                        if (medium) {
+                            IconButton(onClick = { onOpen("LYRICS") }) { Icon(painterResource(R.drawable.ic_lyrics), contentDescription = "Lyrics") }
+                            PlayOnButton(player)
+                            IconButton(onClick = { onOpen("QUEUE") }) { Icon(painterResource(R.drawable.ic_queue), contentDescription = "Up Next") }
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
+        }
+    }
+    if (sheet) PlayerSheet(song, player, onOpen = { onOpen(null) }, onClose = onClose) { sheet = false }
 }
 
 /** The mini player's sheet (long press): the song, then Open Now Playing, Clear Up Next, Close Player and Clear Queue. */

@@ -45,6 +45,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -85,7 +86,10 @@ import java.io.File
 /** Back from a page (given by the shell's navigation). */
 val LocalBack = staticCompositionLocalOf<() -> Unit> { {} }
 
-private enum class Section(val title: String) { ALBUMS("Albums"), ARTISTS("Artists"), SONGS("Songs"), PLAYLISTS("Playlists") }
+enum class LibrarySection(val title: String) { ALBUMS("Albums"), ARTISTS("Artists"), SONGS("Songs"), PLAYLISTS("Playlists") }
+
+/** In a wide window, the section the sidebar shows: the Library then has no tabs of its own (null: it has them). */
+val LocalLibrarySection = compositionLocalOf<LibrarySection?> { null }
 
 /** The Library tab: Albums, Artists, Songs and Playlists, swiped or picked from the tabs, with sorting where it helps. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -93,12 +97,14 @@ private enum class Section(val title: String) { ALBUMS("Albums"), ARTISTS("Artis
 fun LibraryHome() {
     val library = LocalActions.current.library
     val albums by library.albums.collectAsStateWithLifecycle()
-    val pager = rememberPagerState { Section.entries.size }
+    val pager = rememberPagerState { LibrarySection.entries.size }
+    val chosen = LocalLibrarySection.current
+    LaunchedEffect(chosen) { chosen?.let { pager.scrollToPage(it.ordinal) } }
     val scope = rememberCoroutineScope()
-    val section = Section.entries[pager.currentPage]
+    val section = LibrarySection.entries[pager.currentPage]
     val source by library.source.collectAsStateWithLifecycle()
     val merged = source == LibraryModel.Source.MAC
-    val sortable = section == Section.ALBUMS || section == Section.SONGS
+    val sortable = section == LibrarySection.ALBUMS || section == LibrarySection.SONGS
     // The title, the sections and (with the Mac's music) its notice float over the lists as glass.
     GlassTop(bar = { Column {
         // A short window: no title bar, the filter and sorting on one row.
@@ -112,7 +118,7 @@ fun LibraryHome() {
             }
         } else {
             TopAppBar(
-                title = { Text("Library", fontWeight = FontWeight.SemiBold) },
+                title = { Text(chosen?.title ?: "Library", fontWeight = FontWeight.SemiBold) },
                 actions = {
                     DownloadedFilter()
                     PlayOnButton(LocalActions.current.player)
@@ -121,8 +127,8 @@ fun LibraryHome() {
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent, scrolledContainerColor = Color.Transparent),
             )
         }
-        PrimaryScrollableTabRow(selectedTabIndex = pager.currentPage, edgePadding = 8.dp, containerColor = Color.Transparent, divider = {}) {
-            Section.entries.forEachIndexed { index, item ->
+        if (chosen == null) PrimaryScrollableTabRow(selectedTabIndex = pager.currentPage, edgePadding = 8.dp, containerColor = Color.Transparent, divider = {}) {
+            LibrarySection.entries.forEachIndexed { index, item ->
                 Tab(selected = pager.currentPage == index, onClick = { scope.launch { pager.animateScrollToPage(index) } }, text = { Text(item.title) },
                     unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -137,12 +143,12 @@ fun LibraryHome() {
                 Modifier.padding(top = LocalTopInset.current, bottom = LocalBottomInset.current)) {
                 Button(onClick = { library.setSource(LibraryModel.Source.MAC) }) { Text("Show the Mac's Music") }
             }
-            else -> HorizontalPager(pager, Modifier.fillMaxSize(), key = { it }) { page ->
-                when (Section.entries[page]) {
-                    Section.ALBUMS -> AlbumsSection(albums.orEmpty())
-                    Section.ARTISTS -> ArtistsSection()
-                    Section.SONGS -> SongsSection()
-                    Section.PLAYLISTS -> PlaylistsSection()
+            else -> HorizontalPager(pager, Modifier.fillMaxSize(), key = { it }, userScrollEnabled = chosen == null) { page ->
+                when (LibrarySection.entries[page]) {
+                    LibrarySection.ALBUMS -> AlbumsSection(albums.orEmpty())
+                    LibrarySection.ARTISTS -> ArtistsSection()
+                    LibrarySection.SONGS -> SongsSection()
+                    LibrarySection.PLAYLISTS -> PlaylistsSection()
                 }
             }
         }
@@ -157,12 +163,12 @@ private fun MergedLibrary(pager: androidx.compose.foundation.pager.PagerState) {
     val reachable by Transfers.reachable.collectAsStateWithLifecycle()
     // Now, and again when the Mac comes back.
     LaunchedEffect(reachable == true) { library.refreshCatalog() }
-    HorizontalPager(pager, Modifier.fillMaxSize(), key = { it }) { page ->
-        when (Section.entries[page]) {
-            Section.ALBUMS -> CatalogAlbumGrid(albums.orEmpty())
-            Section.ARTISTS -> CatalogArtists()
-            Section.SONGS -> CatalogSongs()
-            Section.PLAYLISTS -> PlaylistsSection()
+    HorizontalPager(pager, Modifier.fillMaxSize(), key = { it }, userScrollEnabled = LocalLibrarySection.current == null) { page ->
+        when (LibrarySection.entries[page]) {
+            LibrarySection.ALBUMS -> CatalogAlbumGrid(albums.orEmpty())
+            LibrarySection.ARTISTS -> CatalogArtists()
+            LibrarySection.SONGS -> CatalogSongs()
+            LibrarySection.PLAYLISTS -> PlaylistsSection()
         }
     }
 }
@@ -179,7 +185,7 @@ private fun MergedNotice() {
 }
 
 @Composable
-private fun SortMenu(section: Section) {
+private fun SortMenu(section: LibrarySection) {
     val library = LocalActions.current.library
     var open by remember { mutableStateOf(false) }
     val albumOrder by library.albumOrder.collectAsStateWithLifecycle()
@@ -189,7 +195,7 @@ private fun SortMenu(section: Section) {
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             Text("Sort by", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
-            if (section == Section.ALBUMS) LibraryModel.AlbumOrder.entries.forEach { order ->
+            if (section == LibrarySection.ALBUMS) LibraryModel.AlbumOrder.entries.forEach { order ->
                 DropdownMenuItem(text = { Text(order.label) }, leadingIcon = { RadioButton(selected = order == albumOrder, onClick = null) },
                     onClick = { open = false; library.setAlbumOrder(order) })
             } else LibraryModel.SongOrder.entries.forEach { order ->

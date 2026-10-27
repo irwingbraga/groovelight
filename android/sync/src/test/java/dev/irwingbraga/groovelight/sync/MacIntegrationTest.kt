@@ -84,6 +84,34 @@ class MacIntegrationTest {
         assertTrue(client.status().has("syncRequested"))
     }
 
+    /**
+     * A song's lyrics from the Mac, for one playing elsewhere that the device does not have (over pinned HTTPS). Runs
+     * with GL_LYRICS_ID set to a song of the Mac's library with lyrics.
+     */
+    @Test
+    fun getsLyricsFromTheMac() {
+        val port = System.getenv("GL_MAC_PORT")?.toIntOrNull()
+        val id = System.getenv("GL_LYRICS_ID")?.toLongOrNull()
+        assumeTrue("Groovelight is not running for this test", port != null && id != null)
+        val deviceId = "jvm-lyrics-" + System.nanoTime()
+        val open = MacClient("127.0.0.1", port!!, deviceId, null)
+        val info = open.info()
+        val keys = Pairing.newKeyPair()
+        val devicePublic = Pairing.rawPublic(keys)
+        val answer = open.pair("JVM Test", "Desktop JVM", devicePublic)
+        val macPublic = Pairing.fromBase64(answer.getString("publicKey"))
+        val (key, _) = Pairing.derive(keys.private, macPublic, devicePublic, macPublic)
+        var status = "pending"
+        repeat(20) { if (status == "pending") { status = open.pairStatus(); Thread.sleep(250) } }
+        assertEquals("accepted", status)
+        val fingerprint = MacClient("127.0.0.1", port, deviceId, key).pinnedCertificate()
+        val client = MacClient("127.0.0.1", port, deviceId, key, MacClient.Tls(info.getInt("tlsPort"), fingerprint))
+        val lyrics = client.catalogLyrics(id!!)
+        println("lyrics: $lyrics")
+        assertTrue(!lyrics.isNullOrBlank())
+        assertEquals(null, client.catalogLyrics(Long.MAX_VALUE))
+    }
+
     /** The engine's steps on plain files; returns (written, deleted). */
     private fun sync(client: MacClient, folder: File, cutFirstDownload: Boolean): Pair<Int, Int> {
         val manifestFile = File(folder, SyncEngine.MANIFEST)
