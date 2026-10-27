@@ -215,7 +215,14 @@ class LibraryModel(application: Application) : AndroidViewModel(application) {
     val catalogTracks: StateFlow<List<CatalogTrack>?> = catalog.tracks().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
     fun catalogAlbum(key: String): Flow<CatalogAlbum?> = catalog.album(key)
     fun catalogTracksOfAlbum(key: String): Flow<List<CatalogTrack>> = catalog.tracksOfAlbum(key)
-    fun catalogAlbumsOf(artist: String): Flow<List<CatalogAlbum>> = catalog.albumsOf(artist)
+    /** An artist's albums, the Mac's and this device's (an album the Mac's list does not have yet), by year. */
+    fun catalogAlbumsOf(artist: String): Flow<List<CatalogAlbum>> = combine(catalog.albumsOf(artist), library.albumsOf(artist)) { mac, here ->
+        val known = mac.map { it.key }.toSet()
+        val local = here.associateBy { it.key }
+        (mac.map { album -> local[album.key]?.artworkHash?.let { album.copy(artworkHash = it) } ?: album } +
+            here.filter { it.key !in known }.map { CatalogAlbum(it.key, it.title, it.artist, it.year, it.isCompilation, it.artworkHash) })
+            .sortedWith(compareBy<CatalogAlbum> { it.year ?: 0 }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.title })
+    }
     val catalogAlbumsByKey: StateFlow<Map<String, CatalogAlbum>> = catalog.albums().map { albums -> albums.associateBy { it.key } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 

@@ -660,6 +660,9 @@ fun PersonPage(name: String) {
 @Composable
 fun ArtistPage(name: String) {
     val actions = LocalActions.current
+    // With the Mac's library shown, all of the artist's albums, here or not.
+    val source by actions.library.source.collectAsStateWithLifecycle()
+    if (source == LibraryModel.Source.MAC) return MacArtistPage(name)
     val all by actions.library.albums.collectAsStateWithLifecycle()
     val albums by remember(name) { actions.library.albumsOf(name) }.collectAsStateWithLifecycle(all?.filter { it.artist == name })
     val appearsOn by remember(name) { actions.library.albumsAppearingOn(name) }.collectAsStateWithLifecycle(emptyList())

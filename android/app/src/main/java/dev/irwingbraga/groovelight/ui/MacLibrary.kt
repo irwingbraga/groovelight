@@ -225,8 +225,7 @@ fun CatalogArtists() {
                     headlineContent = { Text(artist.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     supportingContent = { Text(if (artist.albums == 1) "1 album" else "${artist.albums} albums") },
                     leadingContent = {
-                        val shared = if (artist.name in localNames) "artist:${artist.name}" else "macartist:${artist.name}"
-                        CatalogCover(artist.artworkHash, Modifier.sharedCover(shared).size(52.dp), round = true)
+                        CatalogCover(artist.artworkHash, Modifier.sharedCover("macartist:${artist.name}").size(52.dp), round = true)
                     },
                     trailingContent = {
                         when {
@@ -235,7 +234,8 @@ fun CatalogArtists() {
                         }
                     },
                     colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                    modifier = Modifier.clickable { actions.open(if (artist.name in localNames) Route.ArtistPage(artist.name) else Route.MacArtistPage(artist.name)) },
+                    // All of the artist's albums, here or not (the device's page has only those here).
+                    modifier = Modifier.clickable { actions.open(Route.MacArtistPage(artist.name)) },
                 )
             }
         }
@@ -489,6 +489,8 @@ fun MacArtistPage(name: String) {
     val waiting = (name in holdings.after.artists) != (name in holdings.chosen.artists)
     // The artist's photo on the Mac, or their first cover.
     val photo by remember(name) { actions.library.catalogArtistPhoto(name) }.collectAsStateWithLifecycle(null)
+    // Their songs here, for Play and Shuffle.
+    val here by remember(name) { actions.library.tracksOfArtist(name) }.collectAsStateWithLifecycle(emptyList())
     GlassTop(bar = { CatalogBar("") }) {
         CatalogAlbumGrid(albums) {
             item(key = "header", span = { GridItemSpan(maxLineSpan) }) {
@@ -500,6 +502,11 @@ fun MacArtistPage(name: String) {
                     Text(if (albums.size == 1) "1 album" else "${albums.size} albums", style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(12.dp))
+                    if (here.isNotEmpty()) {
+                        val play = { shuffle: Boolean -> actions.player.play(actions.library.mediaItems(here, "Artist · $name"), 0, shuffle) }
+                        PlayButtons(onPlay = { play(false) }, onShuffle = { play(true) },
+                            modifier = Modifier.widthIn(max = 420.dp).padding(bottom = 12.dp))
+                    }
                     if (!holdings.after.everything) {
                         if (chosen) OutlinedButton(onClick = {
                             actions.library.request(TransferRequest.REMOVE, TransferRequest.ARTIST, name)
