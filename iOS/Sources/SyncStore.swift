@@ -1,3 +1,4 @@
+import BackgroundTasks
 import CryptoKit
 import Foundation
 import LibraryKit
@@ -32,6 +33,18 @@ final class SyncStore {
     }
     /// On mobile data, or another connection the system counts as expensive (a phone's hotspot).
     private(set) var isOnMobileData = false
+    /// Syncs on their own, on Wi-Fi (Settings): now and then, as iOS allows, the app checks the Mac in the background and
+    /// syncs when there is something new (`checkForSync`).
+    var syncsAutomatically: Bool {
+        didSet {
+            defaults.set(syncsAutomatically, forKey: "sync.automatic")
+            scheduleCheck()
+        }
+    }
+    /// Automatic syncs only while the device charges.
+    var syncsOnlyWhileCharging: Bool {
+        didSet { defaults.set(syncsOnlyWhileCharging, forKey: "sync.charging") }
+    }
 
     @ObservationIgnored private let library: LibraryStore
     @ObservationIgnored private var task: Task<Void, Never>?
@@ -45,6 +58,10 @@ final class SyncStore {
     @ObservationIgnored private let network = NWPathMonitor()
 
     static let downloadsIdentifier = "dev.irwingbraga.groovelight.downloads"
+    /// The background check for automatic syncs (an app refresh task, also in the Info.plist).
+    static let checkIdentifier = "dev.irwingbraga.groovelight.sync.check"
+    /// An automatic sync also runs when the last one is this old, as on Android.
+    static let staleAfter: TimeInterval = 6 * 3600
 
     init(library: LibraryStore) {
         self.library = library
@@ -58,6 +75,8 @@ final class SyncStore {
         lastResult = defaults.string(forKey: "sync.lastResult")
         lastSync = defaults.object(forKey: "sync.lastSync") as? Date
         syncsOverMobileData = defaults.bool(forKey: "sync.mobileData")
+        syncsAutomatically = defaults.object(forKey: "sync.automatic") as? Bool ?? true
+        syncsOnlyWhileCharging = defaults.bool(forKey: "sync.charging")
         downloads = .background(identifier: Self.downloadsIdentifier, musicFolder: library.musicFolder)
         // Paired once but the key is gone (the keychain was reset): pair again.
         if let mac, PairingKeychain.key(macId: mac.id) == nil { forget() }
@@ -96,6 +115,71 @@ final class SyncStore {
         #endif
         // The app was ended during a sync: finish it (songs that arrived meanwhile are already in place).
         if defaults.bool(forKey: "sync.unfinished"), !isSyncing { syncNow() }
+        scheduleCheck()
+    }
+
+    // MARK: - Automatic syncs
+
+    /// Asks iOS to wake the app for the next check, in 15 minutes at the earliest (iOS picks the time, from how the
+    /// device is used, so it can be hours). Each check asks for the next one.
+    func scheduleCheck() {
+        BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: Self.checkIdentifier)
+        guard syncsAutomatically, isPaired else { return }
+        let request = BGAppRefreshTaskRequest(identifier: Self.checkIdentifier)
+        request.earliestBeginDate = .now.addingTimeInterval(15 * 60)
+        do {
+            try BGTaskScheduler.shared.submit(request)
+        } catch {
+            // The simulator has no background refresh, nor a device with it off in Settings.
+            Self.log.info("No background check: \(String(describing: error), privacy: .public)")
+        }
+    }
+
+    /// Checks the Mac and syncs when there is something new: the Mac asks for a sync (its Sync button, a change to what
+    /// this device gets), has songs waiting to send, a sync was left unfinished, or the last one is over 6 hours old.
+    /// Only on Wi-Fi (not on mobile data or in Low Data Mode), and while charging when asked. The plays and loves made
+    /// here go to the Mac either way. Returns once the sync is over, or when `Task` is cancelled (iOS's time is up: the
+    /// downloads go on, and the app is woken for them).
+    func checkForSync() async {
+        scheduleCheck()
+        guard syncsAutomatically, isPaired, !isSyncing else { return }
+        let path = await Self.currentPath()
+        guard path.status == .satisfied, !path.isExpensive, !path.isConstrained else {
+            Self.log.info("Automatic sync waits for Wi-Fi")
+            return
+        }
+        if syncsOnlyWhileCharging {
+            UIDevice.current.isBatteryMonitoringEnabled = true
+            let state = UIDevice.current.batteryState
+            guard state == .charging || state == .full else { return }
+        }
+        do {
+            let client = try await client()
+            if !library.journal.pending.isEmpty { _ = try? await library.journal.send(with: client) }
+            let status = try await client.status()
+            let stale = lastSync.map { Date.now.timeIntervalSince($0) > Self.staleAfter } ?? true
+            let due = status.syncRequested || status.pendingSends > 0 || defaults.bool(forKey: "sync.unfinished") || stale
+            Self.log.info("Background check: \(due ? "syncing" : "nothing new", privacy: .public)")
+            guard due else { return }
+        } catch {
+            Self.log.info("Background check: the Mac is not reachable (\(String(describing: error), privacy: .public))")
+            return
+        }
+        syncNow()
+        while isSyncing, !Task.isCancelled { try? await Task.sleep(for: .milliseconds(500)) }
+    }
+
+    /// The network as it is now (the store's monitor may not have answered yet when iOS has just woken the app).
+    private static func currentPath() async -> NWPath {
+        await withCheckedContinuation { continuation in
+            let monitor = NWPathMonitor()
+            monitor.pathUpdateHandler = { path in
+                monitor.pathUpdateHandler = nil
+                monitor.cancel()
+                continuation.resume(returning: path)
+            }
+            monitor.start(queue: DispatchQueue(label: "dev.irwingbraga.groovelight.path"))
+        }
     }
 
     /// The system woke the app for its downloads: waits until it has delivered them and the sync waiting for them has
@@ -123,6 +207,7 @@ final class SyncStore {
     func paired(_ mac: PairedMac, key: SymmetricKey) {
         PairingKeychain.save(key, macId: mac.id)
         remember(mac)
+        scheduleCheck()
     }
 
     /// Forgets the Mac (the songs and library stay until another Mac's first sync).
@@ -133,6 +218,7 @@ final class SyncStore {
         mac = nil
         defaults.removeObject(forKey: "sync.mac")
         phase = .idle
+        scheduleCheck()
     }
 
     private func remember(_ mac: PairedMac) {
@@ -194,6 +280,18 @@ final class SyncStore {
         UIApplication.shared.endBackgroundTask(backgroundTime)
         backgroundTime = .invalid
     }
+
+    /// A love made here goes to the Mac within moments (several in a row together), not at the next sync.
+    func sendHistorySoon() {
+        historySend?.cancel()
+        historySend = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(1.5))
+            guard !Task.isCancelled else { return }
+            self?.sendHistory()
+        }
+    }
+
+    @ObservationIgnored private var historySend: Task<Void, Never>?
 
     /// Sends the plays, loves and edits made here to the Mac now (at launch, and when the app leaves the screen), so the
     /// Mac and Last.fm have them without waiting for a sync. Quietly does nothing when the Mac is away.

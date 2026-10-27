@@ -170,7 +170,7 @@ struct SyncSection: View {
                 case let .syncing(done, total, current):
                     VStack(alignment: .leading, spacing: 6) {
                         if total > 0 {
-                            ProgressView(value: Double(done), total: Double(total))
+                            ProgressView(value: Double(min(done, total)), total: Double(total))
                             Text("\(done) of \(total): \(current)").font(.caption).foregroundStyle(.secondary).lineLimit(1)
                         } else {
                             ProgressView()
@@ -191,6 +191,13 @@ struct SyncSection: View {
                         }
                     }
                     Button("Sync Now") { sync.syncNow() }
+                }
+                Toggle(isOn: Binding(get: { sync.syncsAutomatically }, set: { sync.syncsAutomatically = $0 })) {
+                    Text("Sync Automatically on Wi-Fi")
+                    Text("Checks the Mac now and then, as iOS allows, and syncs when there is something new.")
+                }
+                if sync.syncsAutomatically {
+                    Toggle("Only While Charging", isOn: Binding(get: { sync.syncsOnlyWhileCharging }, set: { sync.syncsOnlyWhileCharging = $0 }))
                 }
                 if mac.awayHosts?.isEmpty == false {
                     Toggle("Sync over Mobile Data", isOn: Binding(get: { sync.syncsOverMobileData }, set: { sync.syncsOverMobileData = $0 }))

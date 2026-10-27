@@ -438,14 +438,18 @@ struct Scrubber: View {
     }
 }
 
-/// Previous, Play or Pause and Next. When a fold crosses the row (iPhone Duo partly folded in landscape), the buttons
-/// part on either side of it instead of one landing in it.
+/// Shuffle, Previous, Play or Pause, Next and Repeat, as on the Mac (the space bar plays and pauses, from a keyboard).
+/// When a fold crosses the row (iPhone Duo partly folded in landscape), the buttons part on either side of it instead
+/// of one landing in it.
 struct TransportControls: View {
     @Environment(AppModel.self) private var model
     let isPlaying: Bool
 
     var body: some View {
         FoldAwareRow {
+            ModeButton(title: model.isShuffled ? "Shuffle On" : "Shuffle Off", systemImage: "shuffle", isOn: model.isShuffled) {
+                model.toggleShuffle()
+            }
             Button { model.previous() } label: { Label("Previous", systemImage: "backward.fill") }
             Button { model.togglePlayPause() } label: {
                 Label(isPlaying ? "Pause" : "Play", systemImage: isPlaying ? "pause.fill" : "play.fill")
@@ -453,11 +457,35 @@ struct TransportControls: View {
             }
             .font(.system(size: 44))
             Button { model.next() } label: { Label("Next", systemImage: "forward.fill") }
+            ModeButton(title: model.repeatMode == .off ? "Repeat Off" : model.repeatMode == .one ? "Repeat One" : "Repeat All",
+                       systemImage: model.repeatMode == .one ? "repeat.1" : "repeat", isOn: model.repeatMode != .off) {
+                model.cycleRepeat()
+            }
         }
         .padding(.horizontal, 24)
         .labelStyle(.iconOnly)
         .font(.system(size: 28))
         .buttonStyle(.plain)
+    }
+}
+
+/// Shuffle or Repeat beside the transport: bright on a light circle while on, dimmed while off.
+private struct ModeButton: View {
+    let title: String
+    let systemImage: String
+    let isOn: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .font(.system(size: 18, weight: .semibold))
+                .contentTransition(.symbolEffect(.replace))
+                .foregroundStyle(isOn ? .white : .white.opacity(0.55))
+                .frame(width: 36, height: 36)
+                .background(Circle().fill(.white.opacity(isOn ? 0.2 : 0)))
+                .contentShape(.circle)
+        }
     }
 }
 

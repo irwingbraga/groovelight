@@ -28,6 +28,10 @@ final class LibraryStore {
     private(set) var contents = Contents()
     /// Set when the database could not be opened (the screens say so).
     private(set) var failure: String?
+    /// Counts the loves made here, for the screens that read the song playing from the database (Now Playing).
+    private(set) var loves = 0
+    /// After a love made here: sends it to the Mac now.
+    @ObservationIgnored var onLove: (() -> Void)?
 
     init(folders: AppFolders) {
         musicFolder = folders.music
@@ -94,6 +98,8 @@ final class LibraryStore {
     func setLoved(_ loved: Bool, trackId: Int64) {
         try? database.setLoved(loved, trackId: trackId)
         journal.record(DeviceHistoryEvent(id: HistoryJournal.newId(), trackId: trackId, kind: .love, value: loved ? 1 : 0, atMs: Self.ms(.now)))
+        loves += 1
+        onLove?()
     }
 
     /// A song heard for `seconds` from `startedAt`, counted as the Mac counts it: a play from half of it (or 4 minutes), a

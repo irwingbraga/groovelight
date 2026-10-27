@@ -20,5 +20,9 @@ struct GroovelightMobileApp: App {
         .backgroundTask(.urlSession(SyncStore.downloadsIdentifier)) {
             await model.sync.handleBackgroundEvents()
         }
+        // Woken to check the Mac for an automatic sync (Settings, "Sync Automatically").
+        .backgroundTask(.appRefresh(SyncStore.checkIdentifier)) {
+            await model.sync.checkForSync()
+        }
     }
 }

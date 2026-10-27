@@ -38,9 +38,10 @@ struct RootView: View {
         .sheet(isPresented: $window.isPairing) { PairingSheet() }
         .sheet(isPresented: $window.isShowingSettings) { SettingsView(isSheet: true) }
         // Leaving the screen: what was played and loved goes to the Mac (and Last.fm) now. In front: this window is the
-        // one the app's own requests (the debug openers) go to.
+        // one the app's own requests (the debug openers) go to, and a sync starts if one is due, as in the background.
         .onChange(of: scenePhase, initial: true) { _, phase in
             if phase == .background { model.sync.sendHistory() }
+            if phase == .active, model.activeWindow === window || model.activeWindow == nil { Task { await model.sync.checkForSync() } }
             if phase == .active || model.activeWindow == nil { model.activeWindow = window }
         }
         // Just paired: other devices can play here from now on, and the Library shows the Mac's music (once, from the
@@ -59,6 +60,7 @@ struct RootView: View {
             }
         }
         .focusedSceneValue(\.window, window)
+        .spaceBarPlaysAndPauses { [model] in model.togglePlayPause() }
         .environment(window)
     }
 }
@@ -214,7 +216,10 @@ struct MiniPlayer: View {
         HStack(spacing: 12) {
             Cover(hash: item.artworkHash, size: 32, corner: 6)
             VStack(alignment: .leading, spacing: 0) {
-                Text(item.title).font(.subheadline.weight(.semibold)).lineLimit(1)
+                HStack(spacing: 6) {
+                    Text(item.title).font(.subheadline.weight(.semibold)).lineLimit(1)
+                    if let tier = item.spec?.tier { QualityBadge(tier: tier, isMini: true) }
+                }
                 Group {
                     if model.isRemote {
                         Text("\(Image(systemName: "hifispeaker.fill")) \(model.targetName) · \(item.artist)")
@@ -258,6 +263,12 @@ private struct DebugOpenAlbum: ViewModifier {
             // `-GLDebugOpenGenre <name>` opens that genre's songs.
             if let genre = UserDefaults.standard.string(forKey: "GLDebugOpenGenre") {
                 path = [.genre(genre)]
+                return
+            }
+            // `-GLDebugOpenSection allPlaylists|lovedSongs|...` opens that place from the Library's list.
+            if let name = UserDefaults.standard.string(forKey: "GLDebugOpenSection"),
+               let item = (SidebarItem.library + [.allPlaylists, .lovedSongs]).first(where: { "\($0)" == name }) {
+                path = [.section(item)]
                 return
             }
             guard let title = UserDefaults.standard.string(forKey: "GLDebugOpenAlbum") else { return }

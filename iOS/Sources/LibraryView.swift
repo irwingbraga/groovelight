@@ -153,6 +153,7 @@ struct SongRow: View {
                 }
             }
             Spacer(minLength: 8)
+            QualityBadge(tier: track.audioSpec.tier, isMini: true)
             if track.isLoved { Image(systemName: "heart.fill").font(.caption).foregroundStyle(.pink) }
             Text(Duration.seconds(track.duration).formatted(.time(pattern: .minuteSecond))).font(.caption).monospacedDigit()
                 .foregroundStyle(.secondary)
@@ -161,31 +162,115 @@ struct SongRow: View {
     }
 }
 
+/// Every playlist as a grid of cards, as on the Mac: Loved Songs first, then the playlists by name, each with its
+/// cover, name and song count ("Smart Playlist" before it for smart ones); Play and Shuffle on the cover under the
+/// pointer (iPad), and in the card's menu.
 struct PlaylistList: View {
+    @Environment(AppModel.self) private var model
     let playlists: [PlaylistSummary]
     let lovedCount: Int
 
     var body: some View {
-        List {
-            ForEach(playlists) { summary in
-                NavigationLink(value: LibraryRoute.playlist(summary.id)) {
-                    HStack(spacing: 12) {
-                        summary.coverView(hidesTitle: true, cornerRadius: 6).frame(width: 48, height: 48)
-                        VStack(alignment: .leading) {
-                            Text(summary.playlist.name)
-                            Text(summary.trackCount == 1 ? "1 song" : "\(summary.trackCount) songs").font(.caption).foregroundStyle(.secondary)
-                        }
+        ScrollView {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 150, maximum: 220), spacing: 16)], alignment: .leading, spacing: 20) {
+                PlaylistCard(title: "Loved Songs", subtitle: Self.songCount(lovedCount), route: .section(.lovedSongs),
+                             play: { shuffle in play(model.library.read { try LibraryDatabase.lovedTracks($0) } ?? [], shuffle: shuffle) }) {
+                    LovedSongsCover()
+                }
+                ForEach(playlists) { summary in
+                    let playlist = summary.playlist
+                    PlaylistCard(title: playlist.name,
+                                 subtitle: playlist.isSmart ? "Smart Playlist · \(Self.songCount(summary.trackCount))" : Self.songCount(summary.trackCount),
+                                 route: .playlist(summary.id),
+                                 play: { shuffle in
+                                     play(model.library.read { try LibraryDatabase.tracks($0, playlistId: summary.id) } ?? [], shuffle: shuffle)
+                                 }) {
+                        summary.coverView()
+                    }
+                    // Songs dropped on a playlist are added to it (not a smart one: its rules fill it), as in the sidebar.
+                    .dropDestination(for: SongsTransfer.self) { items, _ in
+                        guard !playlist.isSmart else { return false }
+                        model.library.addToPlaylist(summary.id, trackIds: items.flatMap(\.ids))
+                        return true
                     }
                 }
             }
+            .padding()
         }
-        .listStyle(.plain)
-        .overlay {
-            if playlists.isEmpty { ContentUnavailableView("No Playlists", systemImage: "music.note.list") }
-        }
+        .navigationTitle("All Playlists")
         .toolbar {
             ToolbarItem(placement: .primaryAction) { NewPlaylistButton() }
         }
+    }
+
+    private func play(_ tracks: [Track], shuffle: Bool) {
+        guard !tracks.isEmpty else { return }
+        model.play(tracks, shuffle: shuffle)
+    }
+
+    static func songCount(_ count: Int) -> String { count == 1 ? "1 song" : "\(count) songs" }
+}
+
+/// A playlist in the grid: its cover (Play and Shuffle on it under the pointer, as the Mac's under the mouse), name and
+/// song count; a tap opens it, and its menu plays it.
+private struct PlaylistCard<CoverView: View>: View {
+    let title: String
+    let subtitle: String
+    let route: LibraryRoute
+    let play: (_ shuffle: Bool) -> Void
+    @ViewBuilder let cover: () -> CoverView
+    @State private var isHovering = false
+
+    var body: some View {
+        NavigationLink(value: route) {
+            VStack(alignment: .leading, spacing: 4) {
+                cover()
+                    .aspectRatio(1, contentMode: .fit)
+                    .shadow(color: .black.opacity(0.2), radius: 4, y: 2)
+                    .overlay(alignment: .bottom) {
+                        if isHovering {
+                            HStack {
+                                Button { play(false) } label: { Image(systemName: "play.fill").frame(width: 18, height: 18) }
+                                Spacer()
+                                Button { play(true) } label: { Image(systemName: "shuffle").frame(width: 18, height: 18) }
+                            }
+                            .buttonStyle(.glass)
+                            .buttonBorderShape(.circle)
+                            .padding(8)
+                            .transition(.opacity)
+                        }
+                    }
+                    .hoverEffect(.lift)
+                Text(title).font(.subheadline.weight(.medium)).lineLimit(1)
+                Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            }
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in withAnimation(.easeOut(duration: 0.15)) { isHovering = hovering } }
+        .contextMenu {
+            Button("Play", systemImage: "play") { play(false) }
+            Button("Shuffle", systemImage: "shuffle") { play(true) }
+        }
+    }
+}
+
+/// The cover of Loved Songs, as on the Mac: a white heart on pink.
+struct LovedSongsCover: View {
+    var body: some View {
+        RoundedRectangle(cornerRadius: 10)
+            .fill(LinearGradient(colors: [Color(red: 1, green: 0.42, blue: 0.55), Color(red: 0.86, green: 0.12, blue: 0.36)],
+                                 startPoint: .topLeading, endPoint: .bottomTrailing))
+            .overlay {
+                GeometryReader { geometry in
+                    Image(systemName: "heart.fill")
+                        .font(.system(size: geometry.size.width * 0.38))
+                        .foregroundStyle(.white)
+                        .shadow(color: .black.opacity(0.15), radius: 6, y: 3)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
+            .aspectRatio(1, contentMode: .fit)
     }
 }
 
@@ -229,6 +314,7 @@ struct AlbumDetail: View {
                                 .foregroundStyle(Color.accentColor)
                         }
                         Text(Self.details(album, tracks: tracks)).font(.caption).foregroundStyle(.secondary)
+                        AlbumQualitySummary(specs: tracks.map(\.audioSpec)).padding(.top, 2)
                     }
                     PlayShuffleButtons(tracks: tracks)
                 }
@@ -273,18 +359,11 @@ struct AlbumDetail: View {
         }
     }
 
+    /// "Rock · 1969" (the format is on the quality line under it).
     static func details(_ album: AlbumSummary?, tracks: [Track]) -> String {
         var parts: [String] = []
         if let genre = album?.genre { parts.append(genre) }
         if let year = album?.year { parts.append(String(year)) }
-        if let track = tracks.first, let format = track.format {
-            let codec = AudioSpec.Codec(formatName: format).shortName
-            if let bits = track.bitDepth, let rate = track.sampleRate {
-                parts.append("\(codec) \(bits)-bit/\(rate.formatted(.number.precision(.fractionLength(0...1)).scale(0.001))) kHz")
-            } else {
-                parts.append(codec)
-            }
-        }
         return parts.joined(separator: " · ")
     }
 }

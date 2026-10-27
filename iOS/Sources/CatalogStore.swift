@@ -40,6 +40,10 @@ final class CatalogStore {
     @ObservationIgnored private var unreachableUntil = Date.distantPast
     /// Covers the Mac does not have.
     @ObservationIgnored private var missing: Set<String> = []
+    /// Lyrics of the Mac's songs not on this device, fetched for Now Playing while they play elsewhere (by song id).
+    private(set) var lyrics: [Int64: String] = [:]
+    /// Songs whose lyrics were asked for (found or not), so each is asked once a launch.
+    @ObservationIgnored private var lyricsAsked: Set<Int64> = []
 
     init(library: LibraryStore, sync: SyncStore, folders: AppFolders) {
         // Set first, so this does not count as a change (which would keep it).
@@ -190,6 +194,11 @@ final class CatalogStore {
             .sorted { (($0.discNumber ?? 1), ($0.trackNumber ?? 0), $0.title) < (($1.discNumber ?? 1), ($1.trackNumber ?? 0), $1.title) }
     }
 
+    /// A song of the Mac's list, by id.
+    func song(_ id: Int64) -> DeviceCatalog.Song? {
+        catalog?.songs.first { $0.id == id }
+    }
+
     func album(_ key: String) -> DeviceCatalog.Album? {
         catalog?.albums.first { $0.key == key } ?? library.contents.albums.first { $0.albumKey == key }.map {
             DeviceCatalog.Album(key: $0.albumKey, title: $0.title, artist: $0.artist, year: $0.year, isCompilation: false, artworkHash: $0.artworkHash)
@@ -323,6 +332,27 @@ final class CatalogStore {
         }
         fetching[hash] = fetch
         return await fetch.value
+    }
+
+    // MARK: - Lyrics
+
+    /// Fetches a song's lyrics from the Mac, once (the Mac looks them up online first when it has none): for a song
+    /// playing elsewhere that this device does not have. They land in `lyrics`.
+    func fetchLyrics(_ id: Int64) {
+        guard !lyricsAsked.contains(id) else { return }
+        lyricsAsked.insert(id)
+        Task {
+            guard let client = await coverClient() else {
+                lyricsAsked.remove(id)
+                return
+            }
+            do {
+                if let text = try await client.catalogLyrics(id) { lyrics[id] = text }
+            } catch {
+                connection = nil
+                lyricsAsked.remove(id)
+            }
+        }
     }
 
     /// One connection to the Mac for every cover (as on Android): finding the Mac and opening a secure connection per

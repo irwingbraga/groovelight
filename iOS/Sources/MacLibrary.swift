@@ -248,6 +248,8 @@ struct MergedSongRow: View {
                 }
             }
             Spacer(minLength: 8)
+            // The copy here when there is one (it can be in another format), else the Mac's.
+            QualityBadge(tier: local?.audioSpec.tier ?? song.audioSpec.tier, isMini: true)
             if !showsCover {
                 Text(Duration.seconds(song.duration).formatted(.time(pattern: .minuteSecond))).font(.caption).monospacedDigit()
                     .foregroundStyle(.secondary)
@@ -313,6 +315,7 @@ struct MacAlbumView: View {
                                 .foregroundStyle(Color.accentColor)
                         }
                         Text(Self.summary(album, songs)).font(.caption).foregroundStyle(.secondary)
+                        AlbumQualitySummary(specs: songs.map(\.audioSpec)).padding(.top, 2)
                     }
                     if let album {
                         let availability = catalog.availability(album: album)
@@ -355,19 +358,11 @@ struct MacAlbumView: View {
         }
     }
 
-    /// "1969 · 10 songs · FLAC 24-bit/96 kHz".
+    /// "1969 · 10 songs" (the format is on the quality line under it).
     static func summary(_ album: DeviceCatalog.Album?, _ songs: [DeviceCatalog.Song]) -> String {
         var parts: [String] = []
         if let year = album?.year { parts.append(String(year)) }
         parts.append(songs.count == 1 ? "1 song" : "\(songs.count) songs")
-        if let song = songs.first {
-            let codec = AudioSpec.Codec(rawValue: song.codec)?.shortName ?? song.codec.uppercased()
-            if let bits = song.bitDepth, let rate = song.sampleRate {
-                parts.append("\(codec) \(bits)-bit/\((Double(rate) / 1000).formatted(.number.precision(.fractionLength(0...1)))) kHz")
-            } else {
-                parts.append(codec)
-            }
-        }
         return parts.joined(separator: " · ")
     }
 }

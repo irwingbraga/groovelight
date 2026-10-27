@@ -44,3 +44,15 @@ struct AudioSpecTests {
         #expect(AudioSpec.uniform([]) == nil)
     }
 }
+
+struct CatalogSongSpecTests {
+    /// Every codec's format name reads back as the same codec, so a catalog song's tier matches its file's.
+    @Test func codecsRoundTrip() {
+        let all: [AudioSpec.Codec] = [.flac, .alac, .wav, .aiff, .wavPack, .monkeysAudio, .trueAudio, .shorten, .oggFLAC, .dsf, .dsdiff,
+                                      .mp3, .aac, .vorbis, .opus, .musepack, .speex, .mp1, .mp2, .module]
+        for codec in all { #expect(AudioSpec.Codec(formatName: codec.formatName) == codec) }
+        let song = DeviceCatalog.Song(id: 1, title: "A", artist: "B", albumKey: "k", discNumber: nil, trackNumber: nil, duration: 1,
+                                      codec: "flac", sampleRate: 96_000, bitDepth: 24)
+        #expect(song.audioSpec.tier == .hiResLossless)
+    }
+}

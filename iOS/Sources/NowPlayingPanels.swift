@@ -45,16 +45,18 @@ extension QualityTier {
 /// The quality mark, as on the Mac (Apple Music's Lossless mark): nothing for standard lossy files.
 struct QualityBadge: View {
     var tier: QualityTier
+    /// The smaller one, for song rows and the player bars.
+    var isMini = false
 
     var body: some View {
         if tier != .standard {
             HStack(spacing: 3) {
-                if let symbol = tier.symbol { Image(systemName: symbol).font(.system(size: 8, weight: .bold)) }
-                Text(tier.badgeText.uppercased()).font(.system(size: 9, weight: .bold)).tracking(0.4)
+                if let symbol = tier.symbol { Image(systemName: symbol).font(.system(size: isMini ? 7 : 8, weight: .bold)) }
+                Text(tier.badgeText.uppercased()).font(.system(size: isMini ? 8 : 9, weight: .bold)).tracking(0.4)
             }
             .foregroundStyle(tier.tint)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
+            .padding(.horizontal, isMini ? 4 : 6)
+            .padding(.vertical, isMini ? 1 : 2)
             .background(tier.tint.opacity(0.14), in: .capsule)
             .overlay(Capsule().strokeBorder(tier.tint.opacity(0.55), lineWidth: 0.8))
             .fixedSize()
@@ -83,6 +85,31 @@ struct QualityLabel: View {
             AudioDetails(spec: spec)
                 .presentationDetents([.medium])
         }
+    }
+}
+
+/// An album's quality, as on the Mac's album page: the badge and the shared format ("FLAC · 24-bit / 96 kHz"), or the
+/// best badge and "Mixed formats" with the codecs when its songs differ.
+struct AlbumQualitySummary: View {
+    let specs: [AudioSpec]
+
+    var body: some View {
+        Group {
+            if let spec = AudioSpec.uniform(specs) {
+                HStack(spacing: 6) {
+                    QualityBadge(tier: spec.tier)
+                    Text(spec.summary)
+                }
+            } else if let best = specs.map(\.tier).max() {
+                HStack(spacing: 6) {
+                    QualityBadge(tier: best)
+                    Text("Mixed formats · \(Array(Set(specs.map(\.codec.shortName))).sorted().joined(separator: ", "))")
+                }
+            }
+        }
+        .font(.caption.weight(.medium).monospacedDigit())
+        .foregroundStyle(.secondary)
+        .lineLimit(1)
     }
 }
 

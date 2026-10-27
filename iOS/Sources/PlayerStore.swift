@@ -131,6 +131,7 @@ final class PlayerStore {
     /// The song playing, as the screens show it.
     var nowPlaying: NowPlayingItem? {
         guard let item = controller.current else { return nil }
+        _ = library.loves // The database is not watched here: a love made here redraws the heart.
         let track = library.read { try LibraryDatabase.track($0, id: item.id) } ?? nil
         return NowPlayingItem(id: item.id, title: item.title, artist: item.artist, album: item.album, albumKey: item.albumKey,
                               artworkHash: track?.artworkHash, isPlaying: controller.state == .playing, isLoved: track?.isLoved ?? false,
@@ -158,9 +159,10 @@ final class PlayerStore {
     /// What plays here, as other devices following this one see it.
     func remoteState() -> WirelessProtocol.RemoteState {
         let item = controller.current.map { item in
-            let hash = (library.read { try LibraryDatabase.track($0, id: item.id) } ?? nil)?.artworkHash
+            let track = library.read { try LibraryDatabase.track($0, id: item.id) } ?? nil
             return WirelessProtocol.RemoteState.Item(id: item.id, title: item.title, artist: item.artist, album: item.album,
-                                                     albumKey: item.albumKey, artworkHash: hash, duration: controller.duration > 0 ? controller.duration : item.duration)
+                                                     albumKey: item.albumKey, artworkHash: track?.artworkHash,
+                                                     duration: controller.duration > 0 ? controller.duration : item.duration, loved: track?.isLoved)
         }
         return WirelessProtocol.RemoteState(item: item, playing: controller.state == .playing, position: controller.estimatedTime(at: .now),
                                             rate: Double(controller.rate), volume: 1, shuffle: controller.isShuffled,

@@ -100,10 +100,13 @@ private struct BarNowPlaying: View {
             .disabled(item == nil)
             .accessibilityLabel("Show Now Playing")
             VStack(spacing: 2) {
-                Text(item?.title ?? "Not Playing")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(item == nil ? .secondary : .primary)
-                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    Text(item?.title ?? "Not Playing")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(item == nil ? .secondary : .primary)
+                        .lineLimit(1)
+                    if density != .compact, let tier = item?.spec?.tier { QualityBadge(tier: tier, isMini: true) }
+                }
                 if let item {
                     Group {
                         if model.isRemote {
@@ -138,8 +141,11 @@ private struct BarProgress: View {
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 0.5)) { context in
-            let duration = max(model.duration, 1)
-            let time = min(model.time(at: context.date), duration)
+            let duration = model.duration.isFinite ? max(model.duration, 1) : 1
+            // Before a song starts, and for a player elsewhere (its time is estimated with this device's clock), the time
+            // can fall outside the song.
+            let raw = model.time(at: context.date)
+            let time = raw.isFinite ? min(max(raw, 0), duration) : 0
             HStack(spacing: 6) {
                 Text(Scrubber.format(time))
                 ProgressView(value: time, total: duration)

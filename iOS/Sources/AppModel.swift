@@ -57,6 +57,7 @@ final class AppModel {
         catalog = CatalogStore(library: library, sync: sync, folders: folders)
         // A song playing elsewhere that is not here shows the Mac library's cover on the lock screen too.
         player.coverElsewhere = { [catalog] in catalog.cachedCoverURL($0) }
+        library.onLove = { [sync] in sync.sendHistorySoon() }
         #if DEBUG
         if UserDefaults.standard.bool(forKey: "GLDebugNowPlaying") { debugSample = .sample }
         #endif
@@ -89,13 +90,24 @@ final class AppModel {
         }
     }
 
-    /// The song where music plays, with its love and lyrics from this device's library when the song is here too.
+    /// The song where music plays, with its love and lyrics from this device's library when the song is here too; the
+    /// lyrics of a song that is not come from the Mac (`CatalogStore.fetchLyrics`).
     private var remoteNowPlaying: NowPlayingItem? {
         guard let state = remote.state, let item = state.item else { return nil }
+        _ = library.loves
         let track = library.read { try LibraryDatabase.track($0, id: item.id) } ?? nil
+        // The Mac knows best; another device has this device's loves only after its next sync, so the copy here does. A
+        // love just made here shows until the player there has it.
+        var loved = target == .mac ? item.loved ?? track?.isLoved ?? false : track?.isLoved ?? item.loved ?? false
+        if let love = remoteLove, love.id == item.id, Date.now.timeIntervalSince(love.at) < 15 { loved = love.loved }
+        var lyrics = track?.lyrics ?? ""
+        if lyrics.isEmpty {
+            lyrics = catalog.lyrics[item.id] ?? ""
+            if lyrics.isEmpty, sync.isPaired { catalog.fetchLyrics(item.id) }
+        }
         return NowPlayingItem(id: item.id, title: item.title, artist: item.artist, album: item.album, albumKey: item.albumKey,
-                              artworkHash: item.artworkHash ?? track?.artworkHash, isPlaying: state.playing, isLoved: track?.isLoved ?? false,
-                              lyrics: SyncedLyrics(parsing: track?.lyrics ?? ""), spec: track?.audioSpec)
+                              artworkHash: item.artworkHash ?? track?.artworkHash, isPlaying: state.playing, isLoved: loved,
+                              lyrics: SyncedLyrics(parsing: lyrics), spec: track?.audioSpec ?? catalog.song(item.id)?.audioSpec)
     }
 
     // MARK: - Playing, here or elsewhere
@@ -173,10 +185,15 @@ final class AppModel {
         return catalog.artists.contains { $0.name == name } ? .macArtist(name) : nil
     }
 
+    /// Loves the song where it plays: here, and on the Mac by its id (`sendHistorySoon`), whether or not the song is here.
     func toggleLove() {
         guard let item = nowPlaying, item.id >= 0 else { return }
+        if isRemote { remoteLove = (item.id, !item.isLoved, .now) }
         library.setLoved(!item.isLoved, trackId: item.id)
     }
+
+    /// The last love made here for a song playing elsewhere, until the player there reports it.
+    private var remoteLove: (id: Int64, loved: Bool, at: Date)?
 
     /// Where the song is at `date`, and how long it is.
     func time(at date: Date) -> TimeInterval {

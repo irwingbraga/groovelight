@@ -217,3 +217,12 @@ extension Track {
         AudioSpec(formatName: format, sampleRate: sampleRate, bitDepth: bitDepth, bitrate: bitrate, channels: channels)
     }
 }
+
+extension DeviceCatalog.Song {
+    /// The song's format as the Mac's list gives it (codec, sample rate and bit depth; no bitrate, so a lossy song gets
+    /// no high quality mark).
+    public var audioSpec: AudioSpec {
+        AudioSpec(formatName: AudioSpec.Codec(rawValue: codec)?.formatName, sampleRate: sampleRate.map(Double.init), bitDepth: bitDepth,
+                  bitrate: nil, channels: nil)
+    }
+}

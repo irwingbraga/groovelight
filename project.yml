@@ -158,8 +158,10 @@ targets:
         UILaunchScreen: {}
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: true
-        # Plays with the screen off and the app in the background.
-        UIBackgroundModes: [audio]
+        # Plays with the screen off and the app in the background; wakes now and then to check the Mac for an
+        # automatic sync (`SyncStore.checkForSync`).
+        UIBackgroundModes: [audio, fetch]
+        BGTaskSchedulerPermittedIdentifiers: [dev.irwingbraga.groovelight.sync.check]
         NSLocalNetworkUsageDescription: Groovelight finds your Mac on the local network to sync your music with it.
         NSBonjourServices: [_groovelight._tcp]
         # Away from home the Mac is reached at its Tailscale address, which App Transport Security does not count as
