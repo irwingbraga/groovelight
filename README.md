@@ -108,7 +108,7 @@ Settings, General shows the one-line command that puts the tool in your PATH. Th
 - Audio quality details for every song: codec, bit depth, sample rate, bitrate, and what actually reaches the output device.
 
 ### Now Playing, lyrics and visualizers
-- Full-screen Now Playing that scales to large displays, with an animated artwork backdrop.
+- Full-screen Now Playing that scales to large displays, with an animated artwork backdrop, and shuffle and repeat beside its transport.
 - Synced (LRC) lyrics from your files or LRCLIB, karaoke-style line following, click to seek; plain lyrics too.
 - Lyrics and Up Next side panels on every page.
 - Cover Flow shelf with reflections, keyboard, trackpad and scrubber control, and the flip to the track list.
@@ -137,6 +137,7 @@ Settings, General shows the one-line command that puts the tool in your PATH. Th
   - **Your whole Mac library** on the phone: add albums, artists or songs to it from there (asked for while the Mac is away, they go when it is back), in their original format or as Opus, AAC or MP3, album by album.
   - **Back to the Mac:** plays (scrobbled to Last.fm with their times), skips, loves, ratings and playlist edits made on the phone.
   - **Play On:** play on the Mac, or on another phone with Groovelight open, from the phone: start, pause, skip, seek and set the volume there, hand the music over between them, and play anything of the Mac's library on the Mac, on the phone or not.
+  - **Foldables and tablets:** unfolded or on a tablet, a sidebar as on the iPad, Now Playing with the lyrics or Up Next beside the cover, and a player bar docked along the bottom; folded, Now Playing fits the short cover screen.
   - Home screen widgets, a Quick Settings tile, Android Auto and voice search ("play ... on Groovelight").
 
 ### Last.fm
