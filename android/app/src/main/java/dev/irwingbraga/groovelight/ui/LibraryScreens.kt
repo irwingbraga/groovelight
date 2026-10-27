@@ -28,6 +28,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
@@ -449,11 +450,13 @@ private fun PageHeader(
     onCredit: (() -> Unit)? = null,
     onPlay: (() -> Unit)? = null,
     onShuffle: (() -> Unit)? = null,
+    // An artist's or a person's photo is round: so is its shadow.
+    round: Boolean = false,
 ) {
     // A short window (landscape, split screen): the cover beside the titles, so the songs show at once.
     if (LocalWindowShape.current.short) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 4.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            cover(Modifier.size(if (LocalWindowShape.current.narrow) 88.dp else 112.dp).shadow(8.dp, RoundedCornerShape(8.dp)))
+            cover(Modifier.size(if (LocalWindowShape.current.narrow) 88.dp else 112.dp).shadow(8.dp, if (round) CircleShape else RoundedCornerShape(8.dp)))
             Spacer(Modifier.width(16.dp))
             Column(Modifier.weight(1f)) {
                 Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis,
@@ -473,7 +476,7 @@ private fun PageHeader(
         Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(top = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        cover(Modifier.widthIn(max = 260.dp).fillMaxWidth(0.7f).shadow(16.dp, RoundedCornerShape(10.dp)))
+        cover(Modifier.widthIn(max = 260.dp).fillMaxWidth(0.7f).shadow(16.dp, if (round) CircleShape else RoundedCornerShape(10.dp)))
         Spacer(Modifier.height(20.dp))
         Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center,
             modifier = Modifier.semantics { heading() })
@@ -621,7 +624,7 @@ fun PersonPage(name: String) {
         LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(top = LocalTopInset.current, bottom = 24.dp + LocalBottomInset.current)) {
             item(key = "header") {
                 PageHeader(
-                    cover = { Cover(null, it, round = true) }, title = name,
+                    cover = { Cover(null, it, round = true) }, round = true, title = name,
                     details = person.roles.take(4).joinToString(", ") { it.replaceFirstChar(Char::uppercase) }.ifEmpty { null },
                     onPlay = if (songs.isEmpty()) null else ({ actions.player.play(actions.library.mediaItems(songs, name), 0, false) }),
                     onShuffle = if (songs.isEmpty()) null else ({ actions.player.play(actions.library.mediaItems(songs, name), 0, true) }),
@@ -683,7 +686,7 @@ fun ArtistPage(name: String) {
             header = {
                 item(key = "header", span = { GridItemSpan(maxLineSpan) }) {
                     PageHeader(
-                        cover = { Cover(coverFile, Modifier.sharedCover("artist:$name").then(it), round = true) }, title = name,
+                        cover = { Cover(coverFile, Modifier.sharedCover("artist:$name").then(it), round = true) }, round = true, title = name,
                         details = listOfNotNull(
                             own.size.takeIf { it > 0 }?.let { if (it == 1) "1 album" else "$it albums" },
                             if (tracks.size == 1) "1 song" else "${tracks.size} songs",
