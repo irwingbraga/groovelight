@@ -3,6 +3,13 @@ package dev.irwingbraga.groovelight.ui
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import kotlin.math.abs
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.ui.unit.Dp
 import androidx.compose.animation.core.Transition
@@ -10,6 +17,8 @@ import androidx.compose.animation.EnterExitState
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.animateDp
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.text.TextStyle
 import android.os.SystemClock
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.BlendMode
@@ -355,6 +364,7 @@ private fun TopRow(
 ) {
     val actions = LocalActions.current
     var menu by remember { mutableStateOf(false) }
+    val (artistRoute, albumRoute) = songRoutes(song)
     Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = if (panels != null) 0.dp else 4.dp), verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = onClose) { Icon(painterResource(R.drawable.ic_expand_more), contentDescription = "Close Now Playing") }
         Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -378,13 +388,13 @@ private fun TopRow(
         Box {
             IconButton(onClick = { menu = true }) { Icon(painterResource(R.drawable.ic_more), contentDescription = "More") }
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                song.albumKey?.let { key ->
+                albumRoute?.let { route ->
                     DropdownMenuItem(text = { Text("Go to Album") }, leadingIcon = { Icon(painterResource(R.drawable.ic_album), null) },
-                        onClick = { menu = false; actions.open(Route.AlbumPage(key)) })
+                        onClick = { menu = false; actions.open(route) })
                 }
-                artistOf(song)?.let { artist ->
+                artistRoute?.let { route ->
                     DropdownMenuItem(text = { Text("Go to Artist") }, leadingIcon = { Icon(painterResource(R.drawable.ic_person), null) },
-                        onClick = { menu = false; actions.open(Route.ArtistPage(artist)) })
+                        onClick = { menu = false; actions.open(route) })
                 }
                 if (song.id != null) {
                     DropdownMenuItem(text = { Text("Rating") }, leadingIcon = { Icon(painterResource(R.drawable.ic_star), null) },
@@ -410,6 +420,85 @@ private fun TopRow(
 private fun artistOf(song: PlayerModel.NowPlaying): String? =
     song.albumArtist?.takeUnless { it == "Various Artists" } ?: song.artist
 
+/** The pages of the song's artist and album: here when the phone has them, the Mac's otherwise, none when neither has. */
+@Composable
+private fun songRoutes(song: PlayerModel.NowPlaying): Pair<Route?, Route?> {
+    val library = LocalActions.current.library
+    val track by remember(song.id) { song.id?.let { library.track(it) } ?: flowOf(null) }.collectAsStateWithLifecycle(null)
+    val holdings by library.holdings.collectAsStateWithLifecycle()
+    val macAlbums by library.catalogAlbumsByKey.collectAsStateWithLifecycle()
+    val artists by library.artists.collectAsStateWithLifecycle()
+    val macArtists by library.catalogArtists.collectAsStateWithLifecycle()
+    val key = song.albumKey ?: track?.albumKey
+    val macAlbum = key?.let { macAlbums[it] }
+    val album = when {
+        key == null -> null
+        key in holdings.albumKeys -> Route.AlbumPage(key)
+        macAlbum != null -> Route.MacAlbumPage(key)
+        else -> null
+    }
+    // The album's artist (the song's own on a compilation), as the Mac files it.
+    val name = macAlbum?.takeUnless { it.isCompilation || it.artist == "Various Artists" }?.artist ?: artistOf(song)
+    val artist = when {
+        name == null -> null
+        artists == null || artists!!.any { it.name == name } -> Route.ArtistPage(name)
+        macArtists.orEmpty().any { it.name == name } -> Route.MacArtistPage(name)
+        else -> null
+    }
+    return artist to album
+}
+
+/**
+ * "Artist — Album", as on the Mac and the iPhone: each part opens its page (here, or on the Mac). Too long for one line,
+ * one under the other; with [oneLine], both kept on one line and shortened.
+ */
+@Composable
+private fun SongLinks(song: PlayerModel.NowPlaying, style: TextStyle, modifier: Modifier = Modifier, oneLine: Boolean = false) {
+    val actions = LocalActions.current
+    val (artistRoute, albumRoute) = songRoutes(song)
+    val color = MaterialTheme.colorScheme.onSurfaceVariant
+    val link: @Composable (String, Route?) -> Unit = { text, route ->
+        Text(text, style = style, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            modifier = if (route == null) Modifier else Modifier.clip(RoundedCornerShape(4.dp))
+                .clickable(onClickLabel = "Open its page") { actions.open(route) })
+    }
+    val artist = song.artist?.takeIf { it.isNotBlank() }
+    val album = song.album?.takeIf { it.isNotBlank() }
+    if (artist == null || album == null) {
+        Box(modifier) { link(artist ?: album ?: "", if (artist != null) artistRoute else albumRoute) }
+        return
+    }
+    Layout(content = {
+        link(artist, artistRoute)
+        Text(" — ", style = style, color = color, maxLines = 1)
+        link(album, albumRoute)
+    }, modifier = modifier) { (artistText, dashText, albumText), constraints ->
+        val loose = constraints.copy(minWidth = 0, minHeight = 0)
+        val dash = dashText.measure(loose)
+        val artistWidth = artistText.maxIntrinsicWidth(constraints.maxHeight)
+        val albumWidth = albumText.maxIntrinsicWidth(constraints.maxHeight)
+        val room = constraints.maxWidth - dash.width
+        if (oneLine || artistWidth + albumWidth <= room) {
+            // Shortened, each keeps at least half of the room, or all it needs.
+            val first = artistText.measure(loose.copy(maxWidth = minOf(artistWidth, maxOf(room / 2, room - albumWidth)).coerceAtLeast(0)))
+            val second = albumText.measure(loose.copy(maxWidth = (room - first.width).coerceAtLeast(0)))
+            val height = maxOf(first.height, dash.height, second.height)
+            layout(first.width + dash.width + second.width, height) {
+                first.placeRelative(0, 0)
+                dash.placeRelative(first.width, 0)
+                second.placeRelative(first.width + dash.width, 0)
+            }
+        } else {
+            val first = artistText.measure(loose)
+            val second = albumText.measure(loose)
+            layout(maxOf(first.width, second.width), first.height + second.height) {
+                first.placeRelative(0, 0)
+                second.placeRelative(0, first.height)
+            }
+        }
+    }
+}
+
 @Composable
 private fun PanelContent(panel: Panel, song: PlayerModel.NowPlaying, player: PlayerModel, cover: File?) {
     AnimatedContent(panel, transitionSpec = { fadeIn(tween(220)) togetherWith fadeOut(tween(180)) }, label = "panel") { shown ->
@@ -417,8 +506,33 @@ private fun PanelContent(panel: Panel, song: PlayerModel.NowPlaying, player: Pla
             Panel.COVER -> BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 // Paused, the cover steps back a little.
                 val scale by animateFloatAsState(if (song.isPlaying || song.isBuffering) 1f else 0.86f, spring(dampingRatio = 0.6f), label = "cover")
+                // Swiped left, the next song; right, the previous one (or this one again from its start, as the button):
+                // the cover follows the finger, goes off that side and the song's comes in from the other.
+                val swipe = remember { Animatable(0f) }
+                val scope = rememberCoroutineScope()
+                val haptics = LocalHapticFeedback.current
+                val density = LocalDensity.current
+                val away = with(density) { maxWidth.toPx() }
+                val swiped = rememberDraggableState { delta -> scope.launch { swipe.snapTo(swipe.value + delta) } }
                 // Square, as big as the room allows: a short screen (a passport-shaped cover screen) has less height than width.
-                Cover(cover, Modifier.sharedCover(PLAYER_COVER).size(minOf(maxWidth, maxHeight, 480.dp)).graphicsLayer { scaleX = scale; scaleY = scale }
+                Cover(cover, Modifier.sharedCover(PLAYER_COVER).size(minOf(maxWidth, maxHeight, 480.dp))
+                    .draggable(swiped, Orientation.Horizontal, onDragStopped = { velocity ->
+                        val forward = swipe.value < 0
+                        val far = abs(swipe.value) > with(density) { 96.dp.toPx() } || abs(velocity) > 1_500f && (velocity < 0) == forward
+                        if (far && (!forward || song.hasNext || song.repeatMode != Player.REPEAT_MODE_OFF)) {
+                            val side = if (forward) -away else away
+                            swipe.animateTo(side, tween(150, easing = FastOutSlowInEasing))
+                            haptics.performHapticFeedback(HapticFeedbackType.GestureThresholdActivate)
+                            if (forward) player.next() else player.previous()
+                            swipe.snapTo(-side)
+                        }
+                        swipe.animateTo(0f, spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow))
+                    })
+                    .graphicsLayer {
+                        scaleX = scale; scaleY = scale
+                        translationX = swipe.value
+                        alpha = 1f - (abs(swipe.value) / away).coerceIn(0f, 1f) * 0.6f
+                    }
                     .shadow(24.dp, RoundedCornerShape(12.dp)), corner = 12.dp)
             }
             Panel.LYRICS -> LyricsPanel(song, player)
@@ -451,11 +565,7 @@ private fun ColumnScope.Controls(
             Text(song.title, style = if (compact) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.SemiBold, maxLines = 1,
                 modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE, initialDelayMillis = 2_000))
-            Text(song.artist ?: "", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1, overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.clickable(enabled = artistOf(song) != null, onClickLabel = "Go to artist") {
-                    artistOf(song)?.let { actions.open(Route.ArtistPage(it)) }
-                })
+            SongLinks(song, MaterialTheme.typography.titleMedium)
         }
         track?.let { current ->
             IconToggleButton(checked = current.loved, onCheckedChange = { actions.library.setLoved(current.id, it) },
@@ -1046,8 +1156,7 @@ private fun CompactBar(song: PlayerModel.NowPlaying, player: PlayerModel, cover:
             Column(Modifier.weight(1f)) {
                 Text(song.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1,
                     modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE, initialDelayMillis = 2_000))
-                Text(song.artist ?: "", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                SongLinks(song, MaterialTheme.typography.bodyMedium, oneLine = true)
             }
             IconButton(onClick = player::previous, modifier = Modifier.size(48.dp)) {
                 Icon(painterResource(R.drawable.ic_skip_previous), contentDescription = "Previous", modifier = Modifier.size(30.dp))
