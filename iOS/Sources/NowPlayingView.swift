@@ -21,6 +21,13 @@ struct NowPlayingView: View {
     /// How far it is pulled down: past a point, or flicked, it closes (a full-screen cover has no swipe of its own).
     /// (`-GLDebugNowPlayingPull <points>` opens it pulled that far, for layout checks.)
     @State private var pull = CGFloat(UserDefaults.standard.double(forKey: "GLDebugNowPlayingPull"))
+    /// How far the cover is swiped sideways: past a point, or flicked, the next song (left) or the previous one (right).
+    @State private var swipe: CGFloat = 0
+    /// Where the cover is, to tell a swipe on it from a pull.
+    @State private var coverFrame = CGRect.zero
+    /// Which way the drag went first: sideways on the cover swipes it, otherwise it pulls Now Playing down.
+    @State private var dragAxis: Axis?
+    @State private var skips = 0
 
     /// `-GLDebugNowPlayingPanel lyrics|upNext` opens Now Playing on that panel, for layout checks.
     private static var debugPanel: NowPlayingPanel? {
@@ -42,6 +49,8 @@ struct NowPlayingView: View {
             .padding(.bottom, 8)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .onGeometryChange(for: Bool.self) { $0.size.width > $0.size.height && $0.size.width >= 640 } action: { isWide = $0 }
+            .environment(\.coverSwipe, swipe)
+            .onPreferenceChange(CoverFrameKey.self) { coverFrame = $0 }
             .background { AnimatedArtworkBackdrop(hash: item.artworkHash) }
             .overlay(alignment: .topTrailing) {
                 NowPlayingTopButtons(panel: $panel, showsVisualizer: $showsVisualizer, isShowingEqualizer: $isShowingEqualizer,
@@ -57,17 +66,25 @@ struct NowPlayingView: View {
             // Lower than the scrubber, the volume and the lists' scrolling, which keep their drags.
             .gesture(DragGesture(minimumDistance: 20, coordinateSpace: .global)
                 .onChanged { drag in
+                    if dragAxis == nil {
+                        let sideways = abs(drag.translation.width) > abs(drag.translation.height)
+                        dragAxis = sideways && pull == 0 && coverFrame.contains(drag.startLocation) ? .horizontal : .vertical
+                    }
+                    if dragAxis == .horizontal { swipe = drag.translation.width; return }
                     guard drag.translation.height > 0 || pull > 0 else { return }
                     guard pull > 0 || drag.translation.height > abs(drag.translation.width) else { return }
                     pull = max(0, drag.translation.height)
                 }
                 .onEnded { drag in
+                    defer { dragAxis = nil }
+                    if dragAxis == .horizontal { return endSwipe(drag) }
                     if pull > 0, drag.translation.height > 160 || drag.predictedEndTranslation.height > 500 {
                         close()
                     } else {
                         withAnimation(.spring(duration: 0.3)) { pull = 0 }
                     }
                 })
+            .sensoryFeedback(.impact(weight: .light), trigger: skips)
             .fullScreenCover(isPresented: $isShowingVisualizerScreen) { VisualizerScreen() }
             .sheet(isPresented: $isShowingEqualizer) {
                 NavigationStack {
@@ -77,6 +94,29 @@ struct NowPlayingView: View {
             }
             // Playing elsewhere: no analyzer to draw from here.
             .onChange(of: model.isRemote) { _, remote in if remote { showsVisualizer = false } }
+    }
+
+    /// Far enough or flicked: the cover goes off that side, the song changes (as the buttons: right restarts a song
+    /// more than 3 s in) and its cover comes in from the other side. Otherwise it springs back.
+    private func endSwipe(_ drag: DragGesture.Value) {
+        let width = drag.translation.width
+        let flung = drag.predictedEndTranslation.width
+        guard abs(width) > 100 || (abs(flung) > 300 && (flung < 0) == (width < 0)) else {
+            withAnimation(.spring(duration: 0.3)) { swipe = 0 }
+            return
+        }
+        let forward = width < 0
+        let away = (coverFrame.width + 48) * (forward ? -1 : 1)
+        withAnimation(.easeIn(duration: 0.15)) { swipe = away } completion: {
+            forward ? model.next() : model.previous()
+            skips += 1
+            swipe = -away
+            // A frame later, so the jump to the other side is not animated with the way back.
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(16))
+                withAnimation(.spring(duration: 0.35, bounce: 0.15)) { swipe = 0 }
+            }
+        }
     }
 
     @ViewBuilder private var content: some View {
@@ -257,6 +297,7 @@ struct CoverAndControls: View {
     @Binding var panel: NowPlayingPanel?
     var showsVisualizer = false
     @AppStorage("visualizer.style") private var style: VisualizerStyle = .barsAndWaves
+    @Environment(\.coverSwipe) private var swipe
 
     var body: some View {
         VStack(spacing: 24) {
@@ -273,6 +314,9 @@ struct CoverAndControls: View {
             }
             .frame(maxWidth: 460)
             .shadow(color: .black.opacity(0.45), radius: 30, y: 18)
+            .background { if !showsVisualizer { GeometryReader { Color.clear.preference(key: CoverFrameKey.self, value: $0.frame(in: .global)) } } }
+            .offset(x: swipe)
+            .opacity(1 - min(abs(swipe) / 600, 0.6))
             SongTitle(item: item)
             Controls(item: item, panel: $panel)
         }
@@ -543,4 +587,18 @@ private struct VolumeSlider: UIViewRepresentable {
     }
 
     func updateUIView(_ view: MPVolumeView, context: Context) {}
+}
+
+/// Where Now Playing's cover is on screen, for its swipe; zero while it is not shown.
+private struct CoverFrameKey: PreferenceKey {
+    static let defaultValue = CGRect.zero
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
+        let next = nextValue()
+        if next != .zero { value = next }
+    }
+}
+
+extension EnvironmentValues {
+    /// How far Now Playing's cover is swiped sideways.
+    @Entry var coverSwipe: CGFloat = 0
 }
