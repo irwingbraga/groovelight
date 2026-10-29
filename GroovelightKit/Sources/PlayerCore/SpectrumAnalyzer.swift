@@ -18,6 +18,10 @@ public struct SpectrumFrame: Sendable {
     public var isBeat: Bool
     /// Increments on every detected beat, so readers polling at a different rate never miss one.
     public var beatCount: Int
+    /// Each channel's RMS (linear, 0...1, full scale 1) over the last buffer, for level meters. A mono song has the
+    /// same level in both.
+    public var leftLevel: Float = 0
+    public var rightLevel: Float = 0
 
     public static let bandCount = 64
     public static let waveformCount = 512
@@ -72,6 +76,11 @@ public final class SpectrumAnalyzer: Sendable {
                 vDSP_vadd(dst.baseAddress!, 1, source, 1, dst.baseAddress!, 1, vDSP_Length(count))
             }
         }
+        // Each channel's RMS over the whole buffer, before the mix down.
+        var channelLevels = [Float](repeating: 0, count: max(channelCount, 1))
+        for channel in 0..<channelCount {
+            vDSP_rmsqv(channels[channel], 1, &channelLevels[channel], vDSP_Length(available))
+        }
         var scale = 1 / Float(max(channelCount, 1))
         vDSP_vsmul(mono, 1, &scale, &mono, 1, vDSP_Length(n))
 
@@ -113,7 +122,9 @@ public final class SpectrumAnalyzer: Sendable {
                 treble: mean(bands[(2 * third)...]),
                 level: min(1, rms * 2.5),
                 isBeat: isBeat,
-                beatCount: state.beatCount
+                beatCount: state.beatCount,
+                leftLevel: channelLevels[0],
+                rightLevel: channelLevels[min(1, channelLevels.count - 1)]
             )
         }
     }
