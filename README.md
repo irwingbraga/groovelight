@@ -109,6 +109,12 @@ Settings, General shows the one-line command that puts the tool in your PATH. Th
 
 ### Now Playing, lyrics and visualizers
 - Full-screen Now Playing that scales to large displays, with an animated artwork backdrop, and shuffle and repeat beside its transport.
+- Vintage looks that turn all of Now Playing into a real-looking player, made of photographed walnut, brushed aluminum, felt and black plastic:
+  - **Turntable:** the record turns with the cover as its label, and the tonearm moves in as the song plays (drag it to go to another part). Aluminum keys, Dymo-tape song labels, toggle switches and a volume knob.
+  - **Cassette deck:** the cassette behind a smoked door with its reels winding, VU meters following the music's left and right levels, a rolling tape counter and piano keys (hold rewind or fast forward to scan).
+  - **CD player:** a top-loading well with the disc printed with the cover, and a fluorescent display with the time, the song stepping through and a position bar to drag.
+  - Each lays itself out for the screen: phones, a foldable folded or open, the two halves of a half-open fold, an iPad and a Mac window.
+- Your own cassettes: their colors, label and text, or your own pictures of the shell and the label drawn on the template. Share one as a `.cassette` file that opens on the Mac, iPhone, iPad and Android.
 - Synced (LRC) lyrics from your files or LRCLIB, karaoke-style line following, click to seek; plain lyrics too.
 - Lyrics and Up Next side panels on every page.
 - Cover Flow shelf with reflections, keyboard, trackpad and scrubber control, and the flip to the track list.
