@@ -13,6 +13,7 @@ let package = Package(
         .library(name: "WirelessSync", targets: ["WirelessSync"]),
         .library(name: "WirelessSyncClient", targets: ["WirelessSyncClient"]),
         .library(name: "ControlKit", targets: ["ControlKit"]),
+        .library(name: "Skins", targets: ["Skins"]),
     ],
     dependencies: [
         .package(url: "https://github.com/sbooth/SFBAudioEngine.git", from: "0.9.1"),
@@ -51,11 +52,13 @@ let package = Package(
             name: "WirelessSyncClient",
             dependencies: ["WirelessSync", "LibraryKit"]
         ),
+        // Now Playing's vintage skins (the turntable, the cassette and its designs, the CD), for the Mac and iOS.
+        .target(name: "Skins", resources: [.process("Resources")]),
         // The command line tool talking to the app (no dependencies: the tool links only this).
         .target(name: "ControlKit"),
         .testTarget(
             name: "GroovelightKitTests",
-            dependencies: ["PlayerCore", "LibraryKit", "Visualizers", "MetadataKit", "Scrobbler", "WirelessSync", "WirelessSyncClient", "ControlKit", .product(name: "SFBAudioEngine", package: "SFBAudioEngine"), .product(name: "GRDB", package: "GRDB.swift")],
+            dependencies: ["PlayerCore", "LibraryKit", "Visualizers", "MetadataKit", "Scrobbler", "WirelessSync", "WirelessSyncClient", "ControlKit", "Skins", .product(name: "SFBAudioEngine", package: "SFBAudioEngine"), .product(name: "GRDB", package: "GRDB.swift")],
             resources: [.copy("Fixtures")]
         ),
     ]

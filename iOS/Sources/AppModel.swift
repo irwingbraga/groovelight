@@ -4,6 +4,7 @@ import MetadataKit
 import Observation
 import PlayerCore
 import WirelessSync
+import Skins
 
 /// What the screens share: the library on the device, the Mac it syncs with, and the player.
 @MainActor
@@ -17,6 +18,8 @@ final class AppModel {
     let catalog: CatalogStore
     /// Other devices playing music here, through the Mac.
     let relay = RelayReceiver()
+    /// The user's cassettes for Now Playing's cassette skin.
+    let cassettes = CassetteStore(folder: CassetteStore.defaultFolder())
     /// The window last in front (what each window shows is its own `WindowModel`).
     @ObservationIgnored weak var activeWindow: WindowModel?
 

@@ -3,6 +3,7 @@ import Foundation
 import LibraryKit
 import Observation
 import PlayerCore
+import Skins
 import SwiftUI
 
 enum SidebarItem: Hashable {
@@ -28,6 +29,8 @@ final class AppModel {
     let database: LibraryDatabase
     let artwork: ArtworkCache
     let player = PlaybackController()
+    /// The user's cassettes for Now Playing's cassette skin.
+    let cassettes = CassetteStore(folder: CassetteStore.defaultFolder())
     let equalizer: EqualizerStore
     let metadata: MetadataStore
     /// Set at the end of `init` (they need the model).

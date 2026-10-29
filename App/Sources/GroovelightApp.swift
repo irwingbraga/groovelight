@@ -36,6 +36,15 @@ struct GroovelightApp: App {
         .handlesExternalEvents(matching: [])
         .defaultSize(width: 1100, height: 700)
 
+        Window("Cassettes", id: WindowID.cassettes) {
+            CassettesWindow()
+                .environment(model)
+                .tint(.brand)
+        }
+        .defaultSize(width: 420, height: 560)
+        .defaultPosition(.center)
+        .handlesExternalEvents(matching: [])
+
         Window("Equalizer", id: WindowID.equalizer) {
             EqualizerView()
                 .environment(model)
@@ -70,6 +79,7 @@ enum WindowID {
     /// The one value the visualizer group is opened with, so `openVisualizer` reuses the existing window.
     static let visualizerValue = "main"
     static let equalizer = "equalizer"
+    static let cassettes = "cassettes"
 }
 
 struct PlayerCommands: Commands {
@@ -288,6 +298,13 @@ extension OpenWindowAction {
 /// Files opened with the app (Finder's Open With, the Dock icon, the command line tool) go to the import.
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func application(_ application: NSApplication, open urls: [URL]) {
-        MainActor.assumeIsolated { AppModel.current?.control.open(urls) }
+        MainActor.assumeIsolated {
+            guard let model = AppModel.current else { return }
+            // A cassette design is added and shown in Now Playing; anything else is music to import.
+            let cassettes = urls.filter { $0.pathExtension.lowercased() == "cassette" }
+            for url in cassettes { model.openCassette(url) }
+            let music = urls.filter { $0.pathExtension.lowercased() != "cassette" }
+            if !music.isEmpty { model.control.open(music) }
+        }
     }
 }

@@ -14,6 +14,10 @@ struct GroovelightMobileApp: App {
             RootView()
                 .environment(model)
                 .task { await model.start() }
+                // A cassette design shared from another device (Files, Mail, AirDrop).
+                .onOpenURL { url in
+                    if url.pathExtension.lowercased() == "cassette" { model.openCassette(url) }
+                }
         }
         .commands { PlayerCommands(model: model) }
         // Woken because the songs of a sync finished downloading while the app was away.

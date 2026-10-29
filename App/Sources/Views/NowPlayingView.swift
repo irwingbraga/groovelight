@@ -2,6 +2,7 @@ import AppKit
 import LibraryKit
 import MetadataKit
 import PlayerCore
+import Skins
 import SwiftUI
 import Visualizers
 
@@ -13,10 +14,84 @@ struct NowPlayingView: View {
     @AppStorage("visualizer.style") private var visualizerStyle: VisualizerStyle = .barsAndWaves
     @State private var window: NSWindow?
     @State private var isFullScreen = false
+    @AppStorage(NowPlayingSkin.storageKey) private var skin: NowPlayingSkin = .cover
 
     var body: some View {
         let player = model.player
         let hash = player.current?.artworkHash
+        Group {
+            if skin != .cover {
+                // The whole window is the turntable, the cassette deck or the CD player.
+                NowPlayingDeck(chromeInset: isFullScreen ? 96 : 60)
+            } else {
+                cover(player: player, hash: hash)
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            GlassGroup(spacing: 10) {
+                HStack(spacing: 10) {
+                    if showVisualizer && skin == .cover {
+                        Picker("Style", selection: $visualizerStyle) {
+                            ForEach(VisualizerStyle.allCases) { Text($0.displayName).tag($0) }
+                        }
+                        .labelsHidden()
+                        .frame(width: 150)
+                    }
+                    SkinMenu(isDeck: skin != .cover)
+                        .buttonBorderShape(.circle)
+                    if skin == .cover {
+                        Button {
+                            withAnimation(.smooth) { showVisualizer.toggle() }
+                        } label: {
+                            Image(systemName: "waveform").frame(width: 20, height: 20)
+                        }
+                        .buttonBorderShape(.circle)
+                        .help("Visualizer" + model.shortcuts.hint(.visualizer))
+                    }
+                    Button {
+                        withAnimation(.smooth) { model.isShowingLyrics.toggle() }
+                    } label: {
+                        Image(systemName: "quote.bubble").frame(width: 20, height: 20)
+                    }
+                    .buttonBorderShape(.circle)
+                    .help("Lyrics" + model.shortcuts.hint(.lyrics))
+                    Button {
+                        withAnimation(.smooth) { model.isShowingNowPlaying = false }
+                    } label: {
+                        Image(systemName: "chevron.down").frame(width: 20, height: 20)
+                    }
+                    .buttonBorderShape(.circle)
+                    .keyboardShortcut(.escape, modifiers: [])
+                    .help("Close (Esc)")
+                    #if DEBUG
+                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { DebugHitTargets.nowPlayingClose = $0 }
+                    #endif
+                }
+                .modifier(NowPlayingButtonsStyle(isDeck: skin != .cover))
+            }
+            // In full screen the top of the screen reveals the menu bar and title bar when the pointer gets close, and
+            // that overlay covered these buttons, so they could not be clicked: keep them below it.
+            .padding(.top, isFullScreen ? 52 : 12)
+            .padding(.trailing, 16)
+        }
+        .background(WindowReader(window: $window))
+        .onChange(of: window, initial: true) { _, window in
+            isFullScreen = window?.styleMask.contains(.fullScreen) ?? false
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didEnterFullScreenNotification)) { note in
+            if (note.object as? NSWindow) === window { isFullScreen = true }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didExitFullScreenNotification)) { note in
+            if (note.object as? NSWindow) === window { isFullScreen = false }
+        }
+        .ignoresSafeArea()
+        .environment(\.colorScheme, .dark)
+        // Song details for the quality line and the artist / album links (lyrics load in `CurrentLyrics`).
+        .task(id: player.current?.id) { track = await model.currentTrack() }
+    }
+
+    /// The cover (or a visualizer) on the cover's colors, the song, the transport and the lyrics beside.
+    private func cover(player: PlaybackController, hash: String?) -> some View {
         GeometryReader { geometry in
             // Grows with big windows and full screen (1 at a 1100 x 760 window, up to 1.9x), so the cover, text and
             // controls do not sit small in the middle of a large display.
@@ -33,14 +108,13 @@ struct NowPlayingView: View {
                             if showVisualizer {
                                 VisualizerView(style: visualizerStyle, analyzer: player.analyzer)
                                     .clipShape(.rect(cornerRadius: 14))
+                                    .shadow(color: .black.opacity(0.45), radius: 30, y: 18)
                             } else {
-                                ArtworkImage(hash: hash, size: .large, cornerRadius: 14)
-                                    .scaleEffect(player.state == .playing ? 1 : 0.92)
-                                    .animation(.spring(duration: 0.5, bounce: 0.25), value: player.state)
+                                // The cover (a player chosen in its place takes the whole window).
+                                NowPlayingArtwork()
                             }
                         }
                         .frame(width: side, height: side)
-                        .shadow(color: .black.opacity(0.45), radius: 30, y: 18)
 
                         VStack(spacing: 4) {
                             Text(player.current?.title ?? "Not Playing")
@@ -77,67 +151,6 @@ struct NowPlayingView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .overlay(alignment: .topTrailing) {
-            GlassGroup(spacing: 10) {
-                HStack(spacing: 10) {
-                    if showVisualizer {
-                        Picker("Style", selection: $visualizerStyle) {
-                            ForEach(VisualizerStyle.allCases) { Text($0.displayName).tag($0) }
-                        }
-                        .labelsHidden()
-                        .frame(width: 150)
-                    }
-                    Button {
-                        withAnimation(.smooth) { showVisualizer.toggle() }
-                    } label: {
-                        Image(systemName: "waveform").frame(width: 20, height: 20)
-                    }
-                    .buttonBorderShape(.circle)
-                    .help("Visualizer" + model.shortcuts.hint(.visualizer))
-                    Button {
-                        withAnimation(.smooth) { model.isShowingLyrics.toggle() }
-                    } label: {
-                        Image(systemName: "quote.bubble").frame(width: 20, height: 20)
-                    }
-                    .buttonBorderShape(.circle)
-                    .help("Lyrics" + model.shortcuts.hint(.lyrics))
-                    Button {
-                        withAnimation(.smooth) { model.isShowingNowPlaying = false }
-                    } label: {
-                        Image(systemName: "chevron.down").frame(width: 20, height: 20)
-                    }
-                    .buttonBorderShape(.circle)
-                    .keyboardShortcut(.escape, modifiers: [])
-                    .help("Close (Esc)")
-                    #if DEBUG
-                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { DebugHitTargets.nowPlayingClose = $0 }
-                    #endif
-                }
-                // Clear glass and white icons, like the rest of Now Playing. Glass buttons color the glass with the
-                // tint (the app's navy), so the tint is cleared here.
-                .clearGlassButtonStyle()
-                .tint(.clear)
-                .foregroundStyle(.white)
-            }
-            // In full screen the top of the screen reveals the menu bar and title bar when the pointer gets close, and
-            // that overlay covered these buttons, so they could not be clicked: keep them below it.
-            .padding(.top, isFullScreen ? 52 : 12)
-            .padding(.trailing, 16)
-        }
-        .background(WindowReader(window: $window))
-        .onChange(of: window, initial: true) { _, window in
-            isFullScreen = window?.styleMask.contains(.fullScreen) ?? false
-        }
-        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didEnterFullScreenNotification)) { note in
-            if (note.object as? NSWindow) === window { isFullScreen = true }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didExitFullScreenNotification)) { note in
-            if (note.object as? NSWindow) === window { isFullScreen = false }
-        }
-        .ignoresSafeArea()
-        .environment(\.colorScheme, .dark)
-        // Song details for the quality line and the artist / album links (lyrics load in `CurrentLyrics`).
-        .task(id: player.current?.id) { track = await model.currentTrack() }
     }
 }
 

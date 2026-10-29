@@ -53,6 +53,8 @@ targets:
         product: WirelessSync
       - package: GroovelightKit
         product: ControlKit
+      - package: GroovelightKit
+        product: Skins
       - package: Sparkle
       # The command line tool, inside the app (Contents/Helpers/groovelight).
       - target: groovelight-cli
@@ -106,7 +108,18 @@ targets:
             CFBundleTypeRole: Editor
             LSHandlerRank: Alternate
             CFBundleTypeExtensions: [cue]
+          # A cassette design for Now Playing's cassette skin (Skins' CassetteStore): opened, it is added and chosen.
+          - CFBundleTypeName: Groovelight Cassette
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Owner
+            LSTypeIsPackage: true
+            LSItemContentTypes: [dev.irwingbraga.groovelight.cassette]
         UTExportedTypeDeclarations:
+          - UTTypeIdentifier: dev.irwingbraga.groovelight.cassette
+            UTTypeDescription: Groovelight Cassette
+            UTTypeConformsTo: [com.apple.package, public.composite-content]
+            UTTypeTagSpecification:
+              public.filename-extension: [cassette]
           - UTTypeIdentifier: dev.irwingbraga.groovelight.backup
             UTTypeDescription: Groovelight Backup
             UTTypeConformsTo: [com.apple.package, public.composite-content]
@@ -148,9 +161,23 @@ targets:
         product: MetadataKit
       - package: GroovelightKit
         product: Visualizers
+      - package: GroovelightKit
+        product: Skins
     info:
       path: iOS/Info.plist
       properties:
+        # A cassette design for Now Playing's cassette skin, opened from Files, Mail or AirDrop: added and chosen.
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Groovelight Cassette
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Owner
+            LSItemContentTypes: [dev.irwingbraga.groovelight.cassette]
+        UTExportedTypeDeclarations:
+          - UTTypeIdentifier: dev.irwingbraga.groovelight.cassette
+            UTTypeDescription: Groovelight Cassette
+            UTTypeConformsTo: [com.apple.package, public.composite-content]
+            UTTypeTagSpecification:
+              public.filename-extension: [cassette]
         CFBundleDisplayName: Groovelight
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)

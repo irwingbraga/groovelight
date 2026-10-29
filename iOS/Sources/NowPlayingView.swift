@@ -1,5 +1,6 @@
 import MediaPlayer
 import PlayerCore
+import Skins
 import SwiftUI
 import Visualizers
 
@@ -15,6 +16,7 @@ struct NowPlayingView: View {
     @State private var panel: NowPlayingPanel? = Self.debugPanel
     @State private var isWide = false
     @State private var isShowingEqualizer = false
+    @State private var isShowingCassettes = false
     @State private var isShowingVisualizerScreen = false
     /// The visualizer in the cover's place, as on the Mac (`-GLDebugOpenVisualizer YES` at launch).
     @State private var showsVisualizer = UserDefaults.standard.bool(forKey: "GLDebugOpenVisualizer")
@@ -28,6 +30,7 @@ struct NowPlayingView: View {
     /// Which way the drag went first: sideways on the cover swipes it, otherwise it pulls Now Playing down.
     @State private var dragAxis: Axis?
     @State private var skips = 0
+    @AppStorage(NowPlayingSkin.storageKey) private var skin: NowPlayingSkin = .cover
 
     /// `-GLDebugNowPlayingPanel lyrics|upNext` opens Now Playing on that panel, for layout checks.
     private static var debugPanel: NowPlayingPanel? {
@@ -43,18 +46,28 @@ struct NowPlayingView: View {
     }
 
     var body: some View {
-        content
-            .padding(.horizontal, 24)
-            .padding(.top, 64)
-            .padding(.bottom, 8)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .onGeometryChange(for: Bool.self) { $0.size.width > $0.size.height && $0.size.width >= 640 } action: { isWide = $0 }
-            .environment(\.coverSwipe, swipe)
-            .onPreferenceChange(CoverFrameKey.self) { coverFrame = $0 }
-            .background { AnimatedArtworkBackdrop(hash: item.artworkHash) }
+        Group {
+            if skin != .cover {
+                // The whole of Now Playing is the turntable, the cassette deck or the CD player.
+                NowPlayingDeck(item: item, panel: $panel)
+            } else {
+                content
+                    .padding(.horizontal, 24)
+                    .padding(.top, 64)
+                    .padding(.bottom, 8)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .onGeometryChange(for: Bool.self) { $0.size.width > $0.size.height && $0.size.width >= 640 } action: { isWide = $0 }
+                    .environment(\.coverSwipe, swipe)
+                    .onPreferenceChange(CoverFrameKey.self) { coverFrame = $0 }
+                    .background { AnimatedArtworkBackdrop(hash: item.artworkHash) }
+            }
+        }
+            // No cover to swipe on a player.
+            .onChange(of: skin) { coverFrame = .zero }
             .overlay(alignment: .topTrailing) {
                 NowPlayingTopButtons(panel: $panel, showsVisualizer: $showsVisualizer, isShowingEqualizer: $isShowingEqualizer,
-                                     isShowingVisualizerScreen: $isShowingVisualizerScreen, close: close)
+                                     isShowingCassettes: $isShowingCassettes,
+                                     isShowingVisualizerScreen: $isShowingVisualizerScreen, isDeck: skin != .cover, close: close)
                     .padding(.horizontal, 16)
                     .padding(.top, 8)
             }
@@ -92,6 +105,7 @@ struct NowPlayingView: View {
                         .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { isShowingEqualizer = false } } }
                 }
             }
+            .sheet(isPresented: $isShowingCassettes) { CassettesSheet() }
             // Playing elsewhere: no analyzer to draw from here.
             .onChange(of: model.isRemote) { _, remote in if remote { showsVisualizer = false } }
     }
@@ -174,14 +188,17 @@ private struct NowPlayingTopButtons: View {
     @Binding var panel: NowPlayingPanel?
     @Binding var showsVisualizer: Bool
     @Binding var isShowingEqualizer: Bool
+    @Binding var isShowingCassettes: Bool
     @Binding var isShowingVisualizerScreen: Bool
+    /// Over a player: aluminum caps instead of glass.
+    var isDeck = false
     let close: () -> Void
     @AppStorage("visualizer.style") private var style: VisualizerStyle = .barsAndWaves
 
     var body: some View {
         GlassEffectContainer(spacing: 10) {
             HStack(spacing: 10) {
-                if showsVisualizer {
+                if showsVisualizer && !isDeck {
                     Menu {
                         Picker("Style", selection: $style) {
                             ForEach(VisualizerStyle.allCases) { Text($0.displayName).tag($0) }
@@ -191,12 +208,15 @@ private struct NowPlayingTopButtons: View {
                     }
                     .transition(.opacity)
                 }
-                Button {
-                    withAnimation(.smooth) { showsVisualizer.toggle() }
-                } label: {
-                    Label("Visualizer", systemImage: "waveform")
+                SkinMenu(isShowingCassettes: $isShowingCassettes)
+                if !isDeck {
+                    Button {
+                        withAnimation(.smooth) { showsVisualizer.toggle() }
+                    } label: {
+                        Label("Visualizer", systemImage: "waveform")
+                    }
+                    .disabled(model.isRemote)
                 }
-                .disabled(model.isRemote)
                 Button {
                     withAnimation(.smooth) { panel = panel == .lyrics ? nil : .lyrics }
                 } label: {
@@ -206,20 +226,28 @@ private struct NowPlayingTopButtons: View {
                 PlaybackOptionsMenu(isShowingEqualizer: $isShowingEqualizer, isShowingVisualizer: $isShowingVisualizerScreen)
                 Button(action: close) { Label("Close", systemImage: "chevron.down") }
             }
-            .labelStyle(GlassCircleLabelStyle())
+            .labelStyle(GlassCircleLabelStyle(isDeck: isDeck))
             .buttonStyle(.plain)
         }
     }
 }
 
 /// An icon in a circle of glass, the same for buttons and menus (a menu does not take the glass button style).
+/// Over a player, an aluminum cap instead.
 private struct GlassCircleLabelStyle: LabelStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.icon
-            .font(.system(size: 17, weight: .semibold))
-            .frame(width: 44, height: 44)
-            .contentShape(.circle)
-            .glassEffect(.regular.interactive(), in: .circle)
+    var isDeck = false
+
+    @ViewBuilder func makeBody(configuration: Configuration) -> some View {
+        if isDeck {
+            DeckCap { configuration.icon }
+                .frame(width: 44, height: 44)
+        } else {
+            configuration.icon
+                .font(.system(size: 17, weight: .semibold))
+                .frame(width: 44, height: 44)
+                .contentShape(.circle)
+                .glassEffect(.regular.interactive(), in: .circle)
+        }
     }
 }
 
@@ -307,9 +335,7 @@ struct CoverAndControls: View {
                         .aspectRatio(1, contentMode: .fit)
                         .clipShape(.rect(cornerRadius: 14))
                 } else {
-                    Cover(hash: item.artworkHash, corner: 14, large: true)
-                        .scaleEffect(item.isPlaying ? 1 : 0.92)
-                        .animation(.spring(duration: 0.5, bounce: 0.25), value: item.isPlaying)
+                    NowPlayingArtwork(item: item)
                 }
             }
             .frame(maxWidth: 460)
