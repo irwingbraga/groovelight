@@ -9,7 +9,8 @@ class RouteTest {
     fun routesSurviveSaving() {
         val routes = listOf(Route.Library, Route.Search, Route.Shelf, Route.Settings, Route.Sync, Route.Equalizer, Route.LovedSongs,
             Route.AlbumPage("radiohead|ok computer: live"), Route.ArtistPage("Godspeed You! Black Emperor"), Route.PlaylistPage(42),
-            Route.PersonPage("Nigel Godrich"), Route.MacAlbumPage("radiohead|kid a"), Route.MacArtistPage("Sigur Rós"))
+            Route.PersonPage("Nigel Godrich"), Route.MacAlbumPage("radiohead|kid a"), Route.MacArtistPage("Sigur Rós"), Route.Cassettes,
+            Route.CassetteEditor("6B1C1C8E-0001-4C55-9C11-000000000001"))
         assertEquals(routes, routes.map { Route.decode(Route.encode(it)) })
         assertNull(Route.decode("playlist:x"))
         assertNull(Route.decode("unknown"))

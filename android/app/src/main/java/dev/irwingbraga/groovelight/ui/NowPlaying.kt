@@ -261,12 +261,15 @@ private fun NowPlayingContent(song: PlayerModel.NowPlaying, player: PlayerModel,
         secondaryContainer = Color.White.copy(alpha = 0.16f), onSecondaryContainer = Color.White,
         outlineVariant = Color.White.copy(alpha = 0.2f),
     )
-    // Light status bar icons over the dark wash while open.
-    LightSystemBarIcons()
+    // The turntable, cassette deck or CD player chosen in the cover's place takes the whole of Now Playing.
+    val skin by Cassettes.skin.collectAsStateWithLifecycle()
+    val deck = skin != NowPlayingSkin.COVER
+    // Light status bar icons over the dark wash while open (dark ones over the cassette deck's aluminum).
+    LightSystemBarIcons(darkIcons = skin == NowPlayingSkin.CASSETTE)
     MaterialTheme(colorScheme = scheme, typography = MaterialTheme.typography) {
         Box(Modifier.fillMaxSize().background(background)) {
-          CompositionLocalProvider(LocalContentColor provides Color.White) {
-            CoverWash(cover, background)
+          CompositionLocalProvider(LocalContentColor provides if (deck) deckInk(skin) else Color.White) {
+            if (deck) DeckSurface(skin, Modifier.matchParentSize()) else CoverWash(cover, background)
             var panel by rememberSaveable { mutableStateOf(Panel.COVER) }
             var details by rememberSaveable { mutableStateOf(false) }
             var dialog by rememberSaveable { mutableStateOf<Dialog?>(null) }
@@ -290,8 +293,10 @@ private fun NowPlayingContent(song: PlayerModel.NowPlaying, player: PlayerModel,
             val roomForSource = maxWidth >= 360.dp
             Column(Modifier.fillMaxSize()) {
                 TopRow(song, player, onClose, onDetails = { details = true }, onDialog = { dialog = it },
-                    panels = if (layout == Layout.COMPACT) panel else null, onPanel = togglePanel, showSource = roomForSource)
-                if (layout == Layout.COMPACT) {
+                    panels = if (layout == Layout.COMPACT || deck) panel else null, onPanel = togglePanel, showSource = roomForSource, deck = deck)
+                if (deck) {
+                    NowPlayingDeck(skin, song, player, cover, panel, Modifier.weight(1f).fillMaxWidth())
+                } else if (layout == Layout.COMPACT) {
                     CompactBody(panel, song, player, cover, wide, onDetails = { details = true }, onDialog = { dialog = it })
                 } else if (layout == Layout.TABLET) {
                     // As on the iPad: the cover with the song and the controls, and beside them the lyrics, or Up Next.
@@ -340,6 +345,77 @@ private fun NowPlayingContent(song: PlayerModel.NowPlaying, player: PlayerModel,
     }
 }
 
+/**
+ * Now Playing as the turntable, the cassette deck or the CD player: its keys, knobs and switches work the player (the
+ * volume knob sets this phone's media volume, or the Mac's while it plays there), the lyrics or Up Next show behind
+ * smoked glass in the player's place, and Love sits at the foot of its panel.
+ */
+@Composable
+private fun NowPlayingDeck(skin: NowPlayingSkin, song: PlayerModel.NowPlaying, player: PlayerModel, cover: File?, panel: Panel, modifier: Modifier) {
+    val actions = LocalActions.current
+    val cassetteId by Cassettes.cassetteId.collectAsStateWithLifecycle()
+    val progress by player.progress.collectAsStateWithLifecycle(PlayerModel.Progress(0, 0))
+    val clock = rememberSongClock(progress.positionMs, song.isPlaying)
+    val shuffle by player.shuffle.collectAsStateWithLifecycle()
+    val target by player.target.collectAsStateWithLifecycle()
+    val received by player.remote.state.collectAsStateWithLifecycle()
+    val device = rememberMediaVolume()
+    // The Mac's level as the knob turns it: sent a few times a second, and once more when it stops.
+    var turning by remember { mutableStateOf<Float?>(null) }
+    var lastSent by remember { mutableLongStateOf(0L) }
+    LaunchedEffect(turning) {
+        val value = turning ?: return@LaunchedEffect
+        delay(200)
+        player.setRemoteVolume(value)
+        delay(1_000)
+        turning = null
+    }
+    val track by remember(song.id) { song.id?.let { actions.library.track(it) } ?: flowOf(null) }.collectAsStateWithLifecycle(null)
+    val deckActions = DeckActions(
+        playPause = player::togglePlayPause, previous = player::previous, next = player::next,
+        seek = { player.seekTo((it * 1000).toLong()) },
+        volume = when (target) {
+            PlayerModel.Target.THIS_DEVICE -> device.value
+            PlayerModel.Target.MAC -> turning ?: (received?.state?.volume ?: 1.0).toFloat()
+            else -> null
+        },
+        onVolume = { value ->
+            if (target == PlayerModel.Target.THIS_DEVICE) device.set(value) else {
+                turning = value
+                val now = System.currentTimeMillis()
+                if (now - lastSent > 150) { lastSent = now; player.setRemoteVolume(value) }
+            }
+        },
+        shuffled = shuffle, toggleShuffle = player::toggleShuffle,
+        repeat = when (song.repeatMode) {
+            Player.REPEAT_MODE_ONE -> DeckRepeat.ONE
+            Player.REPEAT_MODE_ALL -> DeckRepeat.ALL
+            else -> DeckRepeat.OFF
+        },
+        cycleRepeat = player::cycleRepeat,
+    )
+    val deckSong = DeckSong(song.title, song.artist.orEmpty(), song.album.orEmpty(), song.isPlaying, progress.durationMs / 1000.0, clock,
+        heardHere = target == PlayerModel.Target.THIS_DEVICE)
+    SkinDeck(skin, deckSong, deckActions, cover, Cassettes.design(cassetteId), modifier,
+        stageOverlay = when (panel) {
+            Panel.LYRICS -> ({ CompositionLocalProvider(LocalContentColor provides Color.White) { LyricsPanel(song, player) } })
+            Panel.QUEUE -> ({ CompositionLocalProvider(LocalContentColor provides Color.White) { QueuePanel(player) } })
+            Panel.COVER -> null
+        }) {
+        track?.let { current ->
+            Box(Modifier.padding(top = 4.dp)) {
+                DeckCapBox {
+                    IconToggleButton(checked = current.loved, onCheckedChange = { actions.library.setLoved(current.id, it) }) {
+                        Icon(painterResource(if (current.loved) R.drawable.ic_favorite else R.drawable.ic_favorite_border),
+                            contentDescription = if (current.loved) "Loved" else "Love",
+                            tint = if (current.loved) Color(0xFFD7263D) else Color.Black.copy(alpha = 0.65f))
+                    }
+                }
+            }
+        }
+    }
+}
+
 /** The cover, blurred and darkened, behind everything: Groovelight's cover wash. */
 @Composable
 private fun BoxScope.CoverWash(cover: File?, background: Color) {
@@ -361,13 +437,18 @@ private fun TopRow(
     panels: Panel? = null,
     onPanel: (Panel) -> Unit = {},
     showSource: Boolean = true,
+    /** Over a player: the buttons on aluminum caps. */
+    deck: Boolean = false,
 ) {
     val actions = LocalActions.current
     var menu by remember { mutableStateOf(false) }
+    val cap: @Composable (@Composable () -> Unit) -> Unit = { button ->
+        if (deck) DeckCapBox { CompositionLocalProvider(LocalContentColor provides Color.Black.copy(alpha = 0.65f)) { button() } } else button()
+    }
     val (artistRoute, albumRoute) = songRoutes(song)
-    Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = if (panels != null) 0.dp else 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = onClose) { Icon(painterResource(R.drawable.ic_expand_more), contentDescription = "Close Now Playing") }
-        Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+    CenteredBar(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = if (panels != null) 0.dp else 4.dp), start = {
+        cap { IconButton(onClick = onClose) { Icon(painterResource(R.drawable.ic_expand_more), contentDescription = "Close Now Playing") } }
+    }, center = {
             if (song.playingOn != null) {
                 if (panels == null) Text("PLAYING ON", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                 Text(song.playingOn, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, maxLines = 1,
@@ -379,14 +460,14 @@ private fun TopRow(
                 if (panels == null) Text("PLAYING FROM", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(source, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-        }
+    }) {
         if (panels != null) {
-            PanelButton(panels == Panel.LYRICS, R.drawable.ic_lyrics, "Lyrics") { onPanel(Panel.LYRICS) }
-            PanelButton(panels == Panel.QUEUE, R.drawable.ic_queue, "Up Next") { onPanel(Panel.QUEUE) }
+            cap { PanelButton(panels == Panel.LYRICS, R.drawable.ic_lyrics, "Lyrics") { onPanel(Panel.LYRICS) } }
+            cap { PanelButton(panels == Panel.QUEUE, R.drawable.ic_queue, "Up Next") { onPanel(Panel.QUEUE) } }
         }
-        PlayOnButton(player)
+        if (player.remote.isPaired) cap { PlayOnButton(player) }
         Box {
-            IconButton(onClick = { menu = true }) { Icon(painterResource(R.drawable.ic_more), contentDescription = "More") }
+            cap { IconButton(onClick = { menu = true }) { Icon(painterResource(R.drawable.ic_more), contentDescription = "More") } }
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                 albumRoute?.let { route ->
                     DropdownMenuItem(text = { Text("Go to Album") }, leadingIcon = { Icon(painterResource(R.drawable.ic_album), null) },
@@ -407,11 +488,40 @@ private fun TopRow(
                     onClick = { menu = false; onDialog(Dialog.SPEED) })
                 DropdownMenuItem(text = { Text("Visualizer") }, leadingIcon = { Icon(painterResource(R.drawable.ic_visualizer), null) },
                     onClick = { menu = false; onDialog(Dialog.VISUALIZER) })
+                DropdownMenuItem(text = { Text("Look") }, leadingIcon = { Icon(painterResource(R.drawable.ic_cassette), null) },
+                    onClick = { menu = false; actions.open(Route.Cassettes) })
                 DropdownMenuItem(text = { Text("Sleep Timer") }, leadingIcon = { Icon(painterResource(R.drawable.ic_timer), null) },
                     onClick = { menu = false; onDialog(Dialog.SLEEP) })
                 DropdownMenuItem(text = { Text("Audio Details") }, leadingIcon = { Icon(painterResource(R.drawable.ic_info), null) },
                     onClick = { menu = false; onDetails() })
             }
+        }
+    }
+}
+
+/**
+ * A bar with buttons at its [start] and [end] and [center] in the middle of the bar (the screen), not of the room
+ * between the buttons, which is off center when one side has more of them. It keeps as clear of the wider side on
+ * both sides, so it stays centered without running under a button.
+ */
+@Composable
+private fun CenteredBar(modifier: Modifier, start: @Composable () -> Unit, center: @Composable () -> Unit, end: @Composable () -> Unit) {
+    Layout(contents = listOf(
+        { Row(verticalAlignment = Alignment.CenterVertically) { start() } },
+        { Column(horizontalAlignment = Alignment.CenterHorizontally) { center() } },
+        { Row(verticalAlignment = Alignment.CenterVertically) { end() } },
+    ), modifier) { (starts, centers, ends), constraints ->
+        val loose = constraints.copy(minWidth = 0, minHeight = 0)
+        val first = starts.first().measure(loose)
+        val last = ends.first().measure(loose)
+        val side = maxOf(first.width, last.width)
+        val room = (constraints.maxWidth - side * 2).coerceAtLeast(0)
+        val middle = centers.first().measure(loose.copy(minWidth = room, maxWidth = room))
+        val height = maxOf(first.height, middle.height, last.height).coerceAtLeast(constraints.minHeight)
+        layout(constraints.maxWidth, height) {
+            first.place(0, (height - first.height) / 2)
+            middle.place(side, (height - middle.height) / 2)
+            last.place(constraints.maxWidth - last.width, (height - last.height) / 2)
         }
     }
 }
@@ -509,14 +619,24 @@ private fun PanelContent(panel: Panel, song: PlayerModel.NowPlaying, player: Pla
                 // Swiped left, the next song; right, the previous one (or this one again from its start, as the button):
                 // the cover follows the finger, goes off that side and the song's comes in from the other.
                 val swipe = remember { Animatable(0f) }
-                val scope = rememberCoroutineScope()
                 val haptics = LocalHapticFeedback.current
                 val density = LocalDensity.current
                 val away = with(density) { maxWidth.toPx() }
-                val swiped = rememberDraggableState { delta -> scope.launch { swipe.snapTo(swipe.value + delta) } }
+                // The finger moves the cover at once. (Moved through the animation, each move a coroutine of its own, a move
+                // landing after the release stopped the cover's way back, and it stayed halfway.)
+                var dragging by remember { mutableStateOf(false) }
+                var dragged by remember { mutableFloatStateOf(0f) }
+                val swiped = rememberDraggableState { delta -> dragged += delta }
                 // Square, as big as the room allows: a short screen (a passport-shaped cover screen) has less height than width.
-                Cover(cover, Modifier.sharedCover(PLAYER_COVER).size(minOf(maxWidth, maxHeight, 480.dp))
-                    .draggable(swiped, Orientation.Horizontal, onDragStopped = { velocity ->
+                Box(Modifier.sharedCover(PLAYER_COVER).size(minOf(maxWidth, maxHeight, 480.dp))
+                    .draggable(swiped, Orientation.Horizontal, onDragStarted = {
+                        // Caught on its way: the finger takes it from where it is.
+                        swipe.stop()
+                        dragged = swipe.value
+                        dragging = true
+                    }, onDragStopped = { velocity ->
+                        swipe.snapTo(dragged)
+                        dragging = false
                         val forward = swipe.value < 0
                         val far = abs(swipe.value) > with(density) { 96.dp.toPx() } || abs(velocity) > 1_500f && (velocity < 0) == forward
                         if (far && (!forward || song.hasNext || song.repeatMode != Player.REPEAT_MODE_OFF)) {
@@ -530,10 +650,13 @@ private fun PanelContent(panel: Panel, song: PlayerModel.NowPlaying, player: Pla
                     })
                     .graphicsLayer {
                         scaleX = scale; scaleY = scale
-                        translationX = swipe.value
-                        alpha = 1f - (abs(swipe.value) / away).coerceIn(0f, 1f) * 0.6f
+                        val offset = if (dragging) dragged else swipe.value
+                        translationX = offset
+                        alpha = 1f - (abs(offset) / away).coerceIn(0f, 1f) * 0.6f
                     }
-                    .shadow(24.dp, RoundedCornerShape(12.dp)), corner = 12.dp)
+                    .shadow(24.dp, RoundedCornerShape(12.dp))) {
+                    Cover(cover, Modifier.fillMaxSize(), corner = 12.dp)
+                }
             }
             Panel.LYRICS -> LyricsPanel(song, player)
             Panel.QUEUE -> QueuePanel(player)

@@ -138,6 +138,9 @@ sealed interface Route {
     data object Settings : Route
     data object Sync : Route
     data object Equalizer : Route
+    /** Now Playing's look and the cassettes ([CassettesScreen]), and one of the user's cassettes being edited. */
+    data object Cassettes : Route
+    data class CassetteEditor(val id: String) : Route
     data class AlbumPage(val key: String) : Route
     data class ArtistPage(val name: String) : Route
     data class PlaylistPage(val id: Long) : Route
@@ -161,6 +164,8 @@ sealed interface Route {
             Settings -> "settings"
             Sync -> "sync"
             Equalizer -> "equalizer"
+            Cassettes -> "cassettes"
+            is CassetteEditor -> "cassette:${route.id}"
             LovedSongs -> "loved"
             Compilations -> "compilations"
             is AlbumPage -> "album:${route.key}"
@@ -181,6 +186,8 @@ sealed interface Route {
                 "settings" -> Settings
                 "sync" -> Sync
                 "equalizer" -> Equalizer
+                "cassettes" -> Cassettes
+                "cassette" -> CassetteEditor(value)
                 "loved" -> LovedSongs
                 "compilations" -> Compilations
                 "album" -> AlbumPage(value)
@@ -239,7 +246,7 @@ fun PlayerShell(sync: SyncViewModel, player: PlayerModel = viewModel(), library:
             expanded = false
             // Library pages asked from Settings open in the Library; Settings' own pages in Settings.
             if (tab == Tab.SETTINGS && route.isLibraryPage) tab = Tab.LIBRARY
-            if (route == Route.Equalizer || route == Route.Sync) tab = Tab.SETTINGS
+            if (route == Route.Equalizer || route == Route.Sync || route == Route.Cassettes || route is Route.CassetteEditor) tab = Tab.SETTINGS
             val stack = stacks.getValue(tab)
             if (stack.lastOrNull() != route) stack.add(route)
         }, showTab = { tab = it })
@@ -387,6 +394,8 @@ fun PlayerShell(sync: SyncViewModel, player: PlayerModel = viewModel(), library:
                                         Route.Shelf -> ShelfScreen()
                                         Route.Settings -> SettingsScreen(sync)
                                         Route.Equalizer -> EqualizerScreen()
+                                        Route.Cassettes -> CassettesScreen()
+                                        is Route.CassetteEditor -> CassetteEditor(it.id)
                                         Route.Sync -> GlassTop(bar = { SettingsBar("Sync") }) {
                                             Box(Modifier.padding(top = LocalTopInset.current, bottom = bottomInset)) {
                                                 SyncScreen(null, sync) {
@@ -521,11 +530,15 @@ private fun MiniPlayer(song: PlayerModel.NowPlaying, player: PlayerModel, haze: 
                 // The first clear movement decides: up opens Now Playing (it follows the finger), down closes, sideways
                 // changes song.
                 var vertical: Boolean? = null
+                // Whether Now Playing follows the finger: only while it goes up. (Told even at 0, dragging down started
+                // its opening, and the mini player swelled toward it before closing.)
+                var peeking = false
                 val velocity = VelocityTracker()
                 var startedAt = 0L
                 var lastAt = 0L
                 val screen = windowHeight.coerceAtLeast(1f)
                 fun settle() {
+                    var opened = false
                     when {
                         vertical == false && dx < -64.dp.toPx() -> player.next()
                         vertical == false && dx > 64.dp.toPx() -> player.previous()
@@ -533,9 +546,10 @@ private fun MiniPlayer(song: PlayerModel.NowPlaying, player: PlayerModel, haze: 
                         // Past a quarter of the way, or flicked up (fast, or short and quick): open from where it is;
                         // otherwise back down.
                         vertical == true && dy < 0 && (-dy > screen * 0.25f || velocity.calculateVelocity().y < -1_500f ||
-                            (-dy > 32.dp.toPx() && lastAt - startedAt < 300)) -> onOpen()
+                            (-dy > 32.dp.toPx() && lastAt - startedAt < 300)) -> { onOpen(); opened = true }
                     }
-                    onPeek(null)
+                    if (peeking || opened) onPeek(null)
+                    peeking = false
                     if (!(vertical == true && dy > 40.dp.toPx())) scope.launch { drop.animateTo(0f, spring(stiffness = Spring.StiffnessMediumLow)) }
                 }
                 detectDragGestures(onDragStart = { dx = 0f; dy = 0f; vertical = null; velocity.resetTracking(); startedAt = 0L }, onDragEnd = { settle() },
@@ -548,7 +562,14 @@ private fun MiniPlayer(song: PlayerModel.NowPlaying, player: PlayerModel, haze: 
                     if (vertical == null && abs(dx) + abs(dy) > 12.dp.toPx()) vertical = abs(dy) > abs(dx)
                     if (vertical == true) {
                         scope.launch { drop.snapTo(dy.coerceAtLeast(0f)) }
-                        onPeek((-dy / screen).coerceIn(0f, 1f))
+                        if (dy < 0) {
+                            peeking = true
+                            onPeek((-dy / screen).coerceIn(0f, 1f))
+                        } else if (peeking) {
+                            // Back down past where it started: Now Playing goes back too.
+                            peeking = false
+                            onPeek(null)
+                        }
                     }
                 }
             }

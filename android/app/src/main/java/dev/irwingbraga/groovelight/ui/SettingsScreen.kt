@@ -199,6 +199,14 @@ fun SettingsScreen(sync: SyncViewModel) {
                 colors = ListItemDefaults.colors(containerColor = Color.Transparent),
             )
 
+            val skin by Cassettes.skin.collectAsStateWithLifecycle()
+            val cassetteId by Cassettes.cassetteId.collectAsStateWithLifecycle()
+            SettingsRow(
+                icon = R.drawable.ic_cassette, title = "Now Playing Look",
+                detail = if (skin == NowPlayingSkin.CASSETTE) "Cassette · ${Cassettes.design(cassetteId).name}" else skin.label,
+                onClick = { actions.open(Route.Cassettes) },
+            )
+
             // The mini player put away after a while paused (playing anything brings it back).
             val hideAfter by actions.player.hideAfter.collectAsStateWithLifecycle()
             var hideMenu by remember { mutableStateOf(false) }

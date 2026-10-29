@@ -191,10 +191,10 @@ fun Visualizer(title: String, artist: String?, accent: Color, onClose: () -> Uni
     val view = LocalView.current
     BackHandler(onBack = onClose)
     DisposableEffect(Unit) {
-        AudioTap.enabled = true
+        AudioTap.start()
         view.keepScreenOn = true
         onDispose {
-            AudioTap.enabled = false
+            AudioTap.stop()
             view.keepScreenOn = false
         }
     }

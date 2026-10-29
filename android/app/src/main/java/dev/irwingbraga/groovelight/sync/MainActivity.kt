@@ -25,6 +25,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.irwingbraga.groovelight.BuildConfig
 import dev.irwingbraga.groovelight.ui.Appearance
+import dev.irwingbraga.groovelight.ui.Cassettes
 import dev.irwingbraga.groovelight.ui.GroovelightTheme
 import dev.irwingbraga.groovelight.ui.SystemBarIcons
 import dev.irwingbraga.groovelight.ui.UpdatePrompt
@@ -51,6 +52,7 @@ class MainActivity : ComponentActivity() {
         playFromSearch(intent)
         PlaybackSettings.init(this)
         Appearance.init(this)
+        Cassettes.init(this)
         enableEdgeToEdge()
         setContent {
             val dark = Appearance.isDark()

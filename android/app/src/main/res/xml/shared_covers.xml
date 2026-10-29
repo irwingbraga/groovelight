@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The covers Share may hand to another app: the Mac's (synced) and the small ones of its whole library. -->
+<!-- The covers Share may hand to another app (the Mac's, synced, and the small ones of its whole library), and shared cassettes. -->
 <paths>
     <files-path name="covers" path="artwork/" />
     <files-path name="catalog-covers" path="catalog-artwork/" />
+    <!-- Cassette designs shared from Now Playing's cassettes (a zip of the design's folder). -->
+    <cache-path name="cassettes" path="shared-cassettes/" />
 </paths>

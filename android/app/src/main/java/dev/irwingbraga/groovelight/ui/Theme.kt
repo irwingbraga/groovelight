@@ -104,16 +104,16 @@ fun SystemBarIcons(dark: Boolean) {
     }
 }
 
-/** Light status and navigation bar icons while shown (over Now Playing's wash, and the Shelf), then as they were. */
+/** Light status and navigation bar icons while shown (over Now Playing's wash, and the Shelf), or dark ones ([darkIcons], over the cassette deck), then as they were. */
 @Composable
-fun LightSystemBarIcons() {
+fun LightSystemBarIcons(darkIcons: Boolean = false) {
     val view = LocalView.current
-    DisposableEffect(view) {
+    DisposableEffect(view, darkIcons) {
         val window = (view.context as? Activity)?.window
         val controller = window?.let { WindowCompat.getInsetsController(it, view) }
         val light = controller?.isAppearanceLightStatusBars
-        controller?.isAppearanceLightStatusBars = false
-        controller?.isAppearanceLightNavigationBars = false
+        controller?.isAppearanceLightStatusBars = darkIcons
+        controller?.isAppearanceLightNavigationBars = darkIcons
         onDispose {
             if (light != null) {
                 controller.isAppearanceLightStatusBars = light
