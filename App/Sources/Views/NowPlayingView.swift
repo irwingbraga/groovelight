@@ -49,12 +49,25 @@ struct NowPlayingView: View {
                         .help("Visualizer" + model.shortcuts.hint(.visualizer))
                     }
                     Button {
-                        withAnimation(.smooth) { model.isShowingLyrics.toggle() }
+                        withAnimation(.smooth) {
+                            model.isShowingLyrics.toggle()
+                            if model.isShowingLyrics { model.isShowingNowPlayingQueue = false }
+                        }
                     } label: {
                         Image(systemName: "quote.bubble").frame(width: 20, height: 20)
                     }
                     .buttonBorderShape(.circle)
                     .help("Lyrics" + model.shortcuts.hint(.lyrics))
+                    if skin != .cover && skin != .pcPlayer {
+                        // Over a player, Up Next in its place, like the lyrics (the PC Player's playlist shows the queue).
+                        Button {
+                            model.toggleUpNext()
+                        } label: {
+                            Image(systemName: "list.bullet").frame(width: 20, height: 20)
+                        }
+                        .buttonBorderShape(.circle)
+                        .help("Up Next" + model.shortcuts.hint(.upNext))
+                    }
                     Button {
                         withAnimation(.smooth) { model.isShowingNowPlaying = false }
                     } label: {
@@ -96,9 +109,10 @@ struct NowPlayingView: View {
             // Grows with big windows and full screen (1 at a 1100 x 760 window, up to 1.9x), so the cover, text and
             // controls do not sit small in the middle of a large display.
             let scale = min(max(min(geometry.size.width / 1100, geometry.size.height / 760), 1), 1.9)
-            // Leave room for title, transport and volume under the cover.
-            let side = max(200, min(460 * scale, geometry.size.height - 315 * scale,
-                                    geometry.size.width - (model.isShowingLyrics ? 480 * scale : 80)))
+            // Leave room for title, transport, volume and the love / Up Next row under the cover.
+            let showsSide = model.isShowingLyrics || model.isShowingNowPlayingQueue
+            let side = max(200, min(460 * scale, geometry.size.height - 355 * scale,
+                                    geometry.size.width - (showsSide ? 480 * scale : 80)))
             ZStack {
                 AnimatedArtworkBackdrop(hash: hash)
 
@@ -135,11 +149,20 @@ struct NowPlayingView: View {
 
                         BigTransport(scale: scale)
                             .frame(width: max(side, 360 * scale))
+                        NowPlayingCoverButtons(track: track?.id == player.current?.id ? track : nil, scale: scale) {
+                            Task { track = await model.currentTrack() }
+                        }
+                        .frame(width: max(side, 360 * scale))
                     }
 
                     if model.isShowingLyrics {
                         // Same height as the cover + transport column so both read as one centered unit.
                         CurrentLyrics(fontSize: 24 * scale)
+                            .frame(width: 380 * scale, height: side + 190 * scale)
+                            .transition(.move(edge: .trailing).combined(with: .opacity))
+                    } else if model.isShowingNowPlayingQueue {
+                        QueueView()
+                            .scrollContentBackground(.hidden)
                             .frame(width: 380 * scale, height: side + 190 * scale)
                             .transition(.move(edge: .trailing).combined(with: .opacity))
                     }
@@ -151,6 +174,45 @@ struct NowPlayingView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
+    }
+}
+
+/// Love and Up Next under the controls, as on the iPhone (the lyrics are at the top). Up Next shows beside the cover.
+private struct NowPlayingCoverButtons: View {
+    var track: Track?
+    var scale: CGFloat
+    /// Reloads the song after a love, for its heart.
+    var changed: () -> Void
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        let isLoved = track?.isLoved == true
+        HStack {
+            Button {
+                if let track { model.toggleLoved(track); changed() }
+            } label: {
+                Image(systemName: isLoved ? "heart.fill" : "heart")
+                    .foregroundStyle(isLoved ? AnyShapeStyle(.pink) : AnyShapeStyle(.white.opacity(0.85)))
+                    .contentTransition(.symbolEffect(.replace))
+                    .frame(width: 34 * scale, height: 34 * scale)
+                    .contentShape(.circle)
+            }
+            .disabled(track == nil)
+            .help((isLoved ? "Unlove" : "Love") + model.shortcuts.hint(.love))
+            Spacer()
+            Button {
+                model.toggleUpNext()
+            } label: {
+                Image(systemName: "list.bullet")
+                    .foregroundStyle(.white.opacity(model.isShowingNowPlayingQueue ? 1 : 0.85))
+                    .frame(width: 34 * scale, height: 34 * scale)
+                    .background(Circle().fill(.white.opacity(model.isShowingNowPlayingQueue ? 0.2 : 0)))
+                    .contentShape(.circle)
+            }
+            .help("Up Next" + model.shortcuts.hint(.upNext))
+        }
+        .font(.system(size: 17 * scale, weight: .semibold))
+        .buttonStyle(.plain)
     }
 }
 

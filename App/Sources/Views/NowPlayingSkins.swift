@@ -46,14 +46,29 @@ struct NowPlayingDeck: View {
                                         time: { player.estimatedTime(at: $0) }),
                  controls: controls,
                  cassette: design, cassettePictures: model.cassettes.pictures(of: design), chromeInset: chromeInset,
-                 stageOverlay: model.isShowingLyrics ? AnyView(CurrentLyrics(fontSize: 22)) : nil,
+                 stageOverlay: stageOverlay,
                  playlist: skin == .pcPlayer ? playlist : nil) {
             ArtworkImage(hash: player.current?.artworkHash, size: .large, cornerRadius: 0)
         } accessory: {
-            EmptyView()
+            // The PC Player has its own heart key; the other players a cap for it at the foot of their panel.
+            if skin != .pcPlayer {
+                LoveCap(track: track) { refresh in
+                    model.toggleLoved(refresh)
+                    Task { track = await model.currentTrack() }
+                }
+            }
         }
         .task(id: player.current?.id) { track = await model.currentTrack() }
         .transition(.opacity)
+    }
+
+    /// The lyrics or Up Next behind smoked glass in the player's place (the PC Player's playlist shows the queue).
+    private var stageOverlay: AnyView? {
+        if model.isShowingLyrics { return AnyView(CurrentLyrics(fontSize: 22)) }
+        if model.isShowingNowPlayingQueue, skin != .pcPlayer {
+            return AnyView(QueueView().scrollContentBackground(.hidden).environment(\.colorScheme, .dark))
+        }
+        return nil
     }
 
     private var controls: DeckControls {
@@ -127,6 +142,27 @@ struct SkinMenu: View {
         }
         .menuIndicator(.hidden)
         .help("Cover, Vinyl, Cassette, CD or PC Player")
+    }
+}
+
+/// Love, on an aluminum cap at the foot of a player's panel.
+private struct LoveCap: View {
+    @Environment(AppModel.self) private var model
+    var track: Track?
+    var toggle: (Track) -> Void
+
+    var body: some View {
+        let isLoved = track?.isLoved == true
+        Button { if let track { toggle(track) } } label: {
+            DeckCap {
+                Image(systemName: isLoved ? "heart.fill" : "heart")
+                    .foregroundStyle(isLoved ? AnyShapeStyle(Color(red: 0.84, green: 0.15, blue: 0.24)) : AnyShapeStyle(Color.black.opacity(0.65)))
+                    .contentTransition(.symbolEffect(.replace))
+            }
+        }
+        .buttonStyle(.plain)
+        .disabled(track == nil)
+        .help((isLoved ? "Unlove" : "Love") + model.shortcuts.hint(.love))
     }
 }
 

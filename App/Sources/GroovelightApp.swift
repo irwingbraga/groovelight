@@ -259,7 +259,7 @@ struct PlayerCommands: Commands {
             .shortcut(.nowPlaying, shortcuts)
             Button("Lyrics") { model.toggleLyrics() }
                 .shortcut(.lyrics, shortcuts)
-            Button("Up Next") { model.isShowingQueue.toggle() }
+            Button("Up Next") { model.toggleUpNext() }
                 .shortcut(.upNext, shortcuts)
             Divider()
             Button("Show Visualizer") { openWindow.visualizer() }

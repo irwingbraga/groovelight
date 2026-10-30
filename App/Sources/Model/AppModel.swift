@@ -110,6 +110,8 @@ final class AppModel {
         set { sidePanel = newValue ? .lyrics : (sidePanel == .lyrics ? nil : sidePanel) }
     }
     var isShowingLyrics = false
+    /// Up Next in Now Playing: beside the cover, or in a vintage player's place (like the lyrics).
+    var isShowingNowPlayingQueue = false
     var scanProgress: ScanProgress?
     var lastScanSummary: ScanSummary?
     var errorMessage: String?
@@ -501,9 +503,24 @@ final class AppModel {
     /// Lyrics in Now Playing when it is open, otherwise in the side panel.
     func toggleLyrics() {
         if isShowingNowPlaying {
-            withAnimation(.smooth) { isShowingLyrics.toggle() }
+            withAnimation(.smooth) {
+                isShowingLyrics.toggle()
+                if isShowingLyrics { isShowingNowPlayingQueue = false }
+            }
         } else {
             isShowingLyricsPanel.toggle()
+        }
+    }
+
+    /// Up Next beside Now Playing's cover or in its player's place while it shows, in the side panel otherwise.
+    func toggleUpNext() {
+        if isShowingNowPlaying {
+            withAnimation(.smooth) {
+                isShowingNowPlayingQueue.toggle()
+                if isShowingNowPlayingQueue { isShowingLyrics = false }
+            }
+        } else {
+            isShowingQueue.toggle()
         }
     }
 
