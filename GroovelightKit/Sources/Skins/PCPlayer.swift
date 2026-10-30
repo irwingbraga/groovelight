@@ -867,7 +867,7 @@ private struct PCLogo: View {
                         with: .linearGradient(Gradient(colors: [Color(hex: 0x2A4CA0), Color(hex: 0x09143B)]), startPoint: face.origin,
                                               endPoint: CGPoint(x: face.maxX, y: face.maxY)))
             // The notes, upright and inside the tile.
-            let notes = Self.notes(in: CGRect(x: size.width * 0.3, y: size.height * 0.29, width: size.width * 0.42, height: size.height * 0.42))
+            let notes = PCLogoNotes.path(in: CGRect(x: size.width * 0.3, y: size.height * 0.29, width: size.width * 0.42, height: size.height * 0.42))
             context.fill(notes.offsetBy(dx: scale * 0.5, dy: scale * 0.5), with: .color(.black.opacity(0.6)))
             context.fill(notes, with: .linearGradient(Gradient(colors: [Color(hex: 0xFFE9A0), Color(hex: 0xE0B44A), Color(hex: 0xB07A22)]),
                                                      startPoint: CGPoint(x: size.width * 0.3, y: size.height * 0.29),
@@ -875,9 +875,12 @@ private struct PCLogo: View {
         }
         .accessibilityHidden(true)
     }
+}
 
+/// The app icon's notes, for the themes' logos (plain geometry, off the main actor that views' members are on).
+enum PCLogoNotes {
     /// The icon's notes (its 1024-point drawing) fitted in `rect`.
-    static func notes(in rect: CGRect) -> Path {
+    static func path(in rect: CGRect) -> Path {
         var path = Path()
         path.addPath(Path(ellipseIn: CGRect(x: 258, y: 610, width: 224, height: 160)).applying(rotation(-20, around: CGPoint(x: 370, y: 690))))
         path.addPath(Path(ellipseIn: CGRect(x: 578, y: 530, width: 224, height: 160)).applying(rotation(-20, around: CGPoint(x: 690, y: 610))))
@@ -898,11 +901,6 @@ private struct PCLogo: View {
     private static func rotation(_ degrees: CGFloat, around point: CGPoint) -> CGAffineTransform {
         CGAffineTransform(translationX: point.x, y: point.y).rotated(by: degrees * .pi / 180).translatedBy(x: -point.x, y: -point.y)
     }
-}
-
-/// The app icon's notes, for the themes' logos.
-enum PCLogoNotes {
-    static func path(in rect: CGRect) -> Path { PCLogo.notes(in: rect) }
 }
 
 // MARK: Playlist window
