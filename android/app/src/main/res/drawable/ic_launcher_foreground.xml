@@ -1,11 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Two beamed sixteenth notes, like the Mac app's icon. -->
+<!-- The Mac and iOS icon's note (Groovelight.icon/Assets/note.svg) flat, for themed icons: the 1024 icon square in the
+     middle 72dp of the layer. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <path
-        android:fillColor="#FFFFFFFF"
-        android:pathData="M44,34 L72,28 L72,64 A7,6 0 1,1 66,58.3 L66,40 L50,43.4 L50,70 A7,6 0 1,1 44,64.3 Z M50,36.8 L50,39.4 L66,36 L66,33.4 Z" />
+    <group
+        android:translateX="18"
+        android:translateY="18"
+        android:scaleX="0.0703125"
+        android:scaleY="0.0703125">
+        <group
+            android:translateX="-51"
+            android:translateY="80">
+            <group android:rotation="-20" android:pivotX="370" android:pivotY="690">
+                <path android:fillColor="#FFFFFFFF" android:pathData="M258,690a112,80 0 1,0 224,0a112,80 0 1,0 -224,0z" />
+            </group>
+            <group android:rotation="-20" android:pivotX="690" android:pivotY="610">
+                <path android:fillColor="#FFFFFFFF" android:pathData="M578,610a112,80 0 1,0 224,0a112,80 0 1,0 -224,0z" />
+            </group>
+            <path android:fillColor="#FFFFFFFF"
+                android:pathData="M441,161h34v509h-34z M778,81h34v509h-34z M441,151L812,71L812,143L441,223z M441,261L812,181L812,253L441,333z" />
+        </group>
+    </group>
 </vector>
