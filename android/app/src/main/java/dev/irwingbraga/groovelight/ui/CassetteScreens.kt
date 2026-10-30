@@ -86,12 +86,16 @@ fun CassettesScreen() {
     GlassTop(bar = { SettingsBar("Now Playing Look") }) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())
             .padding(top = LocalTopInset.current, bottom = 24.dp + LocalBottomInset.current)) {
-            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-                NowPlayingSkin.entries.forEachIndexed { index, entry ->
-                    SegmentedButton(selected = skin == entry, onClick = { Cassettes.setSkin(entry) },
-                        shape = SegmentedButtonDefaults.itemShape(index, NowPlayingSkin.entries.size)) { Text(entry.label) }
-                }
-            }
+            ChoiceRow("Look", skin.label, NowPlayingSkin.entries.map { it.label to { Cassettes.setSkin(it) } })
+            val pcTheme by Cassettes.pcTheme.collectAsStateWithLifecycle()
+            ChoiceRow("PC Player theme", pcTheme.label, PcTheme.entries.map { theme ->
+                theme.label to { Cassettes.setPcTheme(theme); Cassettes.setSkin(NowPlayingSkin.PC_PLAYER) }
+            })
+            val tapeCue by Cassettes.tapeCue.collectAsStateWithLifecycle()
+            SwitchRow("Tape sound when cueing", tapeCue, Cassettes::setTapeCue)
+            Text("In the cassette deck, holding Rewind or Fast Forward plays the tape racing past the heads, as a real deck does.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp))
             SectionTitle("Built In")
             CassetteDesign.BUILT_IN.forEach { design ->
                 CassetteRow(design, design.id == chosen, onChoose = { Cassettes.choose(design); Cassettes.setSkin(NowPlayingSkin.CASSETTE) },
@@ -201,7 +205,10 @@ fun CassetteEditor(id: String) {
             }
             ColorRow("Screws and Edges", design.detailColor) { design = design.copy(detailColor = it) }
             SectionTitle("Label")
-            ColorRow("Paper", design.label.background) { design = design.copy(label = design.label.copy(background = it)) }
+            FinishRow("Paper", design.label.backgroundFinish, plain = "Color") { design = design.copy(label = design.label.copy(backgroundFinish = it)) }
+            if (design.label.backgroundFinish == null) {
+                ColorRow("Paper Color", design.label.background) { design = design.copy(label = design.label.copy(background = it)) }
+            }
             ColorRow("Writing", design.label.textColor) { design = design.copy(label = design.label.copy(textColor = it)) }
             design.label.stripes.forEachIndexed { index, stripe ->
                 ColorRow("Band ${index + 1}", stripe, onRemove = {
@@ -220,9 +227,34 @@ fun CassetteEditor(id: String) {
             Field("Brand", design.brand) { design = design.copy(brand = it) }
             Field("Tape Type", design.tapeType) { design = design.copy(tapeType = it) }
             Field("Side", design.side) { design = design.copy(side = it) }
+            FinishRow("Print", design.label.textFinish, plain = "Writing's Color") { design = design.copy(label = design.label.copy(textFinish = it)) }
             SectionTitle("Reels")
             ColorRow("Hubs", design.reels.hubColor) { design = design.copy(reels = design.reels.copy(hubColor = it)) }
             ColorRow("Tape", design.reels.tapeColor) { design = design.copy(reels = design.reels.copy(tapeColor = it)) }
+            // Rings around the hubs: none, a color, or foil (with its color, for apps that draw no foil).
+            val rings = listOf("None", "Color", "Gold Foil", "Silver Foil")
+            val ring = when {
+                design.reels.ringColor == null -> 0
+                design.reels.ringFinish == Finish.GOLD -> 2
+                design.reels.ringFinish == Finish.SILVER -> 3
+                else -> 1
+            }
+            Text("Rings Around the Hubs", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp))
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+                rings.forEachIndexed { index, title ->
+                    SegmentedButton(selected = ring == index, shape = SegmentedButtonDefaults.itemShape(index, rings.size), onClick = {
+                        design = design.copy(reels = when (index) {
+                            0 -> design.reels.copy(ringColor = null, ringFinish = null)
+                            1 -> design.reels.copy(ringColor = design.reels.ringColor ?: design.label.textColor, ringFinish = null)
+                            2 -> design.reels.copy(ringColor = Color(0xFFC9A04A), ringFinish = Finish.GOLD)
+                            else -> design.reels.copy(ringColor = Color(0xFFBFC4CE), ringFinish = Finish.SILVER)
+                        })
+                    }) { Text(title, maxLines = 1) }
+                }
+            }
+            if (ring == 1) design.reels.ringColor?.let { color ->
+                ColorRow("Rings' Color", color) { design = design.copy(reels = design.reels.copy(ringColor = it)) }
+            }
             SectionTitle("Your Pictures")
             Cassettes.Picture.entries.forEach { picture ->
                 val has = Cassettes.pictureFile(design, picture) != null
@@ -247,6 +279,42 @@ private fun Field(label: String, value: String, onChange: (String) -> Unit) {
     OutlinedTextField(value, onChange, label = { Text(label) }, singleLine = true,
         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp))
+}
+
+/** Plain ([plain]) or in gold or silver foil. */
+@Composable
+private fun FinishRow(label: String, finish: Finish?, plain: String, onChange: (Finish?) -> Unit) {
+    val choices = listOf<Finish?>(null, Finish.GOLD, Finish.SILVER)
+    Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp))
+    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+        choices.forEachIndexed { index, choice ->
+            SegmentedButton(selected = finish == choice, onClick = { onChange(choice) }, shape = SegmentedButtonDefaults.itemShape(index, choices.size)) {
+                Text(when (choice) { null -> plain; Finish.GOLD -> "Gold Foil"; Finish.SILVER -> "Silver Foil" }, maxLines = 1)
+            }
+        }
+    }
+}
+
+/** A setting with a few choices: its name and the one chosen; tapped, the choices in a menu under it. */
+@Composable
+private fun ChoiceRow(label: String, value: String, choices: List<Pair<String, () -> Unit>>) {
+    var open by remember { mutableStateOf(false) }
+    Row(Modifier.fillMaxWidth().clickable { open = true }.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+        // The menu opens under the value it changes.
+        Box {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(value, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.primary)
+                Icon(painterResource(R.drawable.ic_expand_more), contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            }
+            DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+                choices.forEach { (title, choose) ->
+                    DropdownMenuItem(text = { Text(title) }, onClick = { open = false; choose() },
+                        trailingIcon = if (title == value) ({ Icon(painterResource(R.drawable.ic_check_circle), contentDescription = "Chosen") }) else null)
+                }
+            }
+        }
+    }
 }
 
 @Composable

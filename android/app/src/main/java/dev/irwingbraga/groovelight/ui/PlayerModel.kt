@@ -95,9 +95,14 @@ class PlayerModel(application: Application) : AndroidViewModel(application) {
 
     data class Progress(val positionMs: Long, val durationMs: Long)
 
+    /** The whole queue where music plays, for the PC Player's playlist: each song, and the one playing. */
+    data class Playlist(val entries: List<PlaylistEntry> = emptyList(), val current: Int? = null)
+    data class PlaylistEntry(val title: String, val artist: String?, val durationMs: Long)
+
     private val prefs = application.getSharedPreferences("player", Context.MODE_PRIVATE)
     private val state = MutableStateFlow<NowPlaying?>(null)
     private val queue = MutableStateFlow<List<QueueEntry>>(emptyList())
+    private val wholeQueue = MutableStateFlow(Playlist())
     private val shuffling = MutableStateFlow(prefs.getBoolean("shuffle", false))
 
     /** The paired Mac as a place to play (Play On). */
@@ -143,6 +148,25 @@ class PlayerModel(application: Application) : AndroidViewModel(application) {
                 }
             }
         }
+    /** The whole queue where music plays (there, the songs this device knows, the others untitled). */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val playlist: StateFlow<Playlist> = combine(wholeQueue, targets, remote.state.map { it?.state?.let { state -> state.queue to state.queueIndex } }
+        .distinctUntilChanged()
+        .mapLatest { there ->
+            val (ids, index) = there ?: return@mapLatest Playlist()
+            val tracks = if (ids.isEmpty()) emptyMap() else LibraryDatabase.get(getApplication()).library().tracksWithIds(ids).associateBy { it.id }
+            Playlist(ids.map { id -> tracks[id].let { PlaylistEntry(it?.title ?: "", it?.artist, it?.durationMs ?: 0) } }, index)
+        }) { local, target, there ->
+        if (target == Target.THIS_DEVICE) local else there
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, Playlist())
+
+    /** Plays the queue's song at [index] where music plays (on the Mac, its queue started again from that song). */
+    fun playFromPlaylist(index: Int) {
+        if (!isRemote) return skipTo(index)
+        val state = remote.state.value?.state ?: return
+        remote.send(RemoteCommand.play(state.queue, index.coerceIn(0, (state.queue.size - 1).coerceAtLeast(0)), 0.0, state.shuffle))
+    }
+
     val shuffle: StateFlow<Boolean> = combine(shuffling, targets, remote.state) { local, target, received ->
         if (target == Target.THIS_DEVICE) local else received?.state?.shuffle == true
     }.stateIn(viewModelScope, SharingStarted.Eagerly, shuffling.value)
@@ -239,6 +263,10 @@ class PlayerModel(application: Application) : AndroidViewModel(application) {
 
     private fun updateQueue(player: Player) {
         val current = player.currentMediaItemIndex
+        wholeQueue.value = Playlist((0 until player.mediaItemCount).map { index ->
+            val metadata = player.getMediaItemAt(index).mediaMetadata
+            PlaylistEntry(metadata.title?.toString() ?: "", metadata.artist?.toString(), metadata.durationMs ?: 0)
+        }, current.takeIf { player.mediaItemCount > 0 })
         queue.value = (current + 1 until player.mediaItemCount).map { index ->
             val item = player.getMediaItemAt(index)
             // Keys stay unique when a song is in the queue twice.

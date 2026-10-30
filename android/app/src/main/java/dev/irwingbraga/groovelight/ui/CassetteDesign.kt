@@ -14,6 +14,16 @@ import java.util.UUID
  * opens here. Sizes and places are relative to the cassette (0 to 1 across its width and its height), on the
  * template's geometry ([CassetteGeometry.STANDARD]) unless the design has its own.
  */
+/** Print in metal foil, as the premium tapes' lettering, bands and rings ("gold" or "silver" in the file). */
+enum class Finish(val value: String) {
+    GOLD("gold"), SILVER("silver");
+
+    companion object {
+        /** The finish named [value]; any other (a later one, or none) reads as plain ink. */
+        fun of(value: String?): Finish? = entries.firstOrNull { it.value == value }
+    }
+}
+
 data class CassetteDesign(
     val id: String,
     val name: String,
@@ -43,13 +53,21 @@ data class CassetteDesign(
         val bands: List<Band> = emptyList(),
         /** A strip to write on above the window, in its own color, the song written on it in its own ink. */
         val writing: Writing? = null,
+        /** The printed lettering (the brand, the tape's type, the side) in foil instead of [textColor]. */
+        val textFinish: Finish? = null,
+        /** The whole label in foil (the metal tapes' gold labels) instead of [background]. */
+        val backgroundFinish: Finish? = null,
     )
 
-    data class Band(val color: Color, val y: Float, val height: Float)
+    /** [finish]: in foil instead of [color]. */
+    data class Band(val color: Color, val y: Float, val height: Float, val finish: Finish? = null)
     data class Writing(val background: Color, val textColor: Color)
 
-    /** [ringColor]: a printed ring around each hub's hole (the gold rings of the premium tapes). */
-    data class Reels(val hubColor: Color, val tapeColor: Color, val ringColor: Color? = null)
+    /**
+     * [ringColor]: a printed ring around each hub's hole (the gold rings of the premium tapes); [ringFinish]: the rings
+     * in foil instead (with [ringColor] set, so readers without finishes still draw them).
+     */
+    data class Reels(val hubColor: Color, val tapeColor: Color, val ringColor: Color? = null, val ringFinish: Finish? = null)
 
     val resolvedGeometry: CassetteGeometry get() = geometry ?: CassetteGeometry.STANDARD
     val isBuiltIn: Boolean get() = BUILT_IN.any { it.id == id }
@@ -71,14 +89,19 @@ data class CassetteDesign(
             put("handwritten", label.handwritten)
             // Only when used, so plain designs read as before.
             if (label.bands.isNotEmpty()) put("bands", JSONArray(label.bands.map {
-                JSONObject().put("color", it.color.hex()).put("y", it.y.toDouble()).put("height", it.height.toDouble())
+                JSONObject().put("color", it.color.hex()).put("y", it.y.toDouble()).put("height", it.height.toDouble()).apply {
+                    it.finish?.let { finish -> put("finish", finish.value) }
+                }
             }))
             label.writing?.let { put("writing", JSONObject().put("background", it.background.hex()).put("textColor", it.textColor.hex())) }
+            label.textFinish?.let { put("textFinish", it.value) }
+            label.backgroundFinish?.let { put("backgroundFinish", it.value) }
         })
         put("reels", JSONObject().apply {
             put("hubColor", reels.hubColor.hex())
             put("tapeColor", reels.tapeColor.hex())
             reels.ringColor?.let { put("ringColor", it.hex()) }
+            reels.ringFinish?.let { put("ringFinish", it.value) }
         })
         put("brand", brand)
         put("tapeType", tapeType)
@@ -116,18 +139,23 @@ data class CassetteDesign(
                     bands = label.optJSONArray("bands")?.let { array ->
                         (0 until array.length()).mapNotNull { i ->
                             array.optJSONObject(i)?.let { band ->
-                                band.color("color")?.let { Band(it, band.optDouble("y", 0.0).toFloat(), band.optDouble("height", 0.0).toFloat()) }
+                                band.color("color")?.let {
+                                    Band(it, band.optDouble("y", 0.0).toFloat(), band.optDouble("height", 0.0).toFloat(), Finish.of(band.optString("finish")))
+                                }
                             }
                         }
                     }.orEmpty(),
                     writing = label.optJSONObject("writing")?.let { writing ->
                         writing.color("background")?.let { Writing(it, writing.color("textColor") ?: Color(0xFF1C2A6B)) }
                     },
+                    textFinish = Finish.of(label.optString("textFinish")),
+                    backgroundFinish = Finish.of(label.optString("backgroundFinish")),
                 ),
                 reels = if (reels == null) fallback.reels else Reels(
                     hubColor = reels.color("hubColor") ?: fallback.reels.hubColor,
                     tapeColor = reels.color("tapeColor") ?: fallback.reels.tapeColor,
                     ringColor = reels.color("ringColor"),
+                    ringFinish = Finish.of(reels.optString("ringFinish")),
                 ),
                 brand = json.optString("brand"),
                 tapeType = json.optString("tapeType"),
@@ -173,7 +201,7 @@ data class CassetteDesign(
         val METAL = CassetteDesign(
             id = "6B1C1C8E-0001-4C55-9C11-000000000004", name = "Metal",
             shellColor = c("#2B2D31"), detailColor = c("#8D8F94"),
-            label = Label(c("#C9A750"), listOf(c("#1A1A1A")), c("#1A1A1A"), handwritten = false),
+            label = Label(c("#C9A750"), listOf(c("#1A1A1A")), c("#1A1A1A"), handwritten = false, backgroundFinish = Finish.GOLD),
             reels = Reels(c("#C9C9C9"), c("#1F1A16")), brand = "GROOVELIGHT", tapeType = "TYPE IV · METAL",
         )
         val MIXTAPE = CassetteDesign(
@@ -189,8 +217,8 @@ data class CassetteDesign(
         val BLACK_GOLD = CassetteDesign(
             id = "6B1C1C8E-0001-4C55-9C11-000000000006", name = "Black Gold",
             shellColor = c("#161618"), detailColor = c("#3C3C40"),
-            label = Label(c("#00000000"), emptyList(), c("#D6AE5C"), handwritten = false, bands = listOf(Band(c("#D6AE5C"), 0.43f, 0.012f), Band(c("#232120"), 0.46f, 0.34f), Band(c("#D6AE5C"), 0.8f, 0.012f))),
-            reels = Reels(c("#E8E6E0"), c("#2A1D14"), c("#C9A04A")), brand = "GROOVELIGHT GX 60", tapeType = "HIGH POSITION · TYPE II", side = "B",
+            label = Label(c("#00000000"), emptyList(), c("#D6AE5C"), handwritten = false, bands = listOf(Band(c("#D6AE5C"), 0.43f, 0.012f, Finish.GOLD), Band(c("#232120"), 0.46f, 0.34f), Band(c("#D6AE5C"), 0.8f, 0.012f, Finish.GOLD)), textFinish = Finish.GOLD),
+            reels = Reels(c("#E8E6E0"), c("#2A1D14"), c("#C9A04A"), Finish.GOLD), brand = "GROOVELIGHT GX 60", tapeType = "HIGH POSITION · TYPE II", side = "B",
         )
         /** Clear blue plastic, the whole reels showing: the chrome tapes of the late 1980s. */
         val ICE_CHROME = CassetteDesign(
@@ -203,8 +231,8 @@ data class CassetteDesign(
         val MIDNIGHT_PRO = CassetteDesign(
             id = "6B1C1C8E-0001-4C55-9C11-000000000008", name = "Midnight Pro",
             shellColor = c("#1A1F30"), detailColor = c("#59607A"),
-            label = Label(c("#00000000"), emptyList(), c("#D5D9E2"), handwritten = false, bands = listOf(Band(c("#262C42"), 0.46f, 0.34f), Band(c("#AEB3BF"), 0.82f, 0.01f))),
-            reels = Reels(c("#E9EBEF"), c("#241A14"), c("#BFC4CE")), brand = "GROOVELIGHT PRO 90", tapeType = "SUPER ENERGY · TYPE II",
+            label = Label(c("#00000000"), emptyList(), c("#D5D9E2"), handwritten = false, bands = listOf(Band(c("#262C42"), 0.46f, 0.34f), Band(c("#AEB3BF"), 0.82f, 0.01f, Finish.SILVER)), textFinish = Finish.SILVER),
+            reels = Reels(c("#E9EBEF"), c("#241A14"), c("#BFC4CE"), Finish.SILVER), brand = "GROOVELIGHT PRO 90", tapeType = "SUPER ENERGY · TYPE II",
         )
         /** Black with a white strip to write on and a red band across the window. */
         val RED_BAND = CassetteDesign(
@@ -232,7 +260,7 @@ data class CassetteDesign(
         val GREEN_PINSTRIPE = CassetteDesign(
             id = "6B1C1C8E-0001-4C55-9C11-00000000000C", name = "Green Pinstripe",
             shellColor = c("#1C2520"), detailColor = c("#4A564F"),
-            label = Label(c("#00000000"), emptyList(), c("#E9E4D0"), handwritten = true, bands = listOf(Band(c("#C8A55A"), 0.8f, 0.018f), Band(c("#EDE8D8"), 0.835f, 0.012f), Band(c("#C8A55A"), 0.86f, 0.018f)), writing = Writing(c("#F2F0E6"), c("#1D2A22"))),
+            label = Label(c("#00000000"), emptyList(), c("#E9E4D0"), handwritten = true, bands = listOf(Band(c("#C8A55A"), 0.8f, 0.018f, Finish.GOLD), Band(c("#EDE8D8"), 0.835f, 0.012f), Band(c("#C8A55A"), 0.86f, 0.018f, Finish.GOLD)), writing = Writing(c("#F2F0E6"), c("#1D2A22"))),
             reels = Reels(c("#F0F0EC"), c("#2A1D14")), brand = "GROOVELIGHT X 90", tapeType = "HIGH BIAS · 70µs EQ",
         )
         /** Smoked clear plastic, a white strip to write on and a bronze band. */
@@ -246,7 +274,7 @@ data class CassetteDesign(
         val CHARCOAL = CassetteDesign(
             id = "6B1C1C8E-0001-4C55-9C11-00000000000E", name = "Charcoal",
             shellColor = c("#2D2E30"), detailColor = c("#4D4E52"),
-            label = Label(c("#00000000"), emptyList(), c("#E6E6E6"), handwritten = false, bands = listOf(Band(c("#111111"), 0.78f, 0.1f), Band(c("#E6E6E6"), 0.8f, 0.006f))),
+            label = Label(c("#00000000"), emptyList(), c("#E6E6E6"), handwritten = false, bands = listOf(Band(c("#111111"), 0.78f, 0.1f), Band(c("#E6E6E6"), 0.8f, 0.006f, Finish.SILVER)), textFinish = Finish.SILVER),
             reels = Reels(c("#E8E8E8"), c("#2A1D14")), brand = "GROOVELIGHT TX 90", tapeType = "HIGH BIAS · 70µs EQ", side = "B",
         )
 

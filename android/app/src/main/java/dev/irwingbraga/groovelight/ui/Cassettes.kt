@@ -19,7 +19,7 @@ import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 
 /** What Now Playing shows in the cover's place, as on the Mac and the iPhone. */
-enum class NowPlayingSkin(val label: String) { COVER("Cover"), VINYL("Vinyl"), CASSETTE("Cassette"), CD("CD") }
+enum class NowPlayingSkin(val label: String) { COVER("Cover"), VINYL("Vinyl"), CASSETTE("Cassette"), CD("CD"), PC_PLAYER("PC Player") }
 
 /**
  * The look chosen for Now Playing and the user's cassettes: a folder for each in the app's files (cassettes/<id>/,
@@ -36,12 +36,18 @@ object Cassettes {
     private val chosenCassette = MutableStateFlow(CassetteDesign.CLASSIC.id)
     private val stored = MutableStateFlow<List<CassetteDesign>>(emptyList())
     private val pictureRevision = MutableStateFlow(0)
+    private val playsTapeCue = MutableStateFlow(true)
+    private val chosenPcTheme = MutableStateFlow(PcTheme.CLASSIC)
 
     val skin: StateFlow<NowPlayingSkin> = chosenSkin
     val cassetteId: StateFlow<String> = chosenCassette
     val custom: StateFlow<List<CassetteDesign>> = stored
     /** Bumped when a design's pictures change, so they are loaded again. */
     val revision: StateFlow<Int> = pictureRevision
+    /** Whether the cassette deck plays the tape's sound while Rewind or Fast Forward is held (on unless turned off). */
+    val tapeCue: StateFlow<Boolean> = playsTapeCue
+    /** The PC Player's theme. */
+    val pcTheme: StateFlow<PcTheme> = chosenPcTheme
 
     fun init(context: Context) {
         if (prefs != null) return
@@ -49,7 +55,10 @@ object Cassettes {
         prefs = context.getSharedPreferences("nowPlaying", Context.MODE_PRIVATE).also { stored ->
             chosenSkin.value = stored.getString("skin", null)?.let { runCatching { NowPlayingSkin.valueOf(it) }.getOrNull() } ?: NowPlayingSkin.COVER
             chosenCassette.value = stored.getString("cassette", null) ?: CassetteDesign.CLASSIC.id
+            playsTapeCue.value = stored.getBoolean("tapeCue", true)
+            chosenPcTheme.value = stored.getString("pcTheme", null)?.let { runCatching { PcTheme.valueOf(it) }.getOrNull() } ?: PcTheme.CLASSIC
         }
+        TapeCue.init(context)
         reload()
     }
 
@@ -62,6 +71,16 @@ object Cassettes {
     fun setSkin(skin: NowPlayingSkin) {
         chosenSkin.value = skin
         prefs?.edit { putString("skin", skin.name) }
+    }
+
+    fun setPcTheme(theme: PcTheme) {
+        chosenPcTheme.value = theme
+        prefs?.edit { putString("pcTheme", theme.name) }
+    }
+
+    fun setTapeCue(on: Boolean) {
+        playsTapeCue.value = on
+        prefs?.edit { putBoolean("tapeCue", on) }
     }
 
     fun choose(design: CassetteDesign) {

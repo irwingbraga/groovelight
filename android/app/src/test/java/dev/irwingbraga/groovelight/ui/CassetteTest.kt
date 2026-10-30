@@ -157,4 +157,65 @@ class CassetteTest {
         assertTrue(vuPosition(Math.pow(10.0, -22.0 / 20).toFloat()) < vuPosition(Math.pow(10.0, -15.0 / 20).toFloat()))
         assertTrue(vuPosition(1f) > 1.0)
     }
+
+    /** The record and the disc turn from the clock: up to speed smoothly, coasting to a stop, never jumping. */
+    @Test
+    fun motorsSpeedUpAndSlowDown() {
+        val motion = SpinMotion(300.0, 1.5, 2.0, isOn = false)
+        motion.turn(true, 10.0)
+        assertEquals(0.0, motion.state(10.0).second, 0.0)
+        assertEquals(150.0, motion.state(10.75).second, 0.001)
+        assertEquals(225.0, motion.state(11.5).first, 0.001)
+        assertEquals(525.0, motion.state(12.5).first, 0.001)
+        motion.turn(false, 12.5)
+        assertEquals(165.0, motion.state(12.5).first, 0.001)
+        assertEquals(300.0, motion.state(12.5).second, 0.001)
+        assertTrue(motion.isTurning(14.4))
+        assertTrue(!motion.isTurning(14.51))
+        var last = motion.state(12.5).first
+        for (step in 1..30) {
+            val angle = motion.state(12.5 + step * 0.1).first
+            assertTrue(angle >= last)
+            last = angle
+        }
+        assertEquals(465.0, last, 0.001)
+    }
+
+    /** Gold and silver foil are kept in the file, and a finish this version does not know reads as plain ink. */
+    @Test
+    fun foilFinishesReadAndWrite() {
+        val read = CassetteDesign.fromJson(JSONObject(CassetteDesign.BLACK_GOLD.toJson().toString()))
+        assertEquals(Finish.GOLD, read.label.textFinish)
+        assertEquals(Finish.GOLD, read.reels.ringFinish)
+        assertEquals(Finish.GOLD, read.label.bands.first().finish)
+        assertNull(read.label.bands[1].finish)
+        val later = CassetteDesign.fromJson(JSONObject("""{"name": "Later", "label": {"textFinish": "copper", "bands": [{"color": "#FFFFFF", "y": 0.5, "height": 0.1, "finish": "rose"}]}, "reels": {"hubColor": "#FFFFFF", "tapeColor": "#000000", "ringFinish": "copper"}}"""))
+        assertNull(later.label.textFinish)
+        assertNull(later.label.bands.single().finish)
+        assertNull(later.reels.ringFinish)
+        assertTrue("Finish" !in CassetteDesign.CLASSIC.toJson().toString())
+    }
+
+    /** The PC Player shows a lossless file's PCM bit rate (1411 for a CD); its windows dock, or part at a fold. */
+    @Test
+    fun pcPlayerFormatAndLayout() {
+        assertEquals(PcFormat(1411, 44, null), PcFormat.of(44_100, 16))
+        assertNull(PcFormat.of(null, 16))
+        val phone = PcLayout.of(Size(1080f, 2100f), 28f, 150f, null)
+        assertEquals(275f / 116f, phone.main.width / phone.main.height, 0.001f)
+        assertEquals(phone.main.bottom, phone.playlist.top, 0.001f)
+        val open = PcLayout.of(Size(2000f, 1800f), 28f, 150f, Rect(990f, 0f, 1010f, 1800f))
+        assertTrue(open.main.right <= 990f && open.playlist.left >= 1010f)
+    }
+
+    /** Corona's playlist goes under the player on a phone, on its left on a wide screen, across a fold. */
+    @Test
+    fun coronaLayout() {
+        val phone = CoronaLayout.of(Size(1080f, 2100f), 26f, null)
+        assertTrue(phone.playlist.top >= phone.main.bottom && phone.screenHeight in 120f..240f)
+        val wide = CoronaLayout.of(Size(2400f, 1600f), 26f, null)
+        assertTrue(wide.playlist.left < wide.main.left && wide.screenHeight == 240f)
+        val open = CoronaLayout.of(Size(2000f, 1800f), 26f, Rect(990f, 0f, 1010f, 1800f))
+        assertTrue(open.playlist.right <= 990f && open.main.left >= 1010f)
+    }
 }

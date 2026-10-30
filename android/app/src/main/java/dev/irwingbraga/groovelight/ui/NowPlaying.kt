@@ -295,7 +295,7 @@ private fun NowPlayingContent(song: PlayerModel.NowPlaying, player: PlayerModel,
                 TopRow(song, player, onClose, onDetails = { details = true }, onDialog = { dialog = it },
                     panels = if (layout == Layout.COMPACT || deck) panel else null, onPanel = togglePanel, showSource = roomForSource, deck = deck)
                 if (deck) {
-                    NowPlayingDeck(skin, song, player, cover, panel, Modifier.weight(1f).fillMaxWidth())
+                    NowPlayingDeck(skin, song, player, cover, panel, onClose, Modifier.weight(1f).fillMaxWidth())
                 } else if (layout == Layout.COMPACT) {
                     CompactBody(panel, song, player, cover, wide, onDetails = { details = true }, onDialog = { dialog = it })
                 } else if (layout == Layout.TABLET) {
@@ -351,7 +351,8 @@ private fun NowPlayingContent(song: PlayerModel.NowPlaying, player: PlayerModel,
  * smoked glass in the player's place, and Love sits at the foot of its panel.
  */
 @Composable
-private fun NowPlayingDeck(skin: NowPlayingSkin, song: PlayerModel.NowPlaying, player: PlayerModel, cover: File?, panel: Panel, modifier: Modifier) {
+private fun NowPlayingDeck(skin: NowPlayingSkin, song: PlayerModel.NowPlaying, player: PlayerModel, cover: File?, panel: Panel, onClose: () -> Unit,
+                           modifier: Modifier) {
     val actions = LocalActions.current
     val cassetteId by Cassettes.cassetteId.collectAsStateWithLifecycle()
     val progress by player.progress.collectAsStateWithLifecycle(PlayerModel.Progress(0, 0))
@@ -371,6 +372,8 @@ private fun NowPlayingDeck(skin: NowPlayingSkin, song: PlayerModel.NowPlaying, p
         turning = null
     }
     val track by remember(song.id) { song.id?.let { actions.library.track(it) } ?: flowOf(null) }.collectAsStateWithLifecycle(null)
+    val playlist by player.playlist.collectAsStateWithLifecycle()
+    val equalizer by PlaybackSettings.eqEnabled.collectAsStateWithLifecycle()
     val deckActions = DeckActions(
         playPause = player::togglePlayPause, previous = player::previous, next = player::next,
         seek = { player.seekTo((it * 1000).toLong()) },
@@ -393,15 +396,22 @@ private fun NowPlayingDeck(skin: NowPlayingSkin, song: PlayerModel.NowPlaying, p
             else -> DeckRepeat.OFF
         },
         cycleRepeat = player::cycleRepeat,
+        // This device's equalizer, while it plays here.
+        equalizer = equalizer.takeIf { target == PlayerModel.Target.THIS_DEVICE },
+        toggleEqualizer = { PlaybackSettings.setEqEnabled(!equalizer) },
+        eject = onClose,
+        loved = track?.loved,
+        toggleLove = { track?.let { actions.library.setLoved(it.id, !it.loved) } },
     )
     val deckSong = DeckSong(song.title, song.artist.orEmpty(), song.album.orEmpty(), song.isPlaying, progress.durationMs / 1000.0, clock,
-        heardHere = target == PlayerModel.Target.THIS_DEVICE)
+        heardHere = target == PlayerModel.Target.THIS_DEVICE, format = track?.let { PcFormat.of(it.sampleRate, it.bitDepth) })
     SkinDeck(skin, deckSong, deckActions, cover, Cassettes.design(cassetteId), modifier,
         stageOverlay = when (panel) {
             Panel.LYRICS -> ({ CompositionLocalProvider(LocalContentColor provides Color.White) { LyricsPanel(song, player) } })
             Panel.QUEUE -> ({ CompositionLocalProvider(LocalContentColor provides Color.White) { QueuePanel(player) } })
             Panel.COVER -> null
-        }) {
+        },
+        playlist = if (skin == NowPlayingSkin.PC_PLAYER) playlist else null, onPlaylistPlay = player::playFromPlaylist) {
         track?.let { current ->
             Box(Modifier.padding(top = 4.dp)) {
                 DeckCapBox {
@@ -437,7 +447,7 @@ private fun TopRow(
     panels: Panel? = null,
     onPanel: (Panel) -> Unit = {},
     showSource: Boolean = true,
-    /** Over a player: the buttons on aluminum caps. */
+    /** Over a player: the buttons on aluminum caps, and no "Playing From" (the player is the whole view). */
     deck: Boolean = false,
 ) {
     val actions = LocalActions.current
@@ -456,11 +466,13 @@ private fun TopRow(
                 val skipped by player.remote.skipped.collectAsStateWithLifecycle()
                 if (skipped > 0) Text(if (skipped == 1) "1 song is not there: skipped" else "$skipped songs are not there: skipped",
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            } else if (showSource) song.source?.let { source ->
+            } else if (showSource && !deck) song.source?.let { source ->
                 if (panels == null) Text("PLAYING FROM", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(source, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
     }) {
+        // The look, as on the iPhone: the players, the PC Player's theme, the cassettes.
+        cap { LookButton() }
         if (panels != null) {
             cap { PanelButton(panels == Panel.LYRICS, R.drawable.ic_lyrics, "Lyrics") { onPanel(Panel.LYRICS) } }
             cap { PanelButton(panels == Panel.QUEUE, R.drawable.ic_queue, "Up Next") { onPanel(Panel.QUEUE) } }
@@ -488,8 +500,6 @@ private fun TopRow(
                     onClick = { menu = false; onDialog(Dialog.SPEED) })
                 DropdownMenuItem(text = { Text("Visualizer") }, leadingIcon = { Icon(painterResource(R.drawable.ic_visualizer), null) },
                     onClick = { menu = false; onDialog(Dialog.VISUALIZER) })
-                DropdownMenuItem(text = { Text("Look") }, leadingIcon = { Icon(painterResource(R.drawable.ic_cassette), null) },
-                    onClick = { menu = false; actions.open(Route.Cassettes) })
                 DropdownMenuItem(text = { Text("Sleep Timer") }, leadingIcon = { Icon(painterResource(R.drawable.ic_timer), null) },
                     onClick = { menu = false; onDialog(Dialog.SLEEP) })
                 DropdownMenuItem(text = { Text("Audio Details") }, leadingIcon = { Icon(painterResource(R.drawable.ic_info), null) },
@@ -1292,6 +1302,35 @@ private fun CompactBar(song: PlayerModel.NowPlaying, player: PlayerModel, cover:
             IconButton(onClick = player::next, enabled = song.hasNext || song.repeatMode != Player.REPEAT_MODE_OFF, modifier = Modifier.size(48.dp)) {
                 Icon(painterResource(R.drawable.ic_skip_next), contentDescription = "Next", modifier = Modifier.size(30.dp))
             }
+        }
+    }
+}
+
+/** Now Playing's look, chosen from its top row as on the iPhone: the cover or a player, the PC Player's theme, the cassettes. */
+@Composable
+private fun LookButton() {
+    val actions = LocalActions.current
+    val skin by Cassettes.skin.collectAsStateWithLifecycle()
+    val pcTheme by Cassettes.pcTheme.collectAsStateWithLifecycle()
+    var open by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { open = true }) { Icon(painterResource(R.drawable.ic_cassette), contentDescription = "Look") }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            val chosen: @Composable () -> Unit = { Icon(painterResource(R.drawable.ic_check_circle), contentDescription = "Chosen") }
+            NowPlayingSkin.entries.forEach { entry ->
+                DropdownMenuItem(text = { Text(entry.label) }, onClick = { open = false; Cassettes.setSkin(entry) },
+                    trailingIcon = if (skin == entry) chosen else null)
+            }
+            HorizontalDivider()
+            PcTheme.entries.forEach { theme ->
+                DropdownMenuItem(text = { Text("PC Player: ${theme.label}") }, onClick = {
+                    open = false
+                    Cassettes.setPcTheme(theme)
+                    Cassettes.setSkin(NowPlayingSkin.PC_PLAYER)
+                }, trailingIcon = if (skin == NowPlayingSkin.PC_PLAYER && pcTheme == theme) chosen else null)
+            }
+            HorizontalDivider()
+            DropdownMenuItem(text = { Text("Cassettes…") }, onClick = { open = false; actions.open(Route.Cassettes) })
         }
     }
 }

@@ -8,7 +8,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -51,6 +51,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.ImageShader
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.RectangleShape
@@ -107,18 +112,58 @@ import kotlin.math.log10
 
 /** The photographed surfaces, tiled at half their pixel size. */
 enum class SkinTexture(@param:DrawableRes val res: Int) {
-    WALNUT(R.drawable.skin_walnut), ALUMINUM(R.drawable.skin_aluminum), FELT(R.drawable.skin_felt), BLACK_PLASTIC(R.drawable.skin_black_plastic)
+    WALNUT(R.drawable.skin_walnut), ALUMINUM(R.drawable.skin_aluminum), FELT(R.drawable.skin_felt), BLACK_PLASTIC(R.drawable.skin_black_plastic),
+    /** A cassette's molded plastic: the fine matte grain of a spark-eroded mould (neutral gray). */
+    GRAIN(R.drawable.skin_grain),
+    /** Hot-stamped foil: faint streaks and a fine sparkle (light gray), colored gold or silver. */
+    FOIL(R.drawable.skin_foil),
+    /** Paper's fibres (light gray): the labels and the VU meters' faces. */
+    PAPER(R.drawable.skin_paper),
 }
 
-/** Fills the shape with [texture], made lighter or darker ([brightness], -1 to 1) and colored ([tint], multiplied). */
-fun Modifier.textured(texture: SkinTexture, brightness: Float = 0f, tint: Color = Color.White, shape: Shape = RectangleShape): Modifier = composed {
+/** [texture] as a brush to paint with in a canvas, tiled at half its pixel size. */
+@Composable
+fun rememberTextureBrush(texture: SkinTexture): ShaderBrush {
     val image = ImageBitmap.imageResource(texture.res)
     val density = LocalDensity.current.density
-    val brush = remember(image, density) {
+    return remember(image, density) {
         val shader = ImageShader(image, TileMode.Repeated, TileMode.Repeated)
         shader.setLocalMatrix(android.graphics.Matrix().apply { setScale(density / 2, density / 2) })
         ShaderBrush(shader)
     }
+}
+
+/** Hot-stamped foil, gold or silver: a mirror of the room across it, bright and dark bands, sharply. */
+object Foil {
+    private val gold = listOf(0f to Color(0xFF6B4714), 0.14f to Color(0xFFC79433), 0.24f to Color(0xFFFFEB99), 0.3f to Color(0xFFDBA83D),
+        0.46f to Color(0xFF805417), 0.6f to Color(0xFFD19E3D), 0.7f to Color(0xFFFFF2B3), 0.78f to Color(0xFFE6B84D), 0.92f to Color(0xFF8F611F),
+        1f to Color(0xFFBD8C33))
+    private val silver = listOf(0f to Color(0xFF5C5E66), 0.14f to Color(0xFFB8BDC7), 0.24f to Color.White, 0.3f to Color(0xFFCCD1D9),
+        0.46f to Color(0xFF6B6E75), 0.6f to Color(0xFFC2C7D1), 0.7f to Color(0xFFFAFCFF), 0.78f to Color(0xFFD1D6E0), 0.92f to Color(0xFF80828C),
+        1f to Color(0xFFB3B8C2))
+    /** Down a letter: lit at the top, a dark band below the middle, the floor's light at the foot. */
+    private val goldLettering = listOf(0f to Color(0xFFFFF0A8), 0.3f to Color(0xFFF2C75C), 0.55f to Color(0xFFB3802B), 0.78f to Color(0xFFE0AD47),
+        1f to Color(0xFFFADE85))
+    private val silverLettering = listOf(0f to Color.White, 0.3f to Color(0xFFDBE0E8), 0.55f to Color(0xFF8C919C), 0.78f to Color(0xFFCCD1DB),
+        1f to Color(0xFFF2F5FA))
+
+    /** Foil across a shape from [start] to [end]. */
+    fun brush(finish: Finish, start: Offset, end: Offset): Brush =
+        Brush.linearGradient(*(if (finish == Finish.GOLD) gold else silver).toTypedArray(), start = start, end = end)
+
+    /** Foil down each line of lettering. */
+    fun lettering(finish: Finish): Brush = Brush.verticalGradient(*(if (finish == Finish.GOLD) goldLettering else silverLettering).toTypedArray())
+
+    /** Foil filling [rect] (diagonally across it), with its streaks and sparkle ([texture], the foil texture's brush). */
+    fun DrawScope.drawFoilRect(finish: Finish, rect: Rect, texture: Brush) {
+        drawRect(brush(finish, Offset(rect.left, rect.top + rect.height * 0.15f), Offset(rect.right, rect.bottom - rect.height * 0.15f)), rect.topLeft, rect.size)
+        drawRect(texture, rect.topLeft, rect.size, blendMode = BlendMode.Multiply)
+    }
+}
+
+/** Fills the shape with [texture], made lighter or darker ([brightness], -1 to 1) and colored ([tint], multiplied). */
+fun Modifier.textured(texture: SkinTexture, brightness: Float = 0f, tint: Color = Color.White, shape: Shape = RectangleShape): Modifier = composed {
+    val brush = rememberTextureBrush(texture)
     val filter = remember(brightness, tint) {
         val add = brightness * 255
         ColorFilter.colorMatrix(ColorMatrix(floatArrayOf(tint.red, 0f, 0f, 0f, add, 0f, tint.green, 0f, 0f, add, 0f, 0f, tint.blue, 0f, add, 0f, 0f, 0f, 1f, 0f)))
@@ -294,7 +339,14 @@ fun RoundKey(title: String, icon: Int, diameter: Dp, onTap: () -> Unit, onHold: 
     }
 }
 
-/** A knurled aluminum knob, turned by dragging up or down (or across), its line on the printed scale around it. */
+/**
+ * A knurled aluminum knob, its line on the printed scale around it: touch it and swipe up to turn it up, down to turn it
+ * down, the whole scale over [KNOB_TRAVEL] whatever the knob's size. It turns from where the swipe began, so a level that
+ * moves in steps (the media volume) follows the finger rather than sticking.
+ */
+/** How far a swipe goes to turn a knob from 0 to 10. */
+private val KNOB_TRAVEL = 180.dp
+
 @Composable
 fun Knob(title: String, value: Float, onValue: (Float) -> Unit, diameter: Dp, onDark: Boolean = false) {
     val current by rememberUpdatedState(value)
@@ -307,8 +359,14 @@ fun Knob(title: String, value: Float, onValue: (Float) -> Unit, diameter: Dp, on
             setProgress { change(it.coerceIn(0f, 1f)); true }
         }
         .pointerInput(Unit) {
-            val span = with(density) { diameter.toPx() } * 3
-            detectDragGestures { _, drag -> change((current + (drag.x - drag.y) / span).coerceIn(0f, 1f)) }
+            val span = with(density) { KNOB_TRAVEL.toPx() }
+            var start = 0f
+            var moved = 0f
+            detectVerticalDragGestures(onDragStart = { start = current; moved = 0f }) { pointer, dy ->
+                pointer.consume()
+                moved -= dy
+                change((start + moved / span).coerceIn(0f, 1f))
+            }
         }) {
         val r = size.minDimension / 2
         val ink = if (onDark) Color.White.copy(alpha = 0.7f) else Color.Black.copy(alpha = 0.6f)
@@ -372,24 +430,57 @@ fun VUMeter(channel: Int, clock: State<Double>, playing: Boolean, heardHere: Boo
         onDispose { AudioTap.stop() }
     }
     val needle = remember { VUNeedle() }
-    Box(modifier.shadow(3.dp, RoundedCornerShape(5.dp)).background(Color(0xFF141414), RoundedCornerShape(5.dp)).padding(4.dp)
+    val paper = rememberTextureBrush(SkinTexture.PAPER)
+    val measurer = rememberTextMeasurer()
+    val ink = Color(0xFF1A140F)
+    val red = Color(0xFFC71A0F)
+    // The bezel: black plastic with a polished chamfer.
+    Box(modifier.shadow(3.dp, RoundedCornerShape(5.dp))
+        .background(Brush.verticalGradient(listOf(Color(0xFF292929), Color(0xFF0A0A0A))), RoundedCornerShape(5.dp))
+        .border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.45f), Color.White.copy(alpha = 0.05f), Color.Black.copy(alpha = 0.6f))),
+            RoundedCornerShape(5.dp))
+        .padding(4.dp)
         .clip(RoundedCornerShape(3.dp))) {
+        // The face: printed paper lit from behind by a lamp low in the middle, darker at its corners; the scale, the
+        // numbers and the words. Drawn once: only the needle moves.
         Canvas(Modifier.fillMaxSize()) {
-            drawRect(Brush.verticalGradient(listOf(Color(0xFFFFE69E), Color(0xFFF2B859))))
-            val pivot = Offset(size.width / 2, size.height * 1.12f)
+            drawRect(Color(0xFFFAE09E))
+            drawRect(paper, blendMode = BlendMode.Multiply)
+            drawRect(Brush.radialGradient(listOf(Color(0xFFFFD973).copy(alpha = 0.55f), Color.Transparent), Offset(size.width / 2, size.height * 1.05f),
+                size.width * 0.75f), blendMode = BlendMode.Screen)
+            drawRect(Brush.radialGradient(0f to Color.Transparent, 0.55f to Color.Transparent, 1f to Color(0xFF59330D).copy(alpha = 0.45f),
+                center = Offset(size.width / 2, size.height * 0.75f), radius = size.width * 0.62f))
             val radius = size.height * 0.86f
-            fun angle(level: Float) = Math.toRadians(-135.0 + level * 90)
-            fun at(level: Float, r: Float) = pivot + Offset((cos(angle(level)) * r).toFloat(), (sin(angle(level)) * r).toFloat())
             val arc = Path()
-            for (i in 0..40) { val p = at(0.78f * i / 40, radius); if (i == 0) arc.moveTo(p.x, p.y) else arc.lineTo(p.x, p.y) }
-            drawPath(arc, Color.Black.copy(alpha = 0.75f), style = Stroke(max(1f, size.height * 0.012f)))
-            val red = Path()
-            for (i in 0..12) { val p = at(0.78f + 0.22f * i / 12, radius); if (i == 0) red.moveTo(p.x, p.y) else red.lineTo(p.x, p.y) }
-            drawPath(red, Color(0xFFCC140D), style = Stroke(max(1.5f, size.height * 0.04f)))
+            for (i in 0..40) { val p = vuPoint(0.78f * i / 40, radius); if (i == 0) arc.moveTo(p.x, p.y) else arc.lineTo(p.x, p.y) }
+            drawPath(arc, ink.copy(alpha = 0.85f), style = Stroke(max(0.8f, size.height * 0.011f)))
+            val redArc = Path()
+            for (i in 0..12) { val p = vuPoint(0.78f + 0.22f * i / 12, radius); if (i == 0) redArc.moveTo(p.x, p.y) else redArc.lineTo(p.x, p.y) }
+            drawPath(redArc, red, style = Stroke(max(1.5f, size.height * 0.045f)))
             listOf(0f, 0.25f, 0.38f, 0.47f, 0.58f, 0.65f, 0.71f, 0.78f, 0.85f, 0.92f, 1f).forEach { mark ->
                 val long = mark == 0.78f || mark == 0f || mark == 1f
-                drawLine(Color.Black.copy(alpha = 0.75f), at(mark, radius), at(mark, radius + size.height * (if (long) 0.12f else 0.07f)), max(1f, size.height * 0.012f))
+                drawLine(ink.copy(alpha = 0.85f), vuPoint(mark, radius), vuPoint(mark, radius + size.height * (if (long) 0.12f else 0.07f)),
+                    max(0.8f, size.height * 0.011f))
             }
+            fun label(text: String, at: Offset, style: TextStyle) {
+                val layout = measurer.measure(text, style)
+                drawText(layout, topLeft = at - Offset(layout.size.width / 2f, layout.size.height / 2f))
+            }
+            val numberSize = (size.height * 0.085f).toSp()
+            listOf("20" to 0f, "10" to 0.25f, "7" to 0.38f, "5" to 0.47f, "3" to 0.58f, "0" to 0.78f, "1" to 0.85f, "2" to 0.92f).forEach { (text, at) ->
+                label(text, vuPoint(at, size.height * (0.86f + 0.17f)), TextStyle(fontSize = numberSize, fontWeight = FontWeight.SemiBold,
+                    color = if (at > 0.78f) red else ink.copy(alpha = 0.85f)))
+            }
+            label("VU", Offset(size.width / 2, size.height * 0.65f), TextStyle(fontSize = (size.height * 0.15f).toSp(), fontFamily = FontFamily.Serif,
+                fontWeight = FontWeight.SemiBold, color = ink.copy(alpha = 0.8f)))
+            label(if (channel == 0) "L" else "R", Offset(size.width * 0.1f, size.height * 0.72f), TextStyle(fontSize = (size.height * 0.09f).toSp(),
+                fontWeight = FontWeight.Bold, color = ink.copy(alpha = 0.6f)))
+            label("−", vuPoint(0.1f, size.height * (0.86f - 0.16f)), TextStyle(fontSize = (size.height * 0.11f).toSp(), fontWeight = FontWeight.Bold,
+                color = ink.copy(alpha = 0.8f)))
+            label("+", vuPoint(0.92f, size.height * (0.86f - 0.16f)), TextStyle(fontSize = (size.height * 0.11f).toSp(), fontWeight = FontWeight.Bold,
+                color = red))
+        }
+        Canvas(Modifier.fillMaxSize()) {
             val time = clock.value
             val heard = if (heardHere) AudioTap.levels() else null
             val target = if (heard != null) vuPosition(if (channel == 0) heard.first else heard.second) else {
@@ -399,13 +490,33 @@ fun VUMeter(channel: Int, clock: State<Double>, playing: Boolean, heardHere: Boo
                 (0.62 + swing + beat).coerceIn(0.05, 1.0)
             }
             val level = (needle.position(target, System.nanoTime()) * rest).toFloat()
-            drawLine(Color.Black.copy(alpha = 0.85f), pivot, at(level, size.height * 1.02f), max(1f, size.height * 0.018f), StrokeCap.Round)
-            drawRect(Brush.verticalGradient(listOf(Color(0xFF333333), Color(0xFF0D0D0D))), Offset(0f, size.height * 0.84f), Size(size.width, size.height * 0.16f))
-            drawRect(Brush.linearGradient(listOf(Color.White.copy(alpha = 0.35f), Color.Transparent), Offset.Zero, Offset(size.width * 0.6f, size.height)))
+            val pivot = Offset(size.width / 2, size.height * 1.12f)
+            val tip = vuPoint(level, size.height * 1.02f)
+            // Its shadow on the face, a little below and to the right, soft; then the needle.
+            val shadow = Offset(size.height * 0.025f, size.height * 0.04f)
+            drawLine(Color.Black.copy(alpha = 0.18f), pivot + shadow, tip + shadow, max(2f, size.height * 0.04f), StrokeCap.Round)
+            drawLine(Color.Black.copy(alpha = 0.22f), pivot + shadow, tip + shadow, max(1f, size.height * 0.02f), StrokeCap.Round)
+            drawLine(Color(0xFF0F0F0F), pivot, tip, max(0.8f, size.height * 0.014f), StrokeCap.Round)
+            // The pivot's cover: a black molded hood across the bottom, its edge catching the light.
+            val hood = Rect(Offset(size.width / 2, size.height * 0.99f), Size(size.width * 0.62f, size.height * 0.34f))
+                .let { Rect(it.left - it.width / 2, it.top - it.height / 2, it.left + it.width / 2, it.top + it.height / 2) }
+            drawOval(Color.Black.copy(alpha = 0.35f), hood.topLeft - Offset(0f, size.height * 0.02f), hood.size)
+            drawOval(Brush.verticalGradient(listOf(Color(0xFF383838), Color(0xFF0A0A0A)), hood.top, hood.bottom), hood.topLeft, hood.size)
+            drawOval(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.35f), Color.Transparent), hood.top, hood.center.y), hood.topLeft, hood.size,
+                style = Stroke(max(0.6f, size.height * 0.01f)))
+            // The glass: the bezel's shadow inside its top edge, the room's reflection across it.
+            drawRect(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.4f), Color.Transparent), 0f, size.height * 0.12f))
+            drawRect(Brush.linearGradient(0f to Color.White.copy(alpha = 0.3f), 0.38f to Color.White.copy(alpha = 0.08f), 0.4f to Color.Transparent,
+                start = Offset.Zero, end = Offset(size.width, size.height)))
         }
-        Text("VU", Modifier.align(Alignment.Center).offset(y = 6.dp), style = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.Black,
-            fontFamily = FontFamily.Serif, color = Color.Black.copy(alpha = 0.7f)))
     }
+}
+
+/** Where a level is on a VU meter's scale in this face, [radius] from the pivot below it. */
+private fun DrawScope.vuPoint(level: Float, radius: Float): Offset {
+    val pivot = Offset(size.width / 2, size.height * 1.12f)
+    val angle = Math.toRadians(-135.0 + level * 90)
+    return pivot + Offset((cos(angle) * radius).toFloat(), (sin(angle) * radius).toFloat())
 }
 
 /** The needle's movement: toward where the level puts it at a VU meter's pace (99% of the way in 300 ms). */
@@ -489,18 +600,6 @@ fun VFDMarquee(text: String, count: Int, size: TextUnit, moving: Boolean) {
         (0 until count).map { loop[(step + it) % loop.length] }.joinToString("")
     }
     VFDText(shown, "~".repeat(count), dsegLetters, size)
-}
-
-/** Words punched in embossing tape, stuck on the plate. */
-@Composable
-fun DymoLabel(text: String, tape: Color, size: TextUnit, modifier: Modifier = Modifier) {
-    Box(modifier.graphicsLayer { rotationZ = -0.6f }.shadow(2.dp, RoundedCornerShape(2.dp))
-        .background(tape, RoundedCornerShape(2.dp))
-        .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.22f), Color.Transparent, Color.Black.copy(alpha = 0.25f))), RoundedCornerShape(2.dp))
-        .padding(horizontal = (size.value * 0.7f).dp, vertical = (size.value * 0.32f).dp)) {
-        Text(text.ifEmpty { " " }.uppercase(), maxLines = 1, overflow = TextOverflow.Ellipsis, style = TextStyle(fontSize = size, fontWeight = FontWeight.ExtraBold,
-            letterSpacing = size * 0.1f, color = Color.White.copy(alpha = 0.9f), shadow = Shadow(Color.Black.copy(alpha = 0.55f), Offset(1f, 1.5f), 0f)))
-    }
 }
 
 /** A round aluminum cap for the app's buttons over a player (close, lyrics, the menu). */

@@ -44,6 +44,8 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Outline
@@ -84,16 +86,19 @@ data class SkinPlayback(val title: String, val artist: String, val isPlaying: Bo
 
 /**
  * The song's time in seconds at each frame while it plays: the player's position (sent four times a second) carried on
- * by the clock between them, so the players turn smoothly; still while paused. Read where it is drawn, so only what
- * moves is drawn again.
+ * by the clock between them, so the players turn smoothly; still while paused. A report close to where the clock already
+ * is only nudges it (a quarter of the way), so the reels and the counter never step back and forth; a seek or a new
+ * song moves it at once. Read where it is drawn, so only what moves is drawn again.
  */
 @Composable
 fun rememberSongClock(positionMs: Long, isPlaying: Boolean): State<Double> {
     val clock = remember { mutableDoubleStateOf(positionMs / 1000.0) }
     LaunchedEffect(positionMs, isPlaying) {
         val received = System.nanoTime()
-        clock.doubleValue = positionMs / 1000.0
-        while (isPlaying) withFrameNanos { clock.doubleValue = positionMs / 1000.0 + ((System.nanoTime() - received) / 1e9).coerceIn(0.0, 0.5) }
+        val reported = positionMs / 1000.0
+        val start = if (isPlaying && kotlin.math.abs(reported - clock.doubleValue) < 0.5) clock.doubleValue + (reported - clock.doubleValue) / 4 else reported
+        clock.doubleValue = start
+        while (isPlaying) withFrameNanos { clock.doubleValue = start + ((System.nanoTime() - received) / 1e9).coerceIn(0.0, 2.0) }
     }
     return clock
 }
@@ -203,6 +208,9 @@ fun CassetteFace(design: CassetteDesign, playback: SkinPlayback, cover: File?, m
         val right = Offset(g.rightReel.x * w, g.rightReel.y * h)
         val hubHole = g.hubRadius * w * 1.25f
         val corner = w * 0.035f
+        val grain = rememberTextureBrush(SkinTexture.GRAIN)
+        val foil = rememberTextureBrush(SkinTexture.FOIL)
+        val paperGrain = rememberTextureBrush(SkinTexture.PAPER)
         Canvas(Modifier.fillMaxSize()) {
             val shell = design.shellColor
             val clarity = design.shellClarity
@@ -216,7 +224,11 @@ fun CassetteFace(design: CassetteDesign, playback: SkinPlayback, cover: File?, m
             } else {
                 val front = cutout(Rect(0f, 0f, w, h), corner, window, listOf(left, right), hubHole)
                 drawPath(front, shell.copy(alpha = 1 - clarity))
-                drawPath(front, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.14f), Color.Transparent, Color.Black.copy(alpha = 0.12f))))
+                // The mould's matte grain, then the light across the plastic: a soft sheen high on the left.
+                drawPath(front, grain, alpha = if (clarity > 0) 0.35f else 0.8f, blendMode = BlendMode.Overlay)
+                drawPath(front, grain, alpha = 0.05f, blendMode = BlendMode.Screen)
+                drawPath(front, Brush.linearGradient(0f to Color.White.copy(alpha = 0.2f), 0.35f to Color.White.copy(alpha = 0.05f), 0.6f to Color.Transparent,
+                    1f to Color.Black.copy(alpha = 0.16f), start = Offset.Zero, end = Offset(w, h)))
             }
             if (shellPicture == null || labelPicture != null) {
                 // The label with the window and the hubs' holes cut out.
@@ -225,7 +237,16 @@ fun CassetteFace(design: CassetteDesign, playback: SkinPlayback, cover: File?, m
                         drawImage(labelPicture, dstOffset = androidx.compose.ui.unit.IntOffset(label.left.roundToInt(), label.top.roundToInt()),
                             dstSize = androidx.compose.ui.unit.IntSize(label.width.roundToInt(), label.height.roundToInt()))
                     } else {
-                        drawRect(design.label.background, label.topLeft, label.size)
+                        val finish = design.label.backgroundFinish
+                        if (finish != null) {
+                            with(Foil) { drawFoilRect(finish, label, foil) }
+                        } else {
+                            drawRect(design.label.background, label.topLeft, label.size)
+                            // Printed on paper: its fibres show where the label is not clear.
+                            if (design.label.background.alpha > 0.5f) {
+                                drawRect(paperGrain, label.topLeft, label.size, alpha = design.label.background.alpha, blendMode = BlendMode.Multiply)
+                            }
+                        }
                         val stripes = design.label.stripes
                         if (stripes.isNotEmpty()) {
                             val band = label.height * 0.3f / stripes.size
@@ -234,7 +255,9 @@ fun CassetteFace(design: CassetteDesign, playback: SkinPlayback, cover: File?, m
                             }
                         }
                         design.label.bands.forEach { band ->
-                            drawRect(band.color, Offset(label.left, label.top + label.height * band.y), Size(label.width, label.height * band.height))
+                            val rect = Rect(Offset(label.left, label.top + label.height * band.y), Size(label.width, label.height * band.height))
+                            val finish = band.finish
+                            if (finish != null) with(Foil) { drawFoilRect(finish, rect, foil) } else drawRect(band.color, rect.topLeft, rect.size)
                         }
                         repeat(2) { i ->
                             val y = label.top + label.height * (0.15f + 0.09f * i)
@@ -250,12 +273,23 @@ fun CassetteFace(design: CassetteDesign, playback: SkinPlayback, cover: File?, m
                 val strip = Rect(label.left + label.width * 0.035f, label.top + h * 0.07f, label.left + label.width * 0.965f,
                     maxOf(window.top - h * 0.025f, label.top + h * 0.07f))
                 drawRoundRect(paper.background, strip.topLeft, strip.size, CornerRadius(w * 0.006f))
+                drawRoundRect(paperGrain, strip.topLeft, strip.size, CornerRadius(w * 0.006f), blendMode = BlendMode.Multiply)
                 drawLine(paper.textColor.copy(alpha = 0.15f), Offset(strip.left + strip.width * 0.03f, strip.bottom - strip.height * 0.28f),
                     Offset(strip.right - strip.width * 0.03f, strip.bottom - strip.height * 0.28f), 1f)
             }
             if (shellPicture == null) design.reels.ringColor?.let { ring ->
                 // Printed rings around the hubs' holes.
-                listOf(left, right).forEach { drawCircle(ring, hubHole + w * 0.0055f, it, style = Stroke(w * 0.011f)) }
+                listOf(left, right).forEach { center ->
+                    val radius = hubHole + w * 0.0055f
+                    val finish = design.reels.ringFinish
+                    if (finish != null) {
+                        drawCircle(Foil.brush(finish, center - Offset(radius, radius * 0.7f), center + Offset(radius, radius * 0.7f)), radius, center,
+                            style = Stroke(w * 0.011f))
+                        drawCircle(foil, radius, center, style = Stroke(w * 0.011f), blendMode = BlendMode.Multiply)
+                    } else {
+                        drawCircle(ring, radius, center, style = Stroke(w * 0.011f))
+                    }
+                }
             }
             if (shellPicture == null) {
                 // The window's frame and clear plastic; the head opening, its holes; the screws; the edge.
@@ -269,6 +303,14 @@ fun CassetteFace(design: CassetteDesign, playback: SkinPlayback, cover: File?, m
                 drawPath(head, shell.copy(alpha = maxOf(1 - clarity, 0.55f)))
                 drawPath(head, Color.Black.copy(alpha = 0.18f))
                 drawPath(head, design.detailColor.copy(alpha = 0.8f), style = Stroke(w * 0.003f))
+                // The grip's molded ribs along the head area.
+                repeat(5) { rib ->
+                    val y = h * (0.815f + rib * 0.012f)
+                    val inset = w * (0.225f - rib * 0.0029f)
+                    val line = maxOf(0.6f, w * 0.0025f)
+                    drawLine(Color.Black.copy(alpha = 0.35f), Offset(inset, y), Offset(w - inset, y), line)
+                    drawLine(Color.White.copy(alpha = 0.09f), Offset(inset, y + line), Offset(w - inset, y + line), maxOf(0.5f, w * 0.0015f))
+                }
                 listOf(0.25f to 0.04f, 0.38f to 0.05f, 0.5f to 0.04f, 0.62f to 0.05f, 0.75f to 0.04f).forEach { (x, width) ->
                     drawRoundRect(Color.Black.copy(alpha = 0.75f), Offset(w * (x - width / 2), h * 0.875f), Size(w * width, h * 0.05f), CornerRadius(w * 0.004f))
                 }
@@ -285,16 +327,19 @@ fun CassetteFace(design: CassetteDesign, playback: SkinPlayback, cover: File?, m
         with(density) {
             val text = design.label.textColor
             val ink = design.label.writing?.takeIf { labelPicture == null }?.textColor ?: text
+            // Printed in foil: pressed into the label, a hairline shadow under it.
+            val printed = design.label.textFinish?.let { finish ->
+                TextStyle(brush = Foil.lettering(finish), shadow = Shadow(Color.Black.copy(alpha = 0.45f), Offset(0f, 1.5f), 0f))
+            } ?: TextStyle(color = text.copy(alpha = 0.85f))
             if (shellPicture == null && labelPicture == null) {
                 // The brand and the tape's type across the top, the side beside the left reel.
                 Row(Modifier.offset { IntOffset((label.left + label.width * 0.035f).roundToInt(), (label.top + h * 0.012f).roundToInt()) }
                     .width((label.width * 0.93f).toDp())) {
-                    Text(design.brand, style = TextStyle(fontSize = (w * 0.026f).toSp(), fontWeight = FontWeight.Black, letterSpacing = (w * 0.002f).toSp()),
-                        color = text.copy(alpha = 0.85f), maxLines = 1, modifier = Modifier.weight(1f))
-                    Text(design.tapeType, style = TextStyle(fontSize = (w * 0.02f).toSp(), fontWeight = FontWeight.SemiBold), color = text.copy(alpha = 0.85f),
-                        maxLines = 1)
+                    Text(design.brand, style = printed.merge(TextStyle(fontSize = (w * 0.026f).toSp(), fontWeight = FontWeight.Black,
+                        letterSpacing = (w * 0.002f).toSp())), maxLines = 1, modifier = Modifier.weight(1f))
+                    Text(design.tapeType, style = printed.merge(TextStyle(fontSize = (w * 0.02f).toSp(), fontWeight = FontWeight.SemiBold)), maxLines = 1)
                 }
-                Text(design.side, style = TextStyle(fontSize = (w * 0.05f).toSp(), fontWeight = FontWeight.Black), color = text.copy(alpha = 0.85f),
+                Text(design.side, style = printed.merge(TextStyle(fontSize = (w * 0.05f).toSp(), fontWeight = FontWeight.Black)),
                     modifier = Modifier.offset { IntOffset((label.left + label.width * 0.035f).roundToInt(), (window.top - w * 0.012f).roundToInt()) })
             }
             // The song, written above the window, and the cover beside it.
@@ -307,11 +352,14 @@ fun CassetteFace(design: CassetteDesign, playback: SkinPlayback, cover: File?, m
                 }
                 if (design.label.showsText) {
                     val family = if (design.label.handwritten) FontFamily.Cursive else FontFamily.SansSerif
+                    // Printed, not written, on a label printed in foil: the song too.
+                    val song = design.label.textFinish?.takeIf { !design.label.handwritten && design.label.writing == null && labelPicture == null }
+                        ?.let { printed } ?: TextStyle(color = ink)
                     Column(Modifier.graphicsLayer { rotationZ = if (design.label.handwritten) -1.2f else 0f }) {
-                        Text(playback.title, style = TextStyle(fontSize = (w * 0.042f).toSp(), fontFamily = family, fontWeight = FontWeight.SemiBold),
-                            color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(playback.artist, style = TextStyle(fontSize = (w * 0.03f).toSp(), fontFamily = family), color = ink.copy(alpha = 0.8f),
+                        Text(playback.title, style = song.merge(TextStyle(fontSize = (w * 0.042f).toSp(), fontFamily = family, fontWeight = FontWeight.SemiBold)),
                             maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(playback.artist, style = song.merge(TextStyle(fontSize = (w * 0.03f).toSp(), fontFamily = family)), maxLines = 1,
+                            overflow = TextOverflow.Ellipsis, modifier = Modifier.graphicsLayer { alpha = 0.85f })
                     }
                 }
             }
