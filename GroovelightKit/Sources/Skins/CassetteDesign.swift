@@ -57,18 +57,35 @@ public struct CassetteDesign: Codable, Hashable, Identifiable, Sendable {
         /// A strip to write on, above the window, in its own color (the song is written on it in its own ink).
         /// Optional: without it the song is written on the label.
         public var writing: Writing?
+        /// The printed lettering (the brand, the tape's type, the side) in foil instead of `textColor`. Optional.
+        public var textFinish: Finish?
+        /// The whole label in foil (the metal tapes' gold labels) instead of `background`. Optional.
+        public var backgroundFinish: Finish?
 
         /// A band across the label: `y` and `height` relative to the label's height.
         public struct Band: Codable, Hashable, Sendable {
             public var color: HexColor
             public var y: Double
             public var height: Double
+            /// In foil instead of `color`. Optional.
+            public var finish: Finish?
 
-            public init(color: HexColor, y: Double, height: Double) {
+            public init(color: HexColor, y: Double, height: Double, finish: Finish? = nil) {
                 self.color = color
                 self.y = y
                 self.height = height
+                self.finish = finish
             }
+
+            public init(from decoder: Decoder) throws {
+                let c = try decoder.container(keyedBy: CodingKeys.self)
+                color = try c.decode(HexColor.self, forKey: .color)
+                y = try c.decode(Double.self, forKey: .y)
+                height = try c.decode(Double.self, forKey: .height)
+                finish = try? c.decodeIfPresent(Finish.self, forKey: .finish)
+            }
+
+            private enum CodingKeys: String, CodingKey { case color, y, height, finish }
         }
 
         public struct Writing: Codable, Hashable, Sendable {
@@ -82,7 +99,8 @@ public struct CassetteDesign: Codable, Hashable, Identifiable, Sendable {
         }
 
         public init(background: HexColor, stripes: [HexColor] = [], textColor: HexColor, showsText: Bool = true,
-                    showsArtwork: Bool = false, handwritten: Bool = true, bands: [Band] = [], writing: Writing? = nil) {
+                    showsArtwork: Bool = false, handwritten: Bool = true, bands: [Band] = [], writing: Writing? = nil,
+                    textFinish: Finish? = nil, backgroundFinish: Finish? = nil) {
             self.background = background
             self.stripes = stripes
             self.textColor = textColor
@@ -91,6 +109,8 @@ public struct CassetteDesign: Codable, Hashable, Identifiable, Sendable {
             self.handwritten = handwritten
             self.bands = bands
             self.writing = writing
+            self.textFinish = textFinish
+            self.backgroundFinish = backgroundFinish
         }
 
         public init(from decoder: Decoder) throws {
@@ -103,6 +123,8 @@ public struct CassetteDesign: Codable, Hashable, Identifiable, Sendable {
             handwritten = try c.decodeIfPresent(Bool.self, forKey: .handwritten) ?? true
             bands = (try? c.decodeIfPresent([Band].self, forKey: .bands)) ?? []
             writing = try? c.decodeIfPresent(Writing.self, forKey: .writing)
+            textFinish = try? c.decodeIfPresent(Finish.self, forKey: .textFinish)
+            backgroundFinish = try? c.decodeIfPresent(Finish.self, forKey: .backgroundFinish)
         }
 
         public func encode(to encoder: Encoder) throws {
@@ -116,9 +138,13 @@ public struct CassetteDesign: Codable, Hashable, Identifiable, Sendable {
             // Only when used, so plain designs read as before.
             if !bands.isEmpty { try c.encode(bands, forKey: .bands) }
             try c.encodeIfPresent(writing, forKey: .writing)
+            try c.encodeIfPresent(textFinish, forKey: .textFinish)
+            try c.encodeIfPresent(backgroundFinish, forKey: .backgroundFinish)
         }
 
-        private enum CodingKeys: String, CodingKey { case background, stripes, textColor, showsText, showsArtwork, handwritten, bands, writing }
+        private enum CodingKeys: String, CodingKey {
+            case background, stripes, textColor, showsText, showsArtwork, handwritten, bands, writing, textFinish, backgroundFinish
+        }
     }
 
     public struct Reels: Codable, Hashable, Sendable {
@@ -127,12 +153,25 @@ public struct CassetteDesign: Codable, Hashable, Identifiable, Sendable {
         public var tapeColor: HexColor
         /// A printed ring around each hub's hole (the gold rings of the premium tapes). Optional.
         public var ringColor: HexColor?
+        /// The rings in foil instead of `ringColor` (with `ringColor` set, so readers without finishes still draw them).
+        public var ringFinish: Finish?
 
-        public init(hubColor: HexColor, tapeColor: HexColor, ringColor: HexColor? = nil) {
+        public init(hubColor: HexColor, tapeColor: HexColor, ringColor: HexColor? = nil, ringFinish: Finish? = nil) {
             self.hubColor = hubColor
             self.tapeColor = tapeColor
             self.ringColor = ringColor
+            self.ringFinish = ringFinish
         }
+
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            hubColor = try c.decode(HexColor.self, forKey: .hubColor)
+            tapeColor = try c.decode(HexColor.self, forKey: .tapeColor)
+            ringColor = try c.decodeIfPresent(HexColor.self, forKey: .ringColor)
+            ringFinish = try? c.decodeIfPresent(Finish.self, forKey: .ringFinish)
+        }
+
+        private enum CodingKeys: String, CodingKey { case hubColor, tapeColor, ringColor, ringFinish }
     }
 
     public init(id: UUID = UUID(), name: String, author: String? = nil, shellColor: HexColor, shellClarity: Double = 0,
@@ -244,6 +283,20 @@ public struct CassetteGeometry: Codable, Hashable, Sendable {
     )
 }
 
+/// Print in metal foil, as the premium tapes' lettering, bands and rings: "gold" or "silver" in the design file (any
+/// other value reads as plain ink, so a later finish does not stop a design from opening).
+public enum Finish: String, Codable, Hashable, Sendable, CaseIterable {
+    case gold, silver
+
+    public init(from decoder: Decoder) throws {
+        let value = try decoder.singleValueContainer().decode(String.self)
+        guard let finish = Finish(rawValue: value) else {
+            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Not a finish: \(value)"))
+        }
+        self = finish
+    }
+}
+
 /// A color as "#RRGGBB" or "#RRGGBBAA", as in the design file.
 public struct HexColor: Codable, Hashable, Sendable, ExpressibleByStringLiteral {
     public var red: Double
@@ -328,7 +381,7 @@ extension CassetteDesign {
     public static let metal = CassetteDesign(
         id: UUID(uuidString: "6B1C1C8E-0001-4C55-9C11-000000000004")!, name: "Metal",
         shellColor: "#2B2D31", detailColor: "#8D8F94",
-        label: Label(background: "#C9A750", stripes: ["#1A1A1A"], textColor: "#1A1A1A", handwritten: false),
+        label: Label(background: "#C9A750", stripes: ["#1A1A1A"], textColor: "#1A1A1A", handwritten: false, backgroundFinish: .gold),
         reels: Reels(hubColor: "#C9C9C9", tapeColor: "#1F1A16"),
         brand: "GROOVELIGHT", tapeType: "TYPE IV · METAL")
 
@@ -346,8 +399,8 @@ extension CassetteDesign {
     public static let blackGold = CassetteDesign(
         id: UUID(uuidString: "6B1C1C8E-0001-4C55-9C11-000000000006")!, name: "Black Gold",
         shellColor: "#161618", detailColor: "#3C3C40",
-        label: Label(background: "#00000000", textColor: "#D6AE5C", handwritten: false, bands: [.init(color: "#D6AE5C", y: 0.43, height: 0.012), .init(color: "#232120", y: 0.46, height: 0.34), .init(color: "#D6AE5C", y: 0.8, height: 0.012)]),
-        reels: Reels(hubColor: "#E8E6E0", tapeColor: "#2A1D14", ringColor: "#C9A04A"),
+        label: Label(background: "#00000000", textColor: "#D6AE5C", handwritten: false, bands: [.init(color: "#D6AE5C", y: 0.43, height: 0.012, finish: .gold), .init(color: "#232120", y: 0.46, height: 0.34), .init(color: "#D6AE5C", y: 0.8, height: 0.012, finish: .gold)], textFinish: .gold),
+        reels: Reels(hubColor: "#E8E6E0", tapeColor: "#2A1D14", ringColor: "#C9A04A", ringFinish: .gold),
         brand: "GROOVELIGHT GX 60", tapeType: "HIGH POSITION · TYPE II", side: "B")
 
     /// Clear blue plastic, the whole reels showing: the chrome tapes of the late 1980s.
@@ -362,8 +415,8 @@ extension CassetteDesign {
     public static let midnightPro = CassetteDesign(
         id: UUID(uuidString: "6B1C1C8E-0001-4C55-9C11-000000000008")!, name: "Midnight Pro",
         shellColor: "#1A1F30", detailColor: "#59607A",
-        label: Label(background: "#00000000", textColor: "#D5D9E2", handwritten: false, bands: [.init(color: "#262C42", y: 0.46, height: 0.34), .init(color: "#AEB3BF", y: 0.82, height: 0.01)]),
-        reels: Reels(hubColor: "#E9EBEF", tapeColor: "#241A14", ringColor: "#BFC4CE"),
+        label: Label(background: "#00000000", textColor: "#D5D9E2", handwritten: false, bands: [.init(color: "#262C42", y: 0.46, height: 0.34), .init(color: "#AEB3BF", y: 0.82, height: 0.01, finish: .silver)], textFinish: .silver),
+        reels: Reels(hubColor: "#E9EBEF", tapeColor: "#241A14", ringColor: "#BFC4CE", ringFinish: .silver),
         brand: "GROOVELIGHT PRO 90", tapeType: "SUPER ENERGY · TYPE II")
 
     /// Black with a white strip to write on and a red band across the window.
@@ -395,7 +448,7 @@ extension CassetteDesign {
     public static let greenPinstripe = CassetteDesign(
         id: UUID(uuidString: "6B1C1C8E-0001-4C55-9C11-00000000000C")!, name: "Green Pinstripe",
         shellColor: "#1C2520", detailColor: "#4A564F",
-        label: Label(background: "#00000000", textColor: "#E9E4D0", handwritten: true, bands: [.init(color: "#C8A55A", y: 0.8, height: 0.018), .init(color: "#EDE8D8", y: 0.835, height: 0.012), .init(color: "#C8A55A", y: 0.86, height: 0.018)], writing: .init(background: "#F2F0E6", textColor: "#1D2A22")),
+        label: Label(background: "#00000000", textColor: "#E9E4D0", handwritten: true, bands: [.init(color: "#C8A55A", y: 0.8, height: 0.018, finish: .gold), .init(color: "#EDE8D8", y: 0.835, height: 0.012), .init(color: "#C8A55A", y: 0.86, height: 0.018, finish: .gold)], writing: .init(background: "#F2F0E6", textColor: "#1D2A22")),
         reels: Reels(hubColor: "#F0F0EC", tapeColor: "#2A1D14"),
         brand: "GROOVELIGHT X 90", tapeType: "HIGH BIAS · 70µs EQ")
 
@@ -411,7 +464,7 @@ extension CassetteDesign {
     public static let charcoalB = CassetteDesign(
         id: UUID(uuidString: "6B1C1C8E-0001-4C55-9C11-00000000000E")!, name: "Charcoal",
         shellColor: "#2D2E30", detailColor: "#4D4E52",
-        label: Label(background: "#00000000", textColor: "#E6E6E6", handwritten: false, bands: [.init(color: "#111111", y: 0.78, height: 0.1), .init(color: "#E6E6E6", y: 0.8, height: 0.006)]),
+        label: Label(background: "#00000000", textColor: "#E6E6E6", handwritten: false, bands: [.init(color: "#111111", y: 0.78, height: 0.1), .init(color: "#E6E6E6", y: 0.8, height: 0.006, finish: .silver)], textFinish: .silver),
         reels: Reels(hubColor: "#E8E8E8", tapeColor: "#2A1D14"),
         brand: "GROOVELIGHT TX 90", tapeType: "HIGH BIAS · 70µs EQ", side: "B")
 

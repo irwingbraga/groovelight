@@ -9,6 +9,16 @@ enum SkinTexture: String, CaseIterable {
     case aluminum = "Aluminum"
     case felt = "Felt"
     case blackPlastic = "BlackPlastic"
+    /// A record's grooves, how much each point scatters the light (made for Groovelight, not tiled: drawn across the record).
+    case vinyl = "Vinyl"
+    /// A cassette's molded plastic: the fine matte grain of a spark-eroded mould (neutral gray, tiled).
+    case grain = "Grain"
+    /// Hot-stamped foil: faint streaks and a fine sparkle (light gray, tiled), colored gold or silver.
+    case foil = "Foil"
+    /// Paper's fibres (light gray, tiled): the labels and the VU meters' faces.
+    case paper = "Paper"
+    /// The PC Player's wallpaper: a green hill under a blue sky with clouds (made for Groovelight; drawn to fill, not tiled).
+    case hill = "Hill"
 
     @MainActor private static var images: [SkinTexture: Image] = [:]
 
@@ -48,10 +58,94 @@ struct Textured: View {
     }
 }
 
+/// Polished chrome: a mirror of the room, so a bright window, a dark floor and the sky, sharply, rather than a soft gray.
+enum Chrome {
+    private static let stops: [(Double, Double, Double, Double)] = [
+        // location, red, green, blue: dark at the edges, the window's sharp highlight, the floor's band, the sky's.
+        (0, 0.16, 0.17, 0.19), (0.1, 0.42, 0.43, 0.45), (0.2, 0.86, 0.87, 0.88), (0.25, 1, 1, 1), (0.31, 0.8, 0.8, 0.79),
+        (0.44, 0.4, 0.4, 0.39), (0.54, 0.13, 0.13, 0.14), (0.66, 0.3, 0.31, 0.33), (0.79, 0.74, 0.77, 0.82), (0.9, 0.55, 0.57, 0.6),
+        (1, 0.14, 0.14, 0.16),
+    ]
+
+    /// A rod's or a cylinder's chrome, across it from `start` to `end`.
+    static func cylinder(_ start: UnitPoint = .leading, _ end: UnitPoint = .trailing) -> LinearGradient {
+        LinearGradient(stops: stops.map { .init(color: Color(red: $0.1, green: $0.2, blue: $0.3), location: $0.0) }, startPoint: start, endPoint: end)
+    }
+
+    /// A dome's chrome (a pivot's cap, a screw head): the window's reflection near the top left.
+    static func dome(_ radius: CGFloat) -> RadialGradient {
+        RadialGradient(stops: [.init(color: .white, location: 0), .init(color: Color(white: 0.92), location: 0.12),
+                               .init(color: Color(white: 0.45), location: 0.35), .init(color: Color(red: 0.12, green: 0.12, blue: 0.14), location: 0.62),
+                               .init(color: Color(red: 0.55, green: 0.58, blue: 0.63), location: 0.86), .init(color: Color(white: 0.2), location: 1)],
+                       center: .init(x: 0.36, y: 0.32), startRadius: 0, endRadius: radius * 1.3)
+    }
+
+    /// Turned (lathe-cut) metal seen from above: light and dark sectors where the fine rings catch the light.
+    static var turned: AngularGradient {
+        AngularGradient(colors: [Color(white: 0.97), Color(white: 0.62), Color(white: 0.35), Color(white: 0.7), Color(white: 0.98), Color(white: 0.6),
+                                 Color(white: 0.3), Color(white: 0.68), Color(white: 0.97)], center: .center)
+    }
+}
+
+/// Hot-stamped foil, gold or silver: a mirror of the room across it (bright and dark bands, sharply), its faint streaks
+/// and sparkle. `.foil(_:)` prints a view's shape (lettering, a band, a ring) in it.
+struct FoilFill: View {
+    var finish: Finish
+    /// Down each letter rather than along the whole: lettering catches the light on its tops and darkens below.
+    var isLettering = false
+
+    var body: some View {
+        LinearGradient(stops: (isLettering ? Self.letteringStops(finish) : Self.stops(finish)).map { .init(color: Color(red: $0.1, green: $0.2, blue: $0.3), location: $0.0) },
+                       startPoint: isLettering ? UnitPoint(x: 0.45, y: 0) : UnitPoint(x: 0, y: 0.15),
+                       endPoint: isLettering ? UnitPoint(x: 0.55, y: 1) : UnitPoint(x: 1, y: 0.85))
+            .overlay(Textured(texture: .foil).blendMode(.multiply))
+            .allowsHitTesting(false)
+    }
+
+    /// Down a letter: lit at the top, a dark band below the middle, the floor's light at the foot.
+    private static func letteringStops(_ finish: Finish) -> [(Double, Double, Double, Double)] {
+        switch finish {
+        case .gold:
+            [(0, 1, 0.94, 0.66), (0.3, 0.95, 0.78, 0.36), (0.55, 0.7, 0.5, 0.17), (0.78, 0.88, 0.68, 0.28), (1, 0.98, 0.87, 0.52)]
+        case .silver:
+            [(0, 1, 1, 1), (0.3, 0.86, 0.88, 0.91), (0.55, 0.55, 0.57, 0.61), (0.78, 0.8, 0.82, 0.86), (1, 0.95, 0.96, 0.98)]
+        }
+    }
+
+    private static func stops(_ finish: Finish) -> [(Double, Double, Double, Double)] {
+        switch finish {
+        case .gold:
+            [(0, 0.42, 0.28, 0.08), (0.14, 0.78, 0.58, 0.2), (0.24, 1, 0.92, 0.6), (0.3, 0.86, 0.66, 0.24), (0.46, 0.5, 0.33, 0.09),
+             (0.6, 0.82, 0.62, 0.24), (0.7, 1, 0.95, 0.7), (0.78, 0.9, 0.72, 0.3), (0.92, 0.56, 0.38, 0.12), (1, 0.74, 0.55, 0.2)]
+        case .silver:
+            [(0, 0.36, 0.37, 0.4), (0.14, 0.72, 0.74, 0.78), (0.24, 1, 1, 1), (0.3, 0.8, 0.82, 0.85), (0.46, 0.42, 0.43, 0.46),
+             (0.6, 0.76, 0.78, 0.82), (0.7, 0.98, 0.99, 1), (0.78, 0.82, 0.84, 0.88), (0.92, 0.5, 0.51, 0.55), (1, 0.7, 0.72, 0.76)]
+        }
+    }
+}
+
+extension View {
+    /// The view's shape printed in `finish` (pressed into the surface: a hairline shadow under it), or the view as it is
+    /// without one.
+    @ViewBuilder func foil(_ finish: Finish?, lettering: Bool = false) -> some View {
+        if let finish {
+            // Laid out as the view is: the foil only fills its shape.
+            hidden()
+                .overlay {
+                    FoilFill(finish: finish, isLettering: lettering)
+                        .mask(self)
+                        .shadow(color: .black.opacity(0.45), radius: 0, x: 0, y: 0.6)
+                }
+        } else {
+            self
+        }
+    }
+}
+
 /// The players' lettering: the segment displays' fonts (DSEG, OFL), and the engraved and printed captions.
 enum SkinFont {
     private static let registered: Bool = {
-        for name in ["DSEG7Classic-Bold", "DSEG14Classic-Bold"] {
+        for name in ["DSEG7Classic-Bold", "DSEG14Classic-Bold", "Silkscreen-Regular", "Silkscreen-Bold"] {
             if let url = Bundle.module.url(forResource: name, withExtension: "ttf") {
                 CTFontManagerRegisterFontsForURL(url as CFURL, .process, nil)
             }
@@ -69,6 +163,12 @@ enum SkinFont {
     static func letters(_ size: CGFloat) -> Font {
         _ = registered
         return .custom("DSEG14Classic-Bold", fixedSize: size)
+    }
+
+    /// A computer's pixel lettering (Silkscreen, OFL): the PC Player's title bars, scrolling title and buttons.
+    static func pixel(_ size: CGFloat, bold: Bool = false) -> Font {
+        _ = registered
+        return .custom(bold ? "Silkscreen-Bold" : "Silkscreen-Regular", fixedSize: size)
     }
 
     /// The captions on the panels, wide as on the hi-fi of the seventies.

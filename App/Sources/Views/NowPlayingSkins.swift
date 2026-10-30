@@ -1,4 +1,5 @@
 import AppKit
+import LibraryKit
 import PlayerCore
 import Skins
 import SwiftUI
@@ -23,6 +24,8 @@ struct NowPlayingDeck: View {
     @AppStorage(NowPlayingSkin.storageKey) private var skin: NowPlayingSkin = .cover
     @AppStorage(NowPlayingSkin.cassetteStorageKey) private var cassette = ""
     var chromeInset: CGFloat
+    /// The song's file, for the PC Player's bit rate and sample rate.
+    @State private var track: Track?
 
     var body: some View {
         let player = model.player
@@ -34,27 +37,57 @@ struct NowPlayingDeck: View {
                                             let frame = player.analyzer.latestFrame
                                             return (frame.leftLevel, frame.rightLevel)
                                         },
+                                        spectrum: { _ in player.analyzer.latestFrame.bands },
+                                        format: track.map { track in
+                                            let spec = track.audioSpec
+                                            return SkinFormat(sampleRate: spec.sampleRate, bitDepth: spec.bitDepth,
+                                                              bitrate: spec.bitrate.map { Int($0.rounded()) }, channels: spec.channels)
+                                        },
                                         time: { player.estimatedTime(at: $0) }),
-                 controls: DeckControls(
-                    playPause: { player.togglePlayPause() }, previous: { player.previous() }, next: { player.next() },
-                    seek: { player.seek(to: $0) },
-                    volume: Binding(get: { Double(player.volume) }, set: { player.volume = Float($0) }),
-                    isShuffled: player.isShuffled, toggleShuffle: { player.setShuffle(!player.isShuffled) },
-                    repeatMode: player.repeatMode == .one ? .one : player.repeatMode == .all ? .all : .off,
-                    cycleRepeat: {
-                        player.repeatMode = switch player.repeatMode {
-                        case .off: .all
-                        case .all: .one
-                        case .one: .off
-                        }
-                    }),
+                 controls: controls,
                  cassette: design, cassettePictures: model.cassettes.pictures(of: design), chromeInset: chromeInset,
-                 stageOverlay: model.isShowingLyrics ? AnyView(CurrentLyrics(fontSize: 22)) : nil) {
+                 stageOverlay: model.isShowingLyrics ? AnyView(CurrentLyrics(fontSize: 22)) : nil,
+                 playlist: skin == .pcPlayer ? playlist : nil) {
             ArtworkImage(hash: player.current?.artworkHash, size: .large, cornerRadius: 0)
         } accessory: {
             EmptyView()
         }
+        .task(id: player.current?.id) { track = await model.currentTrack() }
         .transition(.opacity)
+    }
+
+    private var controls: DeckControls {
+        let player = model.player
+        var controls = DeckControls(
+            playPause: { player.togglePlayPause() }, previous: { player.previous() }, next: { player.next() },
+            seek: { player.seek(to: $0) },
+            volume: Binding(get: { Double(player.volume) }, set: { player.volume = Float($0) }),
+            isShuffled: player.isShuffled, toggleShuffle: { player.setShuffle(!player.isShuffled) },
+            repeatMode: player.repeatMode == .one ? .one : player.repeatMode == .all ? .all : .off,
+            cycleRepeat: {
+                player.repeatMode = switch player.repeatMode {
+                case .off: .all
+                case .all: .one
+                case .one: .off
+                }
+            })
+        let equalizer = model.equalizer
+        controls.equalizer = Binding(get: { equalizer.isEnabled }, set: { equalizer.isEnabled = $0 })
+        controls.eject = { withAnimation(.smooth) { model.isShowingNowPlaying = false } }
+        if let current = track {
+            controls.love = Binding(get: { current.isLoved }, set: { _ in
+                model.toggleLoved(current)
+                Task { track = await model.currentTrack() }
+            })
+        }
+        return controls
+    }
+
+    /// The queue for the PC Player's playlist, a song in it played when chosen.
+    private var playlist: SkinPlaylist {
+        let player = model.player
+        let entries = player.queue.items.map { SkinPlaylist.Entry(title: $0.title, artist: $0.artist, duration: $0.duration) }
+        return SkinPlaylist(entries: entries, current: player.queue.currentIndex) { player.jump(toQueueIndex: $0) }
     }
 }
 
@@ -67,6 +100,7 @@ struct SkinMenu: View {
     @Environment(\.openWindow) private var openWindow
     @AppStorage(NowPlayingSkin.storageKey) private var skin: NowPlayingSkin = .cover
     @AppStorage(NowPlayingSkin.cassetteStorageKey) private var cassette = ""
+    @AppStorage(NowPlayingSkin.pcThemeStorageKey) private var pcTheme: PCTheme = .classic
 
     var body: some View {
         Menu {
@@ -74,6 +108,10 @@ struct SkinMenu: View {
                 ForEach(NowPlayingSkin.allCases) { Label($0.displayName, systemImage: $0.systemImage).tag($0) }
             }
             .pickerStyle(.inline)
+            Picker("PC Player Theme", selection: Binding(get: { pcTheme }, set: { pcTheme = $0; withAnimation(.smooth) { skin = .pcPlayer } })) {
+                ForEach(PCTheme.allCases) { Text($0.displayName).tag($0) }
+            }
+            Divider()
             Picker("Cassette", selection: Binding(get: { model.cassettes.design(id: UUID(uuidString: cassette)).id.uuidString },
                                                   set: { cassette = $0; withAnimation(.smooth) { skin = .cassette } })) {
                 ForEach(model.cassettes.all) { Text($0.name).tag($0.id.uuidString) }
@@ -88,7 +126,7 @@ struct SkinMenu: View {
             }
         }
         .menuIndicator(.hidden)
-        .help("Cover, Vinyl, Cassette or CD")
+        .help("Cover, Vinyl, Cassette, CD or PC Player")
     }
 }
 

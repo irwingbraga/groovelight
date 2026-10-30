@@ -198,7 +198,10 @@ public struct CassetteEditor: View {
                     ColorPicker("Screws and Edges", selection: color(\.detailColor), supportsOpacity: false)
                 }
                 Section("Label") {
-                    ColorPicker("Paper", selection: color(\.label.background), supportsOpacity: false)
+                    finishPicker("Paper", selection: $design.label.backgroundFinish, plain: "Color")
+                    if design.label.backgroundFinish == nil {
+                        ColorPicker("Paper Color", selection: color(\.label.background), supportsOpacity: false)
+                    }
                     ColorPicker("Writing", selection: color(\.label.textColor), supportsOpacity: false)
                     ForEach(design.label.stripes.indices, id: \.self) { index in
                         HStack {
@@ -224,10 +227,33 @@ public struct CassetteEditor: View {
                     TextField("Brand", text: $design.brand)
                     TextField("Tape Type", text: $design.tapeType)
                     TextField("Side", text: $design.side)
+                    finishPicker("Print", selection: $design.label.textFinish, plain: "Writing's Color")
                 }
                 Section("Reels") {
                     ColorPicker("Hubs", selection: color(\.reels.hubColor), supportsOpacity: false)
                     ColorPicker("Tape", selection: color(\.reels.tapeColor), supportsOpacity: false)
+                    Picker("Rings Around the Hubs", selection: Binding(
+                        get: { design.reels.ringColor == nil ? "none" : design.reels.ringFinish?.rawValue ?? "color" },
+                        set: { value in
+                            switch value {
+                            case "none": design.reels.ringColor = nil; design.reels.ringFinish = nil
+                            case "color": design.reels.ringColor = design.reels.ringColor ?? design.label.textColor; design.reels.ringFinish = nil
+                            default:
+                                let finish = Finish(rawValue: value)
+                                design.reels.ringFinish = finish
+                                // Their color for apps that draw no foil.
+                                design.reels.ringColor = finish == .gold ? "#C9A04A" : "#BFC4CE"
+                            }
+                        })) {
+                        Text("None").tag("none")
+                        Text("Color").tag("color")
+                        Text("Gold Foil").tag(Finish.gold.rawValue)
+                        Text("Silver Foil").tag(Finish.silver.rawValue)
+                    }
+                    if design.reels.ringColor != nil && design.reels.ringFinish == nil {
+                        ColorPicker("Rings' Color", selection: Binding(get: { Color(design.reels.ringColor ?? "#000000") },
+                                                                        set: { design.reels.ringColor = HexColor($0) }), supportsOpacity: false)
+                    }
                 }
                 Section {
                     pictureRow("Shell Picture", picture: .shell)
@@ -283,6 +309,15 @@ public struct CassetteEditor: View {
             }
             Button(has ? "Change…" : "Choose…") { choosingPicture = picture }
                 .buttonStyle(.borderless)
+        }
+    }
+
+    /// Plain (`plain`) or in gold or silver foil.
+    private func finishPicker(_ title: String, selection: Binding<Finish?>, plain: String) -> some View {
+        Picker(title, selection: selection) {
+            Text(plain).tag(Finish?.none)
+            Text("Gold Foil").tag(Finish?.some(.gold))
+            Text("Silver Foil").tag(Finish?.some(.silver))
         }
     }
 

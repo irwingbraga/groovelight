@@ -114,9 +114,10 @@ struct SkinTests {
             .frame(width: 600, height: 600)
             .background(Color(white: 0.2))
             let renderer = ImageRenderer(content: view)
-            renderer.scale = 1
+            // As on a Retina screen, where the textures and the foil are drawn at their finest.
+            renderer.scale = 2
             let image = try #require(renderer.cgImage)
-            #expect(image.width == 600)
+            #expect(image.width == 1200)
             if let snapshots {
                 let rep = NSBitmapImageRep(cgImage: image)
                 try rep.representation(using: .png, properties: [:])?.write(to: snapshots.appending(path: "skin-\(name).png"))
@@ -161,6 +162,77 @@ struct SkinTests {
         #expect(early.position(toward: 0.78, at: start.addingTimeInterval(0.05)) < 0.6)
     }
 
+    /// Gold and silver foil are kept in the file, and a finish this version does not know reads as plain ink.
+    @Test func foilFinishesReadAndWrite() throws {
+        let data = try JSONEncoder().encode(CassetteDesign.blackGold)
+        let read = try JSONDecoder().decode(CassetteDesign.self, from: data)
+        #expect(read.label.textFinish == .gold)
+        #expect(read.reels.ringFinish == .gold)
+        #expect(read.label.bands.first?.finish == .gold)
+        #expect(read.label.bands[1].finish == nil)
+        let later = ##"{"name": "Later", "label": {"textFinish": "copper", "bands": [{"color": "#FFFFFF", "y": 0.5, "height": 0.1, "finish": "rose"}]}, "reels": {"hubColor": "#FFFFFF", "tapeColor": "#000000", "ringFinish": "copper"}}"##
+        let design = try JSONDecoder().decode(CassetteDesign.self, from: Data(later.utf8))
+        #expect(design.label.textFinish == nil)
+        #expect(design.label.bands.count == 1 && design.label.bands[0].finish == nil)
+        #expect(design.reels.ringFinish == nil)
+        #expect(!String(decoding: try JSONEncoder().encode(CassetteDesign.classic), as: UTF8.self).contains("Finish"))
+    }
+
+    /// The PC Player shows a lossless file's PCM bit rate (1411 for a CD) and a lossy one's own; its windows dock one
+    /// under the other, the main window at the original's proportions, and part on either side of a fold.
+    @Test func pcPlayerFormatAndLayout() {
+        let cd = SkinFormat(sampleRate: 44_100, bitDepth: 16, bitrate: nil, channels: 2)
+        #expect(cd.kbps == 1411 && cd.kHz == 44 && cd.channels == 2)
+        let mp3 = SkinFormat(sampleRate: 48_000, bitDepth: nil, bitrate: 320, channels: 2)
+        #expect(mp3.kbps == 320 && mp3.kHz == 48)
+        let phone = PCLayout(size: CGSize(width: 393, height: 852), top: 60, fold: nil)
+        #expect(abs(phone.main.width / phone.main.height - 275.0 / 116) < 0.001)
+        #expect(phone.playlist.minY == phone.main.maxY && phone.playlist.width == phone.main.width)
+        #expect(phone.main.minX >= 0 && phone.main.maxX <= 393)
+        let duo = PCLayout(size: CGSize(width: 900, height: 700), top: 40, fold: CGRect(x: 440, y: 0, width: 20, height: 700))
+        #expect(duo.main.maxX <= 440 && duo.playlist.minX >= 460)
+    }
+
+    /// Corona puts its playlist under the player on a phone and on its left on a wide screen, as it slid out; its
+    /// screen gives room to the playlist but stays between 120 and 240 of its pixels.
+    @Test func coronaLayout() {
+        let phone = CoronaLayout(size: CGSize(width: 393, height: 852), top: 60, fold: nil)
+        #expect(phone.playlist.minY >= phone.main.maxY && (120...240).contains(phone.screenHeight))
+        #expect(phone.main.minX >= 0 && phone.main.maxX <= 393)
+        let mac = CoronaLayout(size: CGSize(width: 1100, height: 760), top: 60, fold: nil)
+        #expect(mac.playlist.maxX <= mac.main.minX + 13 * mac.scale + 0.5 && mac.screenHeight == 240)
+        let duo = CoronaLayout(size: CGSize(width: 900, height: 700), top: 40, fold: CGRect(x: 440, y: 0, width: 20, height: 700))
+        #expect(duo.playlist.maxX <= 440 && duo.main.minX >= 460)
+    }
+
+    /// The record and the disc turn from the clock: up to speed smoothly when they start, coasting to a stop when they
+    /// stop, never jumping.
+    @Test func motorsSpeedUpAndSlowDown() {
+        let start = Date.now
+        var motion = SpinMotion(speed: 300, spinUp: 1.5, spinDown: 2, isOn: false)
+        motion.turn(true, at: start)
+        #expect(motion.state(at: start).velocity == 0)
+        #expect(abs(motion.state(at: start.addingTimeInterval(0.75)).velocity - 150) < 0.001)
+        #expect(motion.state(at: start.addingTimeInterval(1.5)).velocity == 300)
+        // Smoothstep's integral: half the full speed's turning over the spin-up.
+        #expect(abs(motion.state(at: start.addingTimeInterval(1.5)).angle - 225) < 0.001)
+        #expect(abs(motion.state(at: start.addingTimeInterval(2.5)).angle - 525) < 0.001)
+        // Stopping halfway through stopping keeps the angle and the speed where they were.
+        let stop = start.addingTimeInterval(2.5)
+        motion.turn(false, at: stop)
+        #expect(abs(motion.state(at: stop).angle - 165) < 0.001)
+        #expect(motion.state(at: stop).velocity == 300)
+        #expect(motion.isTurning(at: stop.addingTimeInterval(1.9)))
+        #expect(!motion.isTurning(at: stop.addingTimeInterval(2.01)))
+        var last = motion.state(at: stop).angle
+        for step in 1...30 {
+            let angle = motion.state(at: stop.addingTimeInterval(Double(step) * 0.1)).angle
+            #expect(angle >= last)
+            last = angle
+        }
+        #expect(abs(last - (165 + 300)) < 0.001)
+    }
+
     /// The analyzer measures each channel on its own, for the VU meters.
     @Test func analyzerMeasuresEachChannel() throws {
         let format = try #require(AVAudioFormat(standardFormatWithSampleRate: 44_100, channels: 2))
@@ -181,12 +253,19 @@ struct SkinTests {
     @Test func decksRender() throws {
         let snapshots = ProcessInfo.processInfo.environment["GL_SNAPSHOT_DIR"].map { URL(fileURLWithPath: $0) }
         let playback = SkinPlayback(title: "Living Inside Myself", artist: "Gino Vannelli", album: "Nightwalker", isPlaying: true,
-                                    duration: 240) { _ in 70 }
+                                    duration: 240, format: SkinFormat(kbps: 320, kHz: 44, channels: 2)) { _ in 70 }
+        let playlist = SkinPlaylist(entries: [("Gino Vannelli", "Living Inside Myself", 260.0), ("Toto", "Rosanna", 331), ("Steely Dan", "Peg", 237),
+                                              ("Christopher Cross", "Sailing", 255), ("Michael McDonald", "I Keep Forgettin'", 220),
+                                              ("Kenny Loggins", "This Is It", 229)].map { .init(title: $0.1, artist: $0.0, duration: $0.2) },
+                                    current: 0)
         let screens: [(String, CGSize)] = [("phone", CGSize(width: 393, height: 852)), ("cover", CGSize(width: 344, height: 882)),
                                            ("open", CGSize(width: 720, height: 800)), ("mac", CGSize(width: 1100, height: 760))]
-        for skin in [NowPlayingSkin.vinyl, .cassette, .compactDisc] {
+        defer { UserDefaults.standard.removeObject(forKey: NowPlayingSkin.pcThemeStorageKey) }
+        for (skin, theme) in [(NowPlayingSkin.vinyl, PCTheme.classic), (.cassette, .classic), (.compactDisc, .classic), (.pcPlayer, .classic),
+                              (.pcPlayer, .corona)] {
+            UserDefaults.standard.set(theme.rawValue, forKey: NowPlayingSkin.pcThemeStorageKey)
             for (name, size) in screens {
-                let view = SkinDeck(skin: skin, playback: playback, controls: .inert, cassette: .mixtape) {
+                let view = SkinDeck(skin: skin, playback: playback, controls: .inert, cassette: .mixtape, playlist: playlist) {
                     LinearGradient(colors: [.orange, .purple], startPoint: .topLeading, endPoint: .bottomTrailing)
                 } accessory: {
                     EmptyView()
@@ -198,7 +277,7 @@ struct SkinTests {
                 #expect(image.width == Int(size.width * 2))
                 if let snapshots {
                     let rep = NSBitmapImageRep(cgImage: image)
-                    try rep.representation(using: .png, properties: [:])?.write(to: snapshots.appending(path: "deck-\(skin.rawValue)-\(name).png"))
+                    try rep.representation(using: .png, properties: [:])?.write(to: snapshots.appending(path: "deck-\(skin.rawValue)\(theme == .corona ? "-corona" : "")-\(name).png"))
                 }
             }
         }

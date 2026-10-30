@@ -208,16 +208,22 @@ private struct DrawnShell<Artwork: View>: View {
             FrontPlate(window: window, holes: holes, holeRadius: hubHole, corner: corner)
                 .fill(shell.opacity(1 - clarity), style: FillStyle(eoFill: true))
                 .overlay {
-                    // Light across the plastic.
-                    FrontPlate(window: window, holes: holes, holeRadius: hubHole, corner: corner)
-                        .fill(LinearGradient(colors: [.white.opacity(0.14), .clear, .black.opacity(0.12)], startPoint: .top, endPoint: .bottom),
-                              style: FillStyle(eoFill: true))
+                    // The mould's matte grain, then the light across the plastic: a soft sheen high on the left.
+                    ZStack {
+                        Textured(texture: .grain).blendMode(.overlay).opacity(clarity > 0 ? 0.35 : 0.8)
+                        Textured(texture: .grain).blendMode(.screen).opacity(0.05)
+                        LinearGradient(stops: [.init(color: .white.opacity(0.2), location: 0), .init(color: .white.opacity(0.05), location: 0.35),
+                                               .init(color: .clear, location: 0.6), .init(color: .black.opacity(0.16), location: 1)],
+                                       startPoint: .topLeading, endPoint: .bottomTrailing)
+                    }
+                    .mask(FrontPlate(window: window, holes: holes, holeRadius: hubHole, corner: corner).fill(style: FillStyle(eoFill: true)))
                 }
             LabelLayer(design: design, layout: layout, size: size, playback: playback, pictures: pictures, drawsBackground: true, artwork: artwork)
             // Printed rings around the hubs' holes.
             if let ring = design.reels.ringColor {
                 ForEach(Array(holes.enumerated()), id: \.offset) { _, hole in
                     Circle().strokeBorder(Color(ring), lineWidth: size.width * 0.011)
+                        .foil(design.reels.ringFinish)
                         .frame(width: (hubHole + size.width * 0.011) * 2, height: (hubHole + size.width * 0.011) * 2)
                         .position(hole)
                 }
@@ -233,6 +239,21 @@ private struct DrawnShell<Artwork: View>: View {
                 .fill(shell.opacity(max(1 - clarity, 0.55)))
                 .overlay(HeadArea(size: size).fill(.black.opacity(0.18)))
                 .overlay(HeadArea(size: size).stroke(detail.opacity(0.8), lineWidth: size.width * 0.003))
+            // The grip's molded ribs along the head area.
+            Canvas { context, canvas in
+                for rib in 0..<5 {
+                    let y = canvas.height * (0.815 + Double(rib) * 0.012)
+                    let inset = canvas.width * (0.225 - Double(rib) * 0.0029)
+                    var line = Path()
+                    line.move(to: CGPoint(x: inset, y: y))
+                    line.addLine(to: CGPoint(x: canvas.width - inset, y: y))
+                    context.stroke(line, with: .color(.black.opacity(0.35)), lineWidth: max(0.6, canvas.width * 0.0025))
+                    line = line.offsetBy(dx: 0, dy: max(0.6, canvas.width * 0.0025))
+                    context.stroke(line, with: .color(.white.opacity(0.09)), lineWidth: max(0.5, canvas.width * 0.0015))
+                }
+            }
+            .frame(width: size.width, height: size.height)
+            .allowsHitTesting(false)
             ForEach(Array(headHoles.enumerated()), id: \.offset) { _, hole in
                 RoundedRectangle(cornerRadius: size.width * 0.004).fill(.black.opacity(0.75))
                     .frame(width: size.width * hole.width, height: size.height * 0.05)
@@ -349,6 +370,7 @@ private struct LabelLayer<Artwork: View>: View {
                 if labelPicture == nil, let paper = design.label.writing {
                     RoundedRectangle(cornerRadius: size.width * 0.006)
                         .fill(Color(paper.background))
+                        .overlay(Textured(texture: .paper).blendMode(.multiply).clipShape(RoundedRectangle(cornerRadius: size.width * 0.006)))
                         .overlay(alignment: .bottom) {
                             Rectangle().fill(Color(paper.textColor).opacity(0.15)).frame(height: 0.7).padding(.horizontal, strip.width * 0.03)
                                 .padding(.bottom, strip.height * 0.28)
@@ -366,11 +388,13 @@ private struct LabelLayer<Artwork: View>: View {
                     .foregroundStyle(text.opacity(0.85))
                     .padding(.horizontal, label.width * 0.035)
                     .frame(width: label.width)
+                    .foil(design.label.textFinish, lettering: true)
                     .position(x: label.midX, y: label.minY + size.height * 0.035)
                     // Left of the left reel, above the bands.
                     Text(design.side)
                         .font(.system(size: size.width * 0.05, weight: .black))
                         .foregroundStyle(text.opacity(0.85))
+                        .foil(design.label.textFinish, lettering: true)
                         .position(x: label.minX + label.width * 0.055, y: window.minY + window.height * 0.12)
                 }
             }
@@ -391,6 +415,9 @@ private struct LabelLayer<Artwork: View>: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.6)
                     .foregroundStyle(labelPicture == nil ? ink : text)
+                    // Printed, not written, on a label printed in foil: the song too.
+                    .foil(design.label.handwritten || design.label.writing != nil || labelPicture != nil ? nil : design.label.textFinish,
+                          lettering: true)
                     // Written, not printed: a little askew.
                     .rotationEffect(.degrees(design.label.handwritten ? -1.2 : 0))
                 }
@@ -417,7 +444,15 @@ private struct LabelBackground: View {
         GeometryReader { geometry in
             let stripes = design.label.stripes
             ZStack(alignment: .topLeading) {
-                Color(design.label.background)
+                if let finish = design.label.backgroundFinish {
+                    FoilFill(finish: finish)
+                } else {
+                    Color(design.label.background)
+                    // Printed on paper: its fibres show where the label is not clear.
+                    if design.label.background.alpha > 0.5 {
+                        Textured(texture: .paper).blendMode(.multiply).opacity(design.label.background.alpha)
+                    }
+                }
                 if !stripes.isEmpty {
                     let band = geometry.size.height * 0.3 / CGFloat(stripes.count)
                     VStack(spacing: 0) {
@@ -426,7 +461,8 @@ private struct LabelBackground: View {
                     .offset(y: geometry.size.height * 0.62)
                 }
                 ForEach(Array(design.label.bands.enumerated()), id: \.offset) { _, band in
-                    Color(band.color)
+                    Rectangle().fill(Color(band.color))
+                        .foil(band.finish)
                         .frame(height: geometry.size.height * band.height)
                         .offset(y: geometry.size.height * band.y)
                 }

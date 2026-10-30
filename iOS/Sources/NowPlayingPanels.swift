@@ -335,15 +335,7 @@ struct NowPlayingButtons: View {
     var body: some View {
         let isLoved = model.nowPlaying?.isLoved ?? false
         HStack {
-            Button { model.toggleLove() } label: {
-                Label(isLoved ? "Unlove" : "Love", systemImage: isLoved ? "heart.fill" : "heart")
-                    .labelStyle(.iconOnly)
-                    .font(.title3)
-                    .foregroundStyle(isLoved ? AnyShapeStyle(.pink) : AnyShapeStyle(.white))
-                    .frame(width: 40, height: 40)
-                    .contentTransition(.symbolEffect(.replace))
-            }
-            .disabled((model.nowPlaying?.id ?? -1) < 0)
+            loveButton(isLoved: isLoved)
             Spacer()
             AirPlayButton().frame(width: 36, height: 36)
             Spacer()
@@ -355,6 +347,18 @@ struct NowPlayingButtons: View {
         }
         .buttonStyle(.plain)
         .padding(.horizontal, 24)
+    }
+
+    private func loveButton(isLoved: Bool) -> some View {
+        Button { model.toggleLove() } label: {
+            Label(isLoved ? "Unlove" : "Love", systemImage: isLoved ? "heart.fill" : "heart")
+                .labelStyle(.iconOnly)
+                .font(.title3)
+                .foregroundStyle(isLoved ? AnyShapeStyle(.pink) : AnyShapeStyle(.white))
+                .frame(width: 40, height: 40)
+                .contentTransition(.symbolEffect(.replace))
+        }
+        .disabled((model.nowPlaying?.id ?? -1) < 0)
     }
 
     private func toggle(_ kind: NowPlayingPanel, title: String, symbol: String) -> some View {

@@ -1,4 +1,5 @@
 import PlayerCore
+import Skins
 import SwiftUI
 
 /// Settings, Playback: crossfade, volume normalization (Sound Check) and playback speed.
@@ -10,6 +11,7 @@ struct PlaybackSettings: View {
     @AppStorage(PlaybackPrefs.rate) private var rate = 1.0
     @AppStorage(PlaybackPrefs.bitPerfect) private var bitPerfect = false
     @AppStorage(PlaybackPrefs.exclusive) private var exclusive = false
+    @AppStorage(NowPlayingSkin.tapeCueStorageKey) private var tapeCue = true
 
     var body: some View {
         Form {
@@ -98,6 +100,14 @@ struct PlaybackSettings: View {
             }
             // Bypassed while bit-perfect playback is on.
             .disabled(bitPerfect)
+            Section {
+                Toggle("Tape sound when cueing", isOn: $tapeCue)
+            } header: {
+                Text("Cassette Deck")
+            } footer: {
+                Text("In Now Playing's cassette deck, holding Rewind or Fast Forward plays the tape racing past the heads, as a real deck does.")
+                    .foregroundStyle(.secondary)
+            }
         }
         .formStyle(.grouped)
         .onChange(of: crossfade) { model.player.crossfadeDuration = crossfade }

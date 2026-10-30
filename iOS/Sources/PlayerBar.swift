@@ -183,10 +183,13 @@ private struct BarTools: View {
 
 /// The system's AirPlay route picker.
 struct AirPlayButton: UIViewRepresentable {
+    /// The icon's color (the label color, or a player's ink over its aluminum caps).
+    var tint: UIColor = .label
+
     func makeUIView(context: Context) -> AVRoutePickerView {
         let picker = AVRoutePickerView()
         picker.prioritizesVideoDevices = false
-        picker.tintColor = .label
+        picker.tintColor = tint
         picker.activeTintColor = .tintColor
         return picker
     }

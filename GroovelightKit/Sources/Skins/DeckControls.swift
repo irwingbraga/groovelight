@@ -1,7 +1,6 @@
 import SwiftUI
 
-/// What the player's keys and knobs do: the app's transport, its seek, its volume (none where the device's own buttons
-/// set it), shuffle and repeat.
+/// What the player's keys and knobs do: the app's transport, its seek, its volume (no knob without it), shuffle and repeat.
 public struct DeckControls {
     public enum Repeat: Sendable { case off, all, one }
 
@@ -10,6 +9,12 @@ public struct DeckControls {
     public var next: () -> Void
     public var seek: (TimeInterval) -> Void
     public var volume: Binding<Double>?
+    /// The equalizer on or off (the PC Player's EQ button); nil where it is not offered.
+    public var equalizer: Binding<Bool>? = nil
+    /// Leaves Now Playing (the PC Player's eject key); nil where there is nothing to leave.
+    public var eject: (() -> Void)? = nil
+    /// The song loved or not (the PC Player's heart key); nil where it cannot be loved.
+    public var love: Binding<Bool>? = nil
     public var isShuffled: Bool
     public var toggleShuffle: () -> Void
     public var repeatMode: Repeat
@@ -210,8 +215,11 @@ struct RoundKey: View {
 
 // MARK: - Knob and switches
 
-/// A knurled aluminum knob, turned by dragging up or down (or across), its line on the printed scale around it.
+/// A knurled aluminum knob, turned by swiping up or down on it, its line on the printed scale around it.
 struct Knob: View {
+    /// How far a swipe goes to turn the knob from 0 to 10.
+    static let travel: CGFloat = 180
+
     var title: String
     @Binding var value: Double
     var diameter: CGFloat
@@ -264,11 +272,13 @@ struct Knob: View {
         }
         .frame(width: diameter, height: diameter)
         .contentShape(.circle)
-        .gesture(DragGesture(minimumDistance: 1)
+        // Touched and swiped up, it turns up; down, down: the whole scale over `travel`, whatever the knob's size, from where
+        // the swipe began (so a level moving in steps follows the finger). Before Now Playing's own swipe down.
+        .highPriorityGesture(DragGesture(minimumDistance: 1)
             .onChanged { drag in
                 let base = start ?? value
                 if start == nil { start = value }
-                value = min(max(base + (drag.translation.width - drag.translation.height) / (diameter * 3), 0), 1)
+                value = min(max(base - drag.translation.height / Self.travel, 0), 1)
             }
             .onEnded { _ in start = nil })
         .accessibilityElement()
@@ -328,33 +338,73 @@ struct VUMeter: View {
     var body: some View {
         GeometryReader { proxy in
             let size = proxy.size
+            let ink = Color(red: 0.1, green: 0.08, blue: 0.06)
+            let red = Color(red: 0.78, green: 0.1, blue: 0.06)
             ZStack {
-                // The bezel and its glass.
-                RoundedRectangle(cornerRadius: size.height * 0.08).fill(Color(white: 0.08))
+                // The bezel: black plastic with a polished chamfer.
+                RoundedRectangle(cornerRadius: size.height * 0.08)
+                    .fill(LinearGradient(colors: [Color(white: 0.16), Color(white: 0.04)], startPoint: .top, endPoint: .bottom))
+                    .overlay(RoundedRectangle(cornerRadius: size.height * 0.08)
+                        .strokeBorder(LinearGradient(colors: [.white.opacity(0.45), .white.opacity(0.05), .black.opacity(0.6)], startPoint: .top,
+                                                     endPoint: .bottom), lineWidth: max(1, size.height * 0.02)))
                 ZStack {
-                    LinearGradient(colors: [Color(red: 1, green: 0.9, blue: 0.62), Color(red: 0.95, green: 0.72, blue: 0.35)], startPoint: .top,
-                                   endPoint: .bottom)
-                    VUScale().stroke(Color.black.opacity(0.75), lineWidth: max(1, size.height * 0.012))
-                    VUScale(red: true).stroke(Color(red: 0.8, green: 0.08, blue: 0.05), lineWidth: max(1.5, size.height * 0.04))
-                    Text("VU").font(.system(size: size.height * 0.16, weight: .black, design: .serif)).foregroundStyle(.black.opacity(0.7))
-                        .offset(y: size.height * 0.12)
-                    Text(channel == 0 ? "L" : "R").font(.system(size: size.height * 0.1, weight: .bold)).foregroundStyle(.black.opacity(0.55))
-                        .position(x: size.width * 0.1, y: size.height * 0.75)
+                    // The face: printed paper lit from behind by a lamp low in the middle, darker at its corners.
+                    Color(red: 0.98, green: 0.88, blue: 0.62)
+                    Textured(texture: .paper).blendMode(.multiply)
+                    RadialGradient(colors: [Color(red: 1, green: 0.85, blue: 0.45).opacity(0.55), .clear], center: .init(x: 0.5, y: 1.05),
+                                   startRadius: 0, endRadius: size.width * 0.75)
+                        .blendMode(.screen)
+                    EllipticalGradient(colors: [.clear, .clear, Color(red: 0.35, green: 0.2, blue: 0.05).opacity(0.45)], center: .init(x: 0.5, y: 0.75),
+                                       startRadiusFraction: 0, endRadiusFraction: 0.85)
+                    // The printed scale: the black arc to 0, the red one above, the numbers and the words.
+                    VUScale().stroke(ink.opacity(0.85), lineWidth: max(0.8, size.height * 0.011))
+                    VUScale(red: true).stroke(red, lineWidth: max(1.5, size.height * 0.045))
+                    ForEach(VUScale.numbers, id: \.at) { number in
+                        let point = VUScale.point(number.at, in: size, beyond: 0.17)
+                        Text(number.text)
+                            .font(.system(size: size.height * 0.085, weight: .semibold).width(.condensed))
+                            .foregroundStyle(number.at > 0.78 ? red : ink.opacity(0.85))
+                            .position(point)
+                    }
+                    Text("VU").font(.system(size: size.height * 0.15, weight: .semibold, design: .serif)).foregroundStyle(ink.opacity(0.8))
+                        .offset(y: size.height * 0.15)
+                    Text(channel == 0 ? "L" : "R").font(.system(size: size.height * 0.09, weight: .bold)).foregroundStyle(ink.opacity(0.6))
+                        .position(x: size.width * 0.1, y: size.height * 0.72)
+                    Text("−").font(.system(size: size.height * 0.11, weight: .bold)).foregroundStyle(ink.opacity(0.8))
+                        .position(VUScale.point(0.1, in: size, beyond: -0.16))
+                    Text("+").font(.system(size: size.height * 0.11, weight: .bold)).foregroundStyle(red)
+                        .position(VUScale.point(0.92, in: size, beyond: -0.16))
                     TimelineView(.animation(paused: !playback.isPlaying)) { context in
                         let level = playback.isPlaying ? needle.position(toward: target(at: context.date), at: context.date) : 0
-                        Needle(level: level)
-                            .stroke(Color.black.opacity(0.85), style: StrokeStyle(lineWidth: max(1, size.height * 0.018), lineCap: .round))
-                            .animation(.spring(duration: 0.5), value: playback.isPlaying)
+                        ZStack {
+                            // Its shadow on the face, a little below and to the right, soft.
+                            Needle(level: level)
+                                .stroke(Color.black.opacity(0.28), style: StrokeStyle(lineWidth: max(1, size.height * 0.02), lineCap: .round))
+                                .offset(x: size.height * 0.025, y: size.height * 0.04)
+                                .blur(radius: size.height * 0.012)
+                            Needle(level: level)
+                                .stroke(Color(white: 0.06), style: StrokeStyle(lineWidth: max(0.8, size.height * 0.014), lineCap: .round))
+                        }
+                        .animation(.spring(duration: 0.5), value: playback.isPlaying)
                     }
-                    // The pivot's cover, at the bottom.
-                    Rectangle().fill(LinearGradient(colors: [Color(white: 0.2), Color(white: 0.05)], startPoint: .top, endPoint: .bottom))
-                        .frame(height: size.height * 0.16)
-                        .frame(maxHeight: .infinity, alignment: .bottom)
+                    // The pivot's cover: a black molded hood across the bottom, its edge catching the light.
+                    Ellipse()
+                        .fill(LinearGradient(colors: [Color(white: 0.22), Color(white: 0.04)], startPoint: .top, endPoint: .bottom))
+                        .overlay(Ellipse().strokeBorder(LinearGradient(colors: [.white.opacity(0.35), .clear], startPoint: .top, endPoint: .center),
+                                                        lineWidth: max(0.6, size.height * 0.01)))
+                        .frame(width: size.width * 0.62, height: size.height * 0.34)
+                        .position(x: size.width / 2, y: size.height * 0.99)
+                        .shadow(color: .black.opacity(0.4), radius: size.height * 0.03, y: -size.height * 0.01)
                 }
                 .clipShape(RoundedRectangle(cornerRadius: size.height * 0.05))
+                // The glass: the bezel's shadow inside its top edge, the room's reflection across it.
                 .overlay(RoundedRectangle(cornerRadius: size.height * 0.05)
-                    .fill(LinearGradient(colors: [.white.opacity(0.35), .clear, .clear], startPoint: .topLeading, endPoint: .bottomTrailing)))
-                .padding(size.height * 0.06)
+                    .fill(Color.black.opacity(0.001).shadow(.inner(color: .black.opacity(0.55), radius: size.height * 0.05, y: size.height * 0.03))))
+                .overlay(RoundedRectangle(cornerRadius: size.height * 0.05)
+                    .fill(LinearGradient(stops: [.init(color: .white.opacity(0.3), location: 0), .init(color: .white.opacity(0.08), location: 0.38),
+                                                 .init(color: .clear, location: 0.4), .init(color: .clear, location: 1)],
+                                         startPoint: .topLeading, endPoint: .bottomTrailing)))
+                .padding(size.height * 0.07)
             }
             .shadow(color: .black.opacity(0.5), radius: 3, y: 2)
         }
@@ -431,6 +481,18 @@ private struct VUScale: Shape {
             }
         }
         return path
+    }
+
+    /// The printed numbers: -20 to +3 VU at their places on the scale.
+    static let numbers: [(text: String, at: Double)] = [("20", 0), ("10", 0.25), ("7", 0.38), ("5", 0.47), ("3", 0.58), ("0", 0.78),
+                                                       ("1", 0.85), ("2", 0.92)]
+
+    /// Where a level is on the scale in a face of `size`, `beyond` (of the face's height) outside the arc.
+    static func point(_ level: Double, in size: CGSize, beyond: Double) -> CGPoint {
+        let pivot = CGPoint(x: size.width / 2, y: size.height * 1.12)
+        let radius = size.height * (0.86 + beyond)
+        let angle = Self.angle(level)
+        return CGPoint(x: pivot.x + cos(angle) * radius, y: pivot.y + sin(angle) * radius)
     }
 
     /// Radians of a level across the scale (from 45° left of upright to 45° right).

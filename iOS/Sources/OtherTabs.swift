@@ -1,4 +1,5 @@
 import LibraryKit
+import Skins
 import SwiftUI
 
 /// The Shelf tab (Cover Flow) on a phone.
@@ -89,6 +90,7 @@ struct SettingsView: View {
     var isSheet = false
     /// `-GLDebugOpenEqualizer YES` (with `-GLDebugOpenSettings YES` where Settings is a sheet) opens the equalizer.
     @State private var showsEqualizer = UserDefaults.standard.bool(forKey: "GLDebugOpenEqualizer")
+    @AppStorage(NowPlayingSkin.tapeCueStorageKey) private var tapeCue = true
 
     var body: some View {
         @Bindable var player = model.player
@@ -123,6 +125,13 @@ struct SettingsView: View {
                 } footer: {
                     Text(player.crossfade > 0 ? "Songs fade into each other, except songs of one album played in order when Albums Without Gaps is on (live albums, DJ mixes)."
                          : "Songs follow each other without a gap.")
+                }
+                Section {
+                    Toggle("Tape Sound When Cueing", isOn: $tapeCue)
+                } header: {
+                    Text("Cassette Deck")
+                } footer: {
+                    Text("In Now Playing's cassette deck, holding Rewind or Fast Forward plays the tape racing past the heads, as a real deck does.")
                 }
                 if model.sync.isPaired {
                     Section {

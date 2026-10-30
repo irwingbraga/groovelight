@@ -49,7 +49,7 @@ struct NowPlayingView: View {
         Group {
             if skin != .cover {
                 // The whole of Now Playing is the turntable, the cassette deck or the CD player.
-                NowPlayingDeck(item: item, panel: $panel)
+                NowPlayingDeck(item: item, panel: $panel, close: close)
             } else {
                 content
                     .padding(.horizontal, 24)
@@ -194,10 +194,11 @@ private struct NowPlayingTopButtons: View {
     var isDeck = false
     let close: () -> Void
     @AppStorage("visualizer.style") private var style: VisualizerStyle = .barsAndWaves
+    @AppStorage(NowPlayingSkin.storageKey) private var skin: NowPlayingSkin = .cover
 
     var body: some View {
         GlassEffectContainer(spacing: 10) {
-            HStack(spacing: 10) {
+            HStack(spacing: isDeck ? 6 : 10) {
                 if showsVisualizer && !isDeck {
                     Menu {
                         Picker("Style", selection: $style) {
@@ -223,6 +224,22 @@ private struct NowPlayingTopButtons: View {
                     Label("Lyrics", systemImage: panel == .lyrics ? "quote.bubble.fill" : "quote.bubble")
                 }
                 .accessibilityAddTraits(panel == .lyrics ? .isSelected : [])
+                if isDeck {
+                    // Over a player, the buttons the cover's view has under its controls: Up Next (the PC Player's
+                    // playlist shows the queue already), AirPlay and Play On.
+                    if skin != .pcPlayer {
+                        Button {
+                            withAnimation(.smooth) { panel = panel == .upNext ? nil : .upNext }
+                        } label: {
+                            Label("Up Next", systemImage: "list.bullet")
+                        }
+                        .accessibilityAddTraits(panel == .upNext ? .isSelected : [])
+                    }
+                    DeckCap { AirPlayButton(tint: UIColor.black.withAlphaComponent(0.65)).frame(width: 30, height: 30) }
+                        .frame(width: 44, height: 44)
+                        .accessibilityLabel("AirPlay")
+                    PlaybackTargetButton()
+                }
                 PlaybackOptionsMenu(isShowingEqualizer: $isShowingEqualizer, isShowingVisualizer: $isShowingVisualizerScreen)
                 Button(action: close) { Label("Close", systemImage: "chevron.down") }
             }

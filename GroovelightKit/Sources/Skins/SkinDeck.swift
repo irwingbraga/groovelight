@@ -17,12 +17,14 @@ public struct SkinDeck<Artwork: View, Accessory: View>: View {
     var cassettePictures: CassettePictures
     var chromeInset: CGFloat
     var stageOverlay: AnyView?
+    var playlist: SkinPlaylist?
+    @AppStorage(NowPlayingSkin.pcThemeStorageKey) private var pcTheme: PCTheme = .classic
     @ViewBuilder var artwork: () -> Artwork
     @ViewBuilder var accessory: () -> Accessory
 
     public init(skin: NowPlayingSkin, playback: SkinPlayback, controls: DeckControls, cassette: CassetteDesign = .classic,
                 cassettePictures: CassettePictures = CassettePictures(), chromeInset: CGFloat = 56, stageOverlay: AnyView? = nil,
-                @ViewBuilder artwork: @escaping () -> Artwork, @ViewBuilder accessory: @escaping () -> Accessory) {
+                playlist: SkinPlaylist? = nil, @ViewBuilder artwork: @escaping () -> Artwork, @ViewBuilder accessory: @escaping () -> Accessory) {
         self.skin = skin
         self.playback = playback
         self.controls = controls
@@ -30,12 +32,26 @@ public struct SkinDeck<Artwork: View, Accessory: View>: View {
         self.cassettePictures = cassettePictures
         self.chromeInset = chromeInset
         self.stageOverlay = stageOverlay
+        self.playlist = playlist
         self.artwork = artwork
         self.accessory = accessory
     }
 
     public var body: some View {
         GeometryReader { proxy in
+            if skin == .pcPlayer {
+                PCPlayer(size: proxy.size, top: chromeInset, fold: Self.fold(in: proxy), playback: playback, controls: controls, playlist: playlist,
+                         overlay: stageOverlay, theme: pcTheme, artwork: AnyView(artwork()), accessory: accessory)
+            } else {
+                decks(in: proxy)
+            }
+        }
+        .background { surface.ignoresSafeArea() }
+        .environment(\.colorScheme, skin == .cassette ? .light : .dark)
+    }
+
+    @ViewBuilder private func decks(in proxy: GeometryProxy) -> some View {
+        do {
             let regions = DeckRegions(size: proxy.size, top: chromeInset, fold: Self.fold(in: proxy),
                                       stageAspect: skin == .cassette && stageOverlay == nil ? cassette.resolvedGeometry.aspectRatio * 0.92 : 1)
             ZStack(alignment: .topLeading) {
@@ -48,8 +64,6 @@ public struct SkinDeck<Artwork: View, Accessory: View>: View {
             }
             .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
         }
-        .background { surface.ignoresSafeArea() }
-        .environment(\.colorScheme, skin == .compactDisc || skin == .vinyl ? .dark : .light)
     }
 
     @ViewBuilder private var stage: some View {
@@ -70,7 +84,7 @@ public struct SkinDeck<Artwork: View, Accessory: View>: View {
             switch skin {
             case .cover, .vinyl: TurntableStage(playback: playback, seek: controls.seek, artwork: artwork)
             case .cassette: CassetteStage(design: cassette, pictures: cassettePictures, playback: playback, artwork: artwork)
-            case .compactDisc: DiscStage(playback: playback, artwork: artwork)
+            case .compactDisc, .pcPlayer: DiscStage(playback: playback, artwork: artwork)
             }
         }
     }
@@ -79,7 +93,7 @@ public struct SkinDeck<Artwork: View, Accessory: View>: View {
         switch skin {
         case .cover, .vinyl: TurntablePanel(size: size, playback: playback, controls: controls, accessory: accessory)
         case .cassette: CassettePanel(size: size, playback: playback, controls: controls, accessory: accessory)
-        case .compactDisc: DiscPanel(size: size, playback: playback, controls: controls, accessory: accessory)
+        case .compactDisc, .pcPlayer: DiscPanel(size: size, playback: playback, controls: controls, accessory: accessory)
         }
     }
 
@@ -96,6 +110,9 @@ public struct SkinDeck<Artwork: View, Accessory: View>: View {
                 // Walnut cheeks at the sides.
                 .overlay(alignment: .leading) { Cheek() }
                 .overlay(alignment: .trailing) { Cheek() }
+        case .pcPlayer:
+            // The desktop of the time: a green hill under a blue sky.
+            Color.clear.overlay(SkinTexture.hill.image.resizable().scaledToFill()).clipped()
         case .compactDisc:
             Textured(texture: .aluminum, brightness: -0.12, tint: Color(white: 0.32))
                 .overlay(LinearGradient(colors: [.white.opacity(0.08), .clear, .black.opacity(0.3)], startPoint: .top, endPoint: .bottom))
@@ -186,7 +203,7 @@ struct SpreadLayout: Layout {
 
 // MARK: - Turntable
 
-/// The turntable's aluminum plate: the song on Dymo tape, the keys, the time, shuffle and repeat, and the volume.
+/// The turntable's aluminum plate: the song in a receiver's dial window, the keys, the time, shuffle and repeat, and the volume.
 private struct TurntablePanel<Accessory: View>: View {
     var size: CGSize
     var playback: SkinPlayback
@@ -196,13 +213,7 @@ private struct TurntablePanel<Accessory: View>: View {
     var body: some View {
         let scale = DeckRegions.scale(size, reference: CGSize(width: 360, height: 290))
         SpreadLayout(spacing: 14 * scale, maxHeight: 290 * scale * 1.5) {
-            VStack(alignment: .leading, spacing: 6 * scale) {
-                DymoLabel(text: playback.title, tape: Color(white: 0.1), size: 15 * scale)
-                DymoLabel(text: [playback.artist, playback.album].filter { !$0.isEmpty }.joined(separator: " · "),
-                          tape: Color(red: 0.72, green: 0.1, blue: 0.1), size: 11 * scale)
-                    .rotationEffect(.degrees(0.8))
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            DialWindow(playback: playback, seek: controls.seek, scale: scale)
             HStack(alignment: .bottom, spacing: 12 * scale) {
                 captioned("PREV", scale) {
                     MetalKey(title: "Previous", symbol: "backward.end.fill", size: CGSize(width: 54 * scale, height: 44 * scale),
@@ -276,31 +287,111 @@ private func repeatPosition(_ mode: DeckControls.Repeat) -> Int {
     }
 }
 
-/// Words punched in embossing tape, stuck on the plate.
-private struct DymoLabel: View {
-    var text: String
-    var tape: Color
-    var size: CGFloat
+/// A receiver's dial window, set into the plate: smoked glass lit warm from behind by its lamps, the song in cream
+/// lettering, the artist and the album under it, and the printed scale along the bottom, its red pointer where the
+/// song is (dragged along the scale, it goes there).
+private struct DialWindow: View {
+    var playback: SkinPlayback
+    var seek: (TimeInterval) -> Void
+    var scale: CGFloat
+
+    static let lettering = Color(red: 1, green: 0.93, blue: 0.78)
+    static let glow = Color(red: 1, green: 0.6, blue: 0.18)
 
     var body: some View {
-        Text(text.isEmpty ? " " : text.uppercased())
-            .font(.system(size: size, weight: .heavy, design: .rounded))
-            .tracking(size * 0.1)
-            .lineLimit(1)
-            .truncationMode(.tail)
-            .foregroundStyle(Color.white.opacity(0.9))
-            .shadow(color: .black.opacity(0.55), radius: 0, x: 0.6, y: 0.9)
-            .shadow(color: .white.opacity(0.3), radius: 0, x: -0.4, y: -0.4)
-            .padding(.horizontal, size * 0.7)
-            .padding(.vertical, size * 0.32)
-            .background {
-                RoundedRectangle(cornerRadius: size * 0.15)
-                    .fill(tape)
-                    .overlay(LinearGradient(colors: [.white.opacity(0.22), .clear, .black.opacity(0.25)], startPoint: .top, endPoint: .bottom)
-                        .clipShape(RoundedRectangle(cornerRadius: size * 0.15)))
-                    .shadow(color: .black.opacity(0.45), radius: 1.5, y: 1)
+        let corner = 5 * scale
+        let subtitle = [playback.artist, playback.album].filter { !$0.isEmpty }.joined(separator: "  ·  ")
+        VStack(alignment: .leading, spacing: 3 * scale) {
+            Text(playback.title.isEmpty ? " " : playback.title)
+                .font(.system(size: 16 * scale, weight: .medium).width(.expanded))
+                .tracking(0.6 * scale)
+            Text(subtitle.isEmpty ? " " : subtitle)
+                .font(.system(size: 10.5 * scale, weight: .regular).width(.expanded))
+                .tracking(0.5 * scale)
+                .opacity(0.72)
+            DialScale(playback: playback, seek: seek, scale: scale)
+                .frame(height: 20 * scale)
+                .padding(.top, 4 * scale)
+        }
+        .lineLimit(1)
+        .truncationMode(.tail)
+        .foregroundStyle(Self.lettering)
+        .shadow(color: Self.glow.opacity(0.85), radius: 3 * scale)
+        .padding(.horizontal, 12 * scale)
+        .padding(.top, 9 * scale)
+        .padding(.bottom, 6 * scale)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            // The glass, dark, warmed by the lamps behind it (brightest low in the middle), darker at its ends.
+            ZStack {
+                Color(red: 0.07, green: 0.045, blue: 0.025)
+                EllipticalGradient(colors: [Self.glow.opacity(0.42), Self.glow.opacity(0.12), .clear], center: .init(x: 0.5, y: 0.85),
+                                   startRadiusFraction: 0, endRadiusFraction: 0.75)
+                LinearGradient(colors: [.black.opacity(0.55), .clear, .clear, .black.opacity(0.55)], startPoint: .leading, endPoint: .trailing)
             }
-            .rotationEffect(.degrees(-0.6))
+        }
+        .overlay {
+            // The glass's reflection, across its top.
+            LinearGradient(stops: [.init(color: .white.opacity(0.13), location: 0), .init(color: .white.opacity(0.04), location: 0.42),
+                                   .init(color: .clear, location: 0.46)], startPoint: .top, endPoint: .bottom)
+                .allowsHitTesting(false)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: corner, style: .continuous)
+            .strokeBorder(LinearGradient(colors: [.black.opacity(0.7), .white.opacity(0.6)], startPoint: .top, endPoint: .bottom), lineWidth: 1.5 * scale))
+        .padding(2 * scale)
+        .background(RoundedRectangle(cornerRadius: corner + 2 * scale, style: .continuous).fill(Color.black.opacity(0.12)))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel([playback.title, subtitle].filter { !$0.isEmpty }.joined(separator: ", "))
+        .accessibilityAdjustableAction { direction in
+            seek(min(max(playback.time(.now) + (direction == .increment ? 10 : -10), 0), playback.duration))
+        }
+    }
+}
+/// The dial's printed scale: fine ticks, longer every fifth, and the red pointer along it where the song is.
+private struct DialScale: View {
+    var playback: SkinPlayback
+    var seek: (TimeInterval) -> Void
+    var scale: CGFloat
+    @State private var dragging: Double?
+
+    var body: some View {
+        GeometryReader { proxy in
+            let width = proxy.size.width, height = proxy.size.height
+            ZStack(alignment: .topLeading) {
+                Canvas { context, size in
+                    let ticks = 50
+                    for tick in 0...ticks {
+                        let x = size.width * Double(tick) / Double(ticks)
+                        let long = tick.isMultiple(of: 5)
+                        var line = Path()
+                        line.move(to: CGPoint(x: x, y: size.height * 0.35))
+                        line.addLine(to: CGPoint(x: x, y: size.height * (long ? 0.95 : 0.7)))
+                        context.stroke(line, with: .color(DialWindow.lettering.opacity(long ? 0.75 : 0.45)), lineWidth: long ? 1 : 0.6)
+                    }
+                    var base = Path()
+                    base.move(to: CGPoint(x: 0, y: size.height * 0.35))
+                    base.addLine(to: CGPoint(x: size.width, y: size.height * 0.35))
+                    context.stroke(base, with: .color(DialWindow.lettering.opacity(0.5)), lineWidth: 0.6)
+                }
+                TimelineView(.periodic(from: .now, by: 0.25)) { context in
+                    let progress = dragging ?? playback.progress(at: context.date)
+                    Capsule()
+                        .fill(Color(red: 1, green: 0.22, blue: 0.12))
+                        .frame(width: max(2, 2.2 * scale), height: height * 1.2)
+                        .shadow(color: Color(red: 1, green: 0.2, blue: 0.1), radius: 3 * scale)
+                        .offset(x: width * progress - max(2, 2.2 * scale) / 2, y: -height * 0.15)
+                        .animation(dragging == nil ? .linear(duration: 0.25) : nil, value: progress)
+                }
+            }
+            .contentShape(.rect)
+            .gesture(DragGesture(minimumDistance: 0)
+                .onChanged { drag in dragging = min(max(drag.location.x / width, 0), 1) }
+                .onEnded { _ in
+                    if let dragging, playback.duration > 0 { seek(min(dragging, 0.995) * playback.duration) }
+                    dragging = nil
+                })
+        }
     }
 }
 
@@ -391,8 +482,12 @@ private struct CassettePanel<Accessory: View>: View {
         .frame(width: size.width, height: size.height)
     }
 
+    /// A step of Rewind or Fast Forward held, with the tape's sound as a deck makes it.
     private func scan(_ direction: Double) -> () -> Void {
-        { controls.seek(min(max(playback.time(.now) + direction * DeckControls.scanStep, 0), max(playback.duration - 1, 0))) }
+        {
+            TapeCue.shared.cue()
+            controls.seek(min(max(playback.time(.now) + direction * DeckControls.scanStep, 0), max(playback.duration - 1, 0)))
+        }
     }
 }
 
