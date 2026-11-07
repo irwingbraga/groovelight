@@ -4,7 +4,7 @@
   "display_name": "Groovelight",
   "version": "0.0.0",
   "description": "Search, play, import and fix the music in your Groovelight library.",
-  "long_description": "Connects Claude to [Groovelight](https://github.com/irwingbraga/groovelight), the music player for macOS, through the command line tool that comes with the app.\n\nClaude can answer questions about your library, play albums, artists, playlists and songs, make playlists, and take care of files:\n\n- **Import** songs, folders and archives (zip, 7z, rar, tar): identified on MusicBrainz, tagged, named and moved into your library.\n- **Fix metadata** of albums with a release found on MusicBrainz, song by song, with the cover.\n- **Organize** file names with your naming settings.\n\nChanges to files always come as a preview first, and Claude applies them only after you agree. Imports and organizing can be undone.\n\nRequires Groovelight 0.4 or later, installed on this Mac.",
+  "long_description": "Connects Claude to [Groovelight](https://github.com/irwingbraga/groovelight), the music player for macOS and Windows, through the command line tool that comes with the app.\n\nClaude can answer questions about your library, play albums, artists, playlists and songs, make playlists, and take care of files:\n\n- **Import** songs, folders and archives (zip, 7z, rar, tar): identified on MusicBrainz, tagged, named and moved into your library.\n- **Fix metadata** of albums with a release found on MusicBrainz, song by song, with the cover.\n- **Organize** file names with your naming settings.\n\nChanges to files always come as a preview first, and Claude applies them only after you agree. Imports and organizing can be undone.\n\nRequires Groovelight 0.4 or later on a Mac, or Groovelight for Windows installed on a PC.",
   "author": {
     "name": "Irwing Braga",
     "url": "https://github.com/irwingbraga"
@@ -21,14 +21,20 @@
     "entry_point": "server/groovelight-mcp",
     "mcp_config": {
       "command": "/bin/sh",
-      "args": ["${__dirname}/server/groovelight-mcp", "${user_config.app_path}"]
+      "args": ["${__dirname}/server/groovelight-mcp", "${user_config.app_path}"],
+      "platform_overrides": {
+        "win32": {
+          "command": "cmd.exe",
+          "args": ["/d", "/c", "${__dirname}\\server\\groovelight-mcp.cmd", "${user_config.app_path}"]
+        }
+      }
     }
   },
   "user_config": {
     "app_path": {
       "type": "string",
       "title": "Groovelight app",
-      "description": "Leave empty to use Groovelight in Applications. Set the path of another copy of the app (a development build, for example) to use that one.",
+      "description": "Leave empty to use the installed Groovelight. Set another copy (a development build, for example) to use that one: on a Mac the app, on Windows the folder with Groovelight.exe.",
       "required": false,
       "default": ""
     }
@@ -51,10 +57,10 @@
     {"name": "playback_control", "description": "Pause, resume, skip or stop."},
     {"name": "now_playing", "description": "The song playing now."}
   ],
-  "keywords": ["music", "library", "player", "metadata", "musicbrainz", "macos"],
+  "keywords": ["music", "library", "player", "metadata", "musicbrainz", "macos", "windows"],
   "license": "GPL-3.0",
   "compatibility": {
     "claude_desktop": ">=0.10.0",
-    "platforms": ["darwin"]
+    "platforms": ["darwin", "win32"]
   }
 }
