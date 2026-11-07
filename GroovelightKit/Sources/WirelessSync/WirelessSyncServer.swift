@@ -179,7 +179,7 @@ public final class WirelessSyncServer: @unchecked Sendable {
 
     private func start(_ server: LocalHTTPServer, name: String, port: UInt16, ready: @escaping @Sendable (UInt16?) -> Void) {
         let info = info()
-        var txt = ["id": info.id, "v": "\(WirelessProtocol.version)"]
+        var txt = ["id": info.id, "v": "\(WirelessProtocol.version)", "platform": info.platform ?? "macOS"]
         if let tlsPort = info.tlsPort { txt["tls"] = "\(tlsPort)" }
         server.start(name: name, txt: txt, port: port, ready: ready)
     }

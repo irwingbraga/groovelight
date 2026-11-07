@@ -1,5 +1,7 @@
 package dev.irwingbraga.groovelight.ui
 
+import dev.irwingbraga.groovelight.sync.Host
+
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -105,7 +107,7 @@ fun DownloadedFilter() {
             checkedContainerColor = MaterialTheme.colorScheme.primary, checkedContentColor = MaterialTheme.colorScheme.onPrimary),
         modifier = Modifier.semantics {
             contentDescription = "Downloaded only"
-            stateDescription = if (only) "Showing only music on this device" else "Showing the Mac's music too"
+            stateDescription = if (only) "Showing only music on this device" else "Showing the ${Host.word}'s music too"
         },
     ) {
         Icon(painterResource(R.drawable.ic_download), null)
@@ -117,10 +119,10 @@ fun DownloadedFilter() {
 fun CatalogNotice(state: LibraryModel.CatalogState, waiting: Int, empty: Boolean) {
     val text = when {
         state.error != null && state.reachable != false && !empty -> state.error
-        state.reachable == false && !empty -> "The Mac is not reachable: this is its library as of the last time." +
+        state.reachable == false && !empty -> "The ${Host.word} is not reachable: this is its library as of the last time." +
             if (waiting > 0) " ${requests(waiting)} will be sent when it is." else ""
-        waiting > 0 && state.loading -> "Sending ${requests(waiting).lowercase()} to the Mac…"
-        waiting > 0 -> "${requests(waiting)} waiting for the Mac."
+        waiting > 0 && state.loading -> "Sending ${requests(waiting).lowercase()} to the ${Host.word}…"
+        waiting > 0 -> "${requests(waiting)} waiting for the ${Host.word}."
         else -> null
     } ?: return
     Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(12.dp),
@@ -151,7 +153,7 @@ fun AvailabilityMark(availability: Availability, modifier: Modifier = Modifier) 
     val (icon, label) = when (availability) {
         Availability.ON_DEVICE -> R.drawable.ic_check_circle to "On this device"
         Availability.ARRIVING -> R.drawable.ic_download to "Arrives at the next sync"
-        Availability.WAITING -> R.drawable.ic_schedule to "Waiting for the Mac"
+        Availability.WAITING -> R.drawable.ic_schedule to "Waiting for the ${Host.word}"
         Availability.LEAVING -> R.drawable.ic_remove_circle to "Leaves at the next sync"
         Availability.ON_MAC -> return
     }
@@ -162,9 +164,9 @@ fun AvailabilityMark(availability: Availability, modifier: Modifier = Modifier) 
 private fun availabilityText(availability: Availability): String = when (availability) {
     Availability.ON_DEVICE -> "On this device"
     Availability.ARRIVING -> "Arrives at the next sync"
-    Availability.WAITING -> "Waiting for the Mac"
+    Availability.WAITING -> "Waiting for the ${Host.word}"
     Availability.LEAVING -> "Leaves at the next sync"
-    Availability.ON_MAC -> "On the Mac"
+    Availability.ON_MAC -> "On the ${Host.word}"
 }
 
 @Composable
@@ -399,7 +401,7 @@ fun MacAlbumPage(key: String) {
                             Button(onClick = { actions.player.playOnMac(tracks.map { it.id }) }, modifier = Modifier.weight(1f)) {
                                 Icon(painterResource(R.drawable.ic_play), null, Modifier.size(20.dp))
                                 Spacer(Modifier.width(8.dp))
-                                Text("Play on the Mac")
+                                Text("Play on the ${Host.word}")
                             }
                             FilledTonalButton(onClick = { actions.player.playOnMac(tracks.map { it.id }, shuffle = true) }, modifier = Modifier.weight(1f)) {
                                 Icon(painterResource(R.drawable.ic_shuffle), null, Modifier.size(20.dp))
@@ -474,7 +476,7 @@ private fun AlbumTransferButtons(album: CatalogAlbum, availability: Availability
     }
     // Here, but not as an album or artist chosen here: a playlist or genre on the Mac brings it.
     if (availability == Availability.ON_DEVICE && !holdings.canRemove(album) && !holdings.after.everything) {
-        Text("It is here through a playlist or genre chosen on the Mac.", style = MaterialTheme.typography.bodySmall,
+        Text("It is here through a playlist or genre chosen on the ${Host.word}.", style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 8.dp))
     }
 }
@@ -516,7 +518,7 @@ fun MacArtistPage(name: String) {
                             val add = { format: String? ->
                                 actions.library.request(TransferRequest.ADD, TransferRequest.ARTIST, name, format)
                                 actions.notify("$name will come to this device" + (format?.let { " as ${formatLabel(it)}" } ?: "") +
-                                    ", with albums added on the Mac later")
+                                    ", with albums added on the ${Host.word} later")
                             }
                             Button(onClick = { add(null) }) {
                                 Icon(painterResource(R.drawable.ic_download), null, Modifier.size(20.dp))
@@ -532,7 +534,7 @@ fun MacArtistPage(name: String) {
                             }
                         }
                     }
-                    if (waiting) Text("Waiting for the Mac", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary,
+                    if (waiting) Text("Waiting for the ${Host.word}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.padding(top = 8.dp))
                     Spacer(Modifier.height(8.dp))
                 }
@@ -549,7 +551,7 @@ private fun CatalogBar(title: String) {
         title = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
         navigationIcon = { IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_back), contentDescription = "Back") } },
         actions = {
-            Icon(painterResource(R.drawable.ic_laptop), contentDescription = "From the Mac's library", tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            Icon(painterResource(hostIcon), contentDescription = "From the ${Host.word}'s library", tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(end = 16.dp))
         },
         colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent, scrolledContainerColor = Color.Transparent),

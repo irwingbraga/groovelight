@@ -37,6 +37,18 @@ class Prefs(context: Context) {
 
     var macId: String? by stringPref("macId")
     var macName: String? by stringPref("macName")
+    /** The paired computer's platform, from its `/info` or its Bonjour record: "macOS" or "windows" (null: a Mac,
+     *  as every host was before Groovelight for Windows). Names it in the app's texts ([Host.word]). */
+    var macPlatform: String?
+        get() = prefs.getString("macPlatform", null)
+        set(value) {
+            prefs.edit().putString("macPlatform", value).apply()
+            Host.platform = value
+        }
+
+    init {
+        Host.platform = prefs.getString("macPlatform", null)
+    }
     var host: String? by stringPref("host")
     var port: Int
         get() = prefs.getInt("port", 0)
@@ -93,7 +105,8 @@ class Prefs(context: Context) {
         set(value) = prefs.edit().putBoolean("mobileData", value).apply()
 
     fun forgetMac() {
-        prefs.edit().remove("macId").remove("macName").remove("host").remove("port").remove("key").remove("tlsPort")
+        Host.platform = null
+        prefs.edit().remove("macId").remove("macName").remove("macPlatform").remove("host").remove("port").remove("key").remove("tlsPort")
             .remove("certificate").remove("awayHosts").remove("away").apply()
     }
 
@@ -105,8 +118,22 @@ class Prefs(context: Context) {
     }
 }
 
-/** A Mac running Groovelight, found on the network. */
-data class FoundMac(val id: String, val name: String, val host: String, val port: Int)
+/** A computer running Groovelight (a Mac or a Windows PC), found on the network. */
+data class FoundMac(val id: String, val name: String, val host: String, val port: Int, val platform: String? = null) {
+    val isWindows: Boolean get() = platform == "windows"
+}
+
+/**
+ * The paired computer, as the app's texts name it: "Mac" for a Mac, "PC" for Groovelight for Windows ("computer"
+ * before pairing). Set from [Prefs.macPlatform].
+ */
+object Host {
+    @Volatile var platform: String? = null
+
+    val isWindows: Boolean get() = platform == "windows"
+    /** "Mac" or "PC". */
+    val word: String get() = if (isWindows) "PC" else "Mac"
+}
 
 /** Finds Groovelight on the local network (Bonjour `_groovelight._tcp`). */
 object Discovery {
@@ -155,7 +182,8 @@ object Discovery {
             override fun onServiceResolved(info: NsdServiceInfo) {
                 val host = if (Build.VERSION.SDK_INT >= 34) info.hostAddresses.firstOrNull()?.hostAddress else info.host?.hostAddress
                 val id = info.attributes["id"]?.let { String(it) } ?: info.serviceName
-                if (host != null) done(FoundMac(id, info.serviceName.removePrefix("Groovelight on "), host, info.port))
+                val platform = info.attributes["platform"]?.let { String(it) }
+                if (host != null) done(FoundMac(id, info.serviceName.removePrefix("Groovelight on "), host, info.port, platform))
                 latch.countDown()
             }
         })
@@ -178,7 +206,7 @@ class MacClient(private val host: String, private val port: Int, private val dev
                 override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) = throw CertificateException("not a server")
                 override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {
                     val leaf = chain.firstOrNull() ?: throw CertificateException("no certificate")
-                    if (!isPinned(leaf)) throw CertificateException("not the Mac's certificate")
+                    if (!isPinned(leaf)) throw CertificateException("not the ${Host.word}'s certificate")
                 }
                 override fun getAcceptedIssuers(): Array<X509Certificate> = emptyArray()
             }
@@ -221,7 +249,7 @@ class MacClient(private val host: String, private val port: Int, private val dev
         val fingerprint = answer.getString("fingerprint")
         val proof = Pairing.certificateProof(fingerprint, nonce, key)
         if (fingerprint.length != 64 || !MessageDigest.isEqual(proof.toByteArray(), answer.getString("proof").toByteArray())) {
-            throw MacError("Could not verify the Mac's secure connection")
+            throw MacError("Could not verify the ${Host.word}'s secure connection")
         }
         return fingerprint
     }
@@ -262,15 +290,15 @@ class MacClient(private val host: String, private val port: Int, private val dev
             if (tag != null) connection.setRequestProperty("If-None-Match", tag)
             val status = connection.responseCode
             if (status == 304) return null
-            if (status == 404) throw MacError("Update Groovelight on the Mac to see its whole library here.", status)
-            if (status != 200) throw MacError("The Mac's library could not be read ($status)", status)
+            if (status == 404) throw MacError("Update Groovelight on the ${Host.word} to see its whole library here.", status)
+            if (status != 200) throw MacError("The ${Host.word}'s library could not be read ($status)", status)
             val body = connection.inputStream.use { it.readBytes() }
-            if (connection.getHeaderField("X-GL-SHA256")?.let { it != hex(body) } == true) throw MacError("The Mac's library arrived damaged")
+            if (connection.getHeaderField("X-GL-SHA256")?.let { it != hex(body) } == true) throw MacError("The ${Host.word}'s library arrived damaged")
             val json = if (connection.getHeaderField("X-GL-Encoding") == "deflate") {
                 java.util.zip.InflaterInputStream(body.inputStream(), java.util.zip.Inflater(true)).use { it.readBytes() }
             } else body
             val version = connection.getHeaderField("ETag") ?: hex(json)
-            if (version != hex(json)) throw MacError("The Mac's library arrived damaged")
+            if (version != hex(json)) throw MacError("The ${Host.word}'s library arrived damaged")
             return json to version
         } finally {
             connection.disconnect()

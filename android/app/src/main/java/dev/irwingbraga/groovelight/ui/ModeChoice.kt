@@ -1,5 +1,7 @@
 package dev.irwingbraga.groovelight.ui
 
+import dev.irwingbraga.groovelight.sync.Host
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -26,11 +28,11 @@ fun ModeChoice(onChoose: (Prefs.Mode) -> Unit) {
     Column(Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text("How will you listen?", style = MaterialTheme.typography.headlineMedium)
-        Text("Groovelight brings the music you choose on your Mac to this device over Wi-Fi. You can change this later.",
+        Text("Groovelight brings the music you choose on your Mac or PC to this device over Wi-Fi. You can change this later.",
             color = MaterialTheme.colorScheme.onSurfaceVariant)
         ModeCard(
             title = "With Groovelight",
-            detail = "Play your Mac library here: albums, playlists, lyrics and the sound settings you know, and what you play goes back to the Mac.",
+            detail = "Play your computer's library here: albums, playlists, lyrics and the sound settings you know, and what you play goes back to it.",
             action = "Use Groovelight Player",
             primary = true,
         ) { onChoose(Prefs.Mode.PLAYER) }

@@ -1,5 +1,7 @@
 package dev.irwingbraga.groovelight.ui
 
+import dev.irwingbraga.groovelight.sync.Host
+
 import androidx.compose.ui.semantics.stateDescription
 import kotlin.math.roundToInt
 import androidx.compose.material3.Slider
@@ -64,17 +66,17 @@ fun SettingsScreen(sync: SyncViewModel) {
     val version = runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull()
     GlassTop(bar = { SettingsBar("Settings", back = false) }) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(top = LocalTopInset.current, bottom = 16.dp + LocalBottomInset.current)) {
-            SettingsSection("Mac")
+            SettingsSection("${Host.word}")
             val mac = sync.prefs.macName
             val last = sync.prefs.lastSync.takeIf { it > 0 }?.let {
                 "Synced " + DateUtils.getRelativeTimeSpanString(it, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS)
             }
             SettingsRow(
-                icon = R.drawable.ic_laptop,
+                icon = hostIcon,
                 title = if (mac != null) "Sync with $mac" else "Sync",
                 detail = when {
-                    mac == null -> "Pair with Groovelight on your Mac"
-                    reachable == false -> listOfNotNull("The Mac is not reachable", last).joinToString(" · ")
+                    mac == null -> "Pair with Groovelight on your Mac or PC"
+                    reachable == false -> listOfNotNull("The ${Host.word} is not reachable", last).joinToString(" · ")
                     sync.prefs.isAway -> listOfNotNull("Away from home, through Tailscale", last).joinToString(" · ")
                     else -> last ?: "Not synced yet"
                 },
@@ -85,7 +87,7 @@ fun SettingsScreen(sync: SyncViewModel) {
                 var mobileData by remember { mutableStateOf(sync.prefs.syncsOverMobileData) }
                 SettingsRow(
                     icon = R.drawable.ic_download, title = "Sync over Mobile Data",
-                    detail = "Away from home, the Mac is reached through Tailscale when it is on here and on the Mac, and the Mac allows it on this device's page. Without this, syncing then waits for Wi-Fi.",
+                    detail = "Away from home, the ${Host.word} is reached through Tailscale when it is on here and on the ${Host.word}, and the ${Host.word} allows it on this device's page. Without this, syncing then waits for Wi-Fi.",
                     onClick = { mobileData = !mobileData; sync.prefs.syncsOverMobileData = mobileData },
                 ) {
                     Switch(checked = mobileData, onCheckedChange = { mobileData = it; sync.prefs.syncsOverMobileData = it })
@@ -95,8 +97,8 @@ fun SettingsScreen(sync: SyncViewModel) {
             // The library: only what is here, or the Mac's music too (the Library's Downloaded filter).
             val source by actions.library.source.collectAsStateWithLifecycle()
             SettingsRow(
-                icon = R.drawable.ic_library, title = "Show the Mac's Music",
-                detail = "The Library shows your Mac's whole library with what is here (marked with a check), to add music from it.",
+                icon = R.drawable.ic_library, title = "Show the ${Host.word}'s Music",
+                detail = "The Library shows your ${Host.word}'s whole library with what is here (marked with a check), to add music from it.",
                 onClick = { actions.library.setSource(if (source == LibraryModel.Source.MAC) LibraryModel.Source.DEVICE else LibraryModel.Source.MAC) },
             ) {
                 Switch(checked = source == LibraryModel.Source.MAC, onCheckedChange = {
@@ -136,7 +138,7 @@ fun SettingsScreen(sync: SyncViewModel) {
                 supportingContent = {
                     Column {
                         Text(when (normalization) {
-                            PlaybackSettings.Normalization.TRACK -> "Every song at the same loudness (ReplayGain, or the Mac's measurement)."
+                            PlaybackSettings.Normalization.TRACK -> "Every song at the same loudness (ReplayGain, or the ${Host.word}'s measurement)."
                             PlaybackSettings.Normalization.ALBUM -> "Albums keep their own dynamics: quiet songs stay quiet."
                             PlaybackSettings.Normalization.OFF -> "Songs play as they were mastered."
                         })
@@ -229,7 +231,7 @@ fun SettingsScreen(sync: SyncViewModel) {
             }
 
             SettingsSection("About")
-            SettingsRow(icon = R.drawable.ic_info, title = "Groovelight", detail = listOfNotNull(version?.let { "Version $it" }, "Plays the music your Mac syncs")
+            SettingsRow(icon = R.drawable.ic_info, title = "Groovelight", detail = listOfNotNull(version?.let { "Version $it" }, "Plays the music your computer syncs")
                 .joinToString(" · "))
             if (AppUpdates.SUPPORTED) {
                 val update by AppUpdates.state.collectAsStateWithLifecycle()

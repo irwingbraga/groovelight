@@ -75,14 +75,14 @@ public struct CompanionSync: Sendable {
         let files = Self.files(in: musicFolder)
         let (capacity, available) = Self.space(of: musicFolder)
 
-        progress(Progress(done: 0, total: 0, current: "Asking the Mac…"))
+        progress(Progress(done: 0, total: 0, current: "Asking the \(Host.word)…"))
         try await journal?.send(with: client)
         let request = WirelessProtocol.SyncRequest(
             manifest: manifest, files: files, capacity: capacity, available: available, model: model, name: deviceName,
             volumes: [WirelessProtocol.Volume(name: "Internal storage", removable: false, total: capacity, free: available, music: true)],
             mode: "player", decodes: Self.decodes, encoding: encoding)
         let plan = try await client.sync(request)
-        guard let token = plan.token else { throw MacError("Update Groovelight on the Mac: this device needs its secure connection.") }
+        guard let token = plan.token else { throw MacError("Update Groovelight on the \(Host.word): this device needs its secure connection.") }
 
         // Removals first, to make room.
         for path in plan.deletions {

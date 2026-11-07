@@ -1,5 +1,7 @@
 package dev.irwingbraga.groovelight.ui
 
+import dev.irwingbraga.groovelight.sync.Host
+
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -112,7 +114,7 @@ fun CassettesScreen() {
                 OutlinedButton(onClick = { importer.launch(arrayOf("application/zip", "application/json", "application/octet-stream")) }) { Text("Import") }
             }
             Text("Make your own from a copy of any cassette: its colors, its label and its text, or your own pictures of the shell and the label. " +
-                "Share one as a .cassette: it opens on the Mac, iPhone and iPad as well. Draw a shell on the template saved from the Mac's or the iPhone's cassettes.",
+                "Share one as a .cassette: it opens on the ${Host.word}, Windows, iPhone and iPad as well. Draw a shell on the template saved from the cassettes on the ${Host.word}, Windows or the iPhone.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
         }
@@ -266,7 +268,7 @@ fun CassetteEditor(id: String) {
                     }
                 }
             }
-            Text("A shell picture is drawn over the reels: make the window and the hubs' holes transparent (a PNG), drawn on the template the Mac's " +
+            Text("A shell picture is drawn over the reels: make the window and the hubs' holes transparent (a PNG), drawn on the template the ${Host.word}'s " +
                 "or the iPhone's cassettes save. The song is still written on the label. Pictures are kept at once; the rest when saved.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))

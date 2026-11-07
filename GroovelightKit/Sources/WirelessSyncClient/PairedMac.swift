@@ -16,7 +16,13 @@ public struct PairedMac: Codable, Hashable, Sendable {
     /// Its HTTPS port, as it last gave it: away from home only HTTPS is used (iOS allows plain HTTP on the local network only).
     public var tlsPort: Int?
 
-    public init(id: String, name: String, host: String, port: Int, certificate: String? = nil, awayHosts: [String]? = nil) {
+    /// "macOS" or "windows", as its `/info` last said (nil: a Mac, as every host was before Groovelight for Windows).
+    public var platform: String?
+
+    public var isWindows: Bool { platform == "windows" }
+
+    public init(id: String, name: String, host: String, port: Int, certificate: String? = nil, awayHosts: [String]? = nil, platform: String? = nil) {
+        self.platform = platform
         self.id = id
         self.name = name
         self.host = host
@@ -32,7 +38,7 @@ public struct PairedMac: Codable, Hashable, Sendable {
         var mac = self
         let (info, host) = try await mac.locate(deviceId: deviceId, key: key)
         guard let tlsPort = info.tlsPort else {
-            throw MacError("\(name) did not offer its secure connection. Update Groovelight on the Mac, or forget it here and pair again.")
+            throw MacError("\(name) did not offer its secure connection. Update Groovelight on the \(Host.word), or forget it here and pair again.")
         }
         if let pinned = certificate {
             let client = MacClient(host: host, port: mac.port, deviceId: deviceId, key: key, tls: .init(port: tlsPort, fingerprint: pinned))
@@ -57,6 +63,7 @@ public struct PairedMac: Codable, Hashable, Sendable {
         }
         func found(_ info: WirelessProtocol.Info, at host: String) -> (WirelessProtocol.Info, String) {
             if let away = info.awayAddresses { awayHosts = away }
+            platform = info.platform ?? "macOS"
             if let port = info.tlsPort { tlsPort = port }
             return (info, host)
         }
@@ -73,6 +80,18 @@ public struct PairedMac: Codable, Hashable, Sendable {
                 if let info = try? await client.info(timeout: 8), info.id == id { return found(info, at: away) }
             }
         }
-        throw MacError("\(name) is not reachable. Is Groovelight open on the Mac, and this device on the same Wi-Fi (or, away from home, on Tailscale with the Mac allowing it)?")
+        throw MacError("\(name) is not reachable. Is Groovelight open on the \(Host.word), and this device on the same Wi-Fi (or, away from home, on Tailscale with the \(Host.word) allowing it)?")
     }
+}
+
+/// The paired computer as the app's texts name it: "Mac" for a Mac, "PC" for Groovelight for Windows. Set by the app
+/// when it loads or pairs with one.
+public enum Host {
+    nonisolated(unsafe) public static var platform: String?
+
+    public static var isWindows: Bool { platform == "windows" }
+    /// "Mac" or "PC".
+    public static var word: String { isWindows ? "PC" : "Mac" }
+    /// The SF Symbol for the computer.
+    public static var symbol: String { isWindows ? "pc" : "laptopcomputer" }
 }

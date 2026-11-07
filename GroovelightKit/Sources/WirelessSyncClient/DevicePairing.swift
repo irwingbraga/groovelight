@@ -22,7 +22,7 @@ public struct DevicePairing: Sendable {
     /// Asks the Mac to pair; the answer gives the key and the code. Then `waitForApproval` until the user allows it there.
     public func start(with client: MacClient, name: String, model: String) async throws -> Result {
         let answer = try await client.pair(name: name, model: model, publicKey: publicKey)
-        guard let macPublic = Data(base64Encoded: answer.publicKey) else { throw MacError("The Mac's answer could not be read") }
+        guard let macPublic = Data(base64Encoded: answer.publicKey) else { throw MacError("The \(Host.word)'s answer could not be read") }
         let mac = try Curve25519.KeyAgreement.PublicKey(rawRepresentation: macPublic)
         let secret = try privateKey.sharedSecretFromKeyAgreement(with: mac)
         let (key, code) = WirelessProtocol.derive(secret: secret.withUnsafeBytes { Data($0) }, macPublicKey: macPublic,

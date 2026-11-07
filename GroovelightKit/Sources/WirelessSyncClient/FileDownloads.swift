@@ -154,7 +154,7 @@ public final class FileDownloads: NSObject, @unchecked Sendable {
             return .failure(MacError("Download failed (\(status))", status: status))
         }
         if let expected = response.value(forHTTPHeaderField: WirelessProtocol.Header.sha256), MacClient.sha256(file: location) != expected {
-            return .failure(MacError("The copy did not match the Mac's"))
+            return .failure(MacError("The copy did not match the \(Host.word)'s"))
         }
         let fileManager = FileManager.default
         let destination = musicFolder.appendingPathComponent(job.path)

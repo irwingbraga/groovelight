@@ -1,5 +1,7 @@
 package dev.irwingbraga.groovelight.ui
 
+import dev.irwingbraga.groovelight.sync.Host
+
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.LinearEasing
@@ -1125,7 +1127,7 @@ private fun volumeLine(track: Track, mode: PlaybackSettings.Normalization, bitPe
     val source = when {
         album -> "album ReplayGain"
         track.trackGain != null -> "ReplayGain"
-        else -> "measured on the Mac"
+        else -> "measured on the ${Host.word}"
     }
     return "%+.1f dB (%s)".format(gain.coerceAtMost(0.0), source)
 }

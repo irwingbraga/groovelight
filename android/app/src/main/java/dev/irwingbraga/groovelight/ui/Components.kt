@@ -1,5 +1,7 @@
 package dev.irwingbraga.groovelight.ui
 
+import dev.irwingbraga.groovelight.sync.Host
+
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.material3.FilledTonalIconButton
@@ -333,7 +335,7 @@ fun SongMenu(tracks: List<Track>, expanded: Boolean, onDismiss: () -> Unit, albu
             is MenuSubject.AlbumOf -> {
                 val album = subject.album
                 // Its page on the Mac: its songs that are not here, and the format it comes in.
-                DropdownMenuItem(text = { Text("Format and Songs on the Mac") }, leadingIcon = { Icon(painterResource(R.drawable.ic_laptop), null) },
+                DropdownMenuItem(text = { Text("Format and Songs on the ${Host.word}") }, leadingIcon = { Icon(painterResource(hostIcon), null) },
                     onClick = { onDismiss(); actions.open(Route.MacAlbumPage(album.key)) })
                 DropdownMenuItem(text = { Text("Share") }, leadingIcon = { Icon(painterResource(R.drawable.ic_share), null) }, onClick = {
                     onDismiss()
@@ -440,7 +442,7 @@ private fun DeletePlaylistDialog(subject: MenuSubject.PlaylistOf, onDone: () -> 
     AlertDialog(
         onDismissRequest = onDone,
         title = { Text("Delete “${subject.name}”?") },
-        text = { Text("The playlist is deleted here and on your Mac. Its songs stay in your library and on this device.") },
+        text = { Text("The playlist is deleted here and on your ${Host.word}. Its songs stay in your library and on this device.") },
         confirmButton = {
             TextButton(onClick = {
                 actions.library.deletePlaylist(subject.id)
@@ -467,8 +469,8 @@ private fun RemoveDialog(subject: MenuSubject, songs: Int, onDone: () -> Unit) {
         onDismissRequest = onDone,
         title = { Text("Remove “$name” from This Device?") },
         text = {
-            Text("$what will be deleted from this device at the next sync, to free its space. Your Mac's library keeps everything; " +
-                "add it again from Library, On the Mac.")
+            Text("$what will be deleted from this device at the next sync, to free its space. Your ${Host.word}'s library keeps everything; " +
+                "add it again from Library, On the ${Host.word}.")
         },
         confirmButton = {
             TextButton(onClick = {

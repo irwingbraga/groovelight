@@ -1,5 +1,7 @@
 package dev.irwingbraga.groovelight.ui
 
+import dev.irwingbraga.groovelight.sync.Host
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -140,9 +142,9 @@ fun LibraryHome() {
         if (merged) MergedLibrary(pager) else when {
             albums == null -> Loading()
             albums?.isEmpty() == true -> EmptyState(R.drawable.ic_library, "No music yet",
-                "Turn off Downloaded to see your Mac's library and add music from it, or choose what this device gets on your Mac.",
+                "Turn off Downloaded to see your ${Host.word}'s library and add music from it, or choose what this device gets on your ${Host.word}.",
                 Modifier.padding(top = LocalTopInset.current, bottom = LocalBottomInset.current)) {
-                Button(onClick = { library.setSource(LibraryModel.Source.MAC) }) { Text("Show the Mac's Music") }
+                Button(onClick = { library.setSource(LibraryModel.Source.MAC) }) { Text("Show the ${Host.word}'s Music") }
             }
             else -> HorizontalPager(pager, Modifier.fillMaxSize(), key = { it }, userScrollEnabled = chosen == null) { page ->
                 when (LibrarySection.entries[page]) {
@@ -373,7 +375,7 @@ private fun PlaylistsSection() {
         item(key = "loved") {
             ListItem(
                 headlineContent = { Text("Loved Songs") },
-                supportingContent = { Text("The songs you love, here and on the Mac") },
+                supportingContent = { Text("The songs you love, here and on the ${Host.word}") },
                 leadingContent = { LovedCover(Modifier.sharedCover("playlist:loved").size(56.dp)) },
                 colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                 modifier = Modifier.clickable { actions.open(Route.LovedSongs) },
@@ -756,7 +758,7 @@ fun PlaylistPage(id: Long?) {
             }
             if (songs.isEmpty()) item(key = "empty") {
                 Text(when {
-                    id == null -> "Tap the heart in Now Playing, or love songs on the Mac: they show here."
+                    id == null -> "Tap the heart in Now Playing, or love songs on the ${Host.word}: they show here."
                     playlist?.isSmart == false -> "Add songs with Add to Playlist, in the menu of any song or album."
                     else -> "None of this playlist's songs are on this device."
                 },

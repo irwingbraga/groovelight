@@ -2,12 +2,24 @@ import Foundation
 import Network
 import WirelessSync
 
-/// A Mac running Groovelight, found on the network.
+/// A computer running Groovelight (a Mac, or a PC with Groovelight for Windows), found on the network.
 public struct FoundMac: Identifiable, Hashable, Sendable {
     public var id: String
     public var name: String
     public var host: String
     public var port: Int
+    /// "macOS" or "windows", from its Bonjour record (nil from older Macs).
+    public var platform: String? = nil
+
+    public init(id: String, name: String, host: String, port: Int, platform: String? = nil) {
+        self.id = id
+        self.name = name
+        self.host = host
+        self.port = port
+        self.platform = platform
+    }
+
+    public var isWindows: Bool { platform == "windows" }
 }
 
 /// Finds Groovelight on the local network (Bonjour `_groovelight._tcp`), resolving each Mac to an address and port.
@@ -25,8 +37,9 @@ public enum MacBrowser {
                 for result in results {
                     guard let name = result.serviceName, !found.isResolving(name) else { continue }
                     let id = result.txt?["id"] ?? name
+                    let platform = result.txt?["platform"]
                     resolve(result.endpoint, queue: queue) { host, port in
-                        found.add(FoundMac(id: id, name: displayName(name), host: host, port: port), service: name)
+                        found.add(FoundMac(id: id, name: displayName(name), host: host, port: port, platform: platform), service: name)
                         continuation.yield(found.macs)
                     }
                 }

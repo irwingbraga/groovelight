@@ -19,7 +19,7 @@ struct PairingSheet: View {
                     chooser
                 }
             }
-            .navigationTitle("Pair with Your Mac")
+            .navigationTitle("Pair with Your Computer")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -50,7 +50,7 @@ struct PairingSheet: View {
             } header: {
                 Text("Macs")
             } footer: {
-                Text("Open Groovelight on your Mac and turn on wireless sync in Settings, Devices. This device needs to be on the same Wi-Fi.")
+                Text("Open Groovelight on your Mac or Windows PC and turn on wireless sync in Settings, Devices. This device needs to be on the same Wi-Fi.")
             }
             Section("Or type its address") {
                 TextField("192.168.1.20:52300", text: $address)

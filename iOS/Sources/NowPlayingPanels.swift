@@ -1,4 +1,5 @@
 import AVFAudio
+import WirelessSyncClient
 import LibraryKit
 import MetadataKit
 import PlayerCore
@@ -155,7 +156,7 @@ struct LyricsPanel: View {
     var body: some View {
         if item.lyrics.lines.isEmpty {
             ContentUnavailableView("No Lyrics", systemImage: "quote.bubble",
-                                   description: Text("Lyrics in the song's file, or found by the Mac, show up here."))
+                                   description: Text("Lyrics in the song's file, or found by the \(Host.word), show up here."))
         } else if item.lyrics.isSynced {
             SyncedLyricsView(lyrics: item.lyrics, fontSize: fontSize)
         } else {

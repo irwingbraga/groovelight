@@ -145,6 +145,7 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
                             prefs.key = Pairing.base64(key)
                             prefs.macId = answer.getString("macId")
                             prefs.macName = answer.getString("macName")
+                            prefs.macPlatform = mac.platform ?: "macOS"
                             prefs.host = mac.host
                             prefs.port = mac.port
                             pairing.value = null
@@ -155,15 +156,15 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
                             return@launch
                         }
                         "rejected" -> {
-                            pairing.value = PairingState(mac, error = "Not allowed on the Mac.")
+                            pairing.value = PairingState(mac, error = "Not allowed on the ${Host.word}.")
                             return@launch
                         }
                     }
                     delay(1_000)
                 }
-                pairing.value = PairingState(mac, error = "The Mac did not answer in time.")
+                pairing.value = PairingState(mac, error = "The ${Host.word} did not answer in time.")
             } catch (error: Exception) {
-                pairing.value = PairingState(mac, error = error.message ?: "Could not reach the Mac.")
+                pairing.value = PairingState(mac, error = error.message ?: "Could not reach the ${Host.word}.")
             }
         }
     }
@@ -270,7 +271,7 @@ private fun PairScreen(model: SyncViewModel) {
     var host by remember { mutableStateOf("") }
     var port by remember { mutableStateOf("52300") }
 
-    Text("Open Groovelight on your Mac and turn on Settings, Devices, “Sync with phones and players over Wi-Fi”. Macs on this Wi-Fi show up here.",
+    Text("Open Groovelight on your Mac or Windows PC and turn on Settings, Devices, “Sync with phones and players over Wi-Fi”. Computers on this Wi-Fi show up here.",
         color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.75f))
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -284,6 +285,8 @@ private fun PairScreen(model: SyncViewModel) {
             for (mac in macs) {
                 Row(Modifier.fillMaxWidth().clickable { model.pair(mac) }.padding(vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically) {
+                    androidx.compose.material3.Icon(androidx.compose.ui.res.painterResource(if (mac.isWindows) dev.irwingbraga.groovelight.R.drawable.ic_desktop else dev.irwingbraga.groovelight.R.drawable.ic_laptop), contentDescription = if (mac.isWindows) "PC" else "Mac")
+                    Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text(mac.name, fontWeight = FontWeight.SemiBold)
                         Text("${mac.host}:${mac.port}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
@@ -294,7 +297,7 @@ private fun PairScreen(model: SyncViewModel) {
         }
     }
     // When the network blocks discovery (some routers and guest networks), the Mac's address works too.
-    Text("Not listed? Enter the Mac's address (shown in Groovelight's Settings, Devices):", fontSize = 13.sp)
+    Text("Not listed? Enter the computer's address (shown in Groovelight's Settings, Devices):", fontSize = 13.sp)
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
         OutlinedTextField(host, { host = it }, Modifier.weight(1f), label = { Text("Address") }, singleLine = true)
         OutlinedTextField(port, { port = it.filter(Char::isDigit) }, Modifier.width(100.dp), label = { Text("Port") }, singleLine = true)
@@ -315,11 +318,11 @@ private fun PairScreen(model: SyncViewModel) {
                         state.code == null -> Row(verticalAlignment = Alignment.CenterVertically) {
                             CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                             Spacer(Modifier.width(12.dp))
-                            Text("Contacting the Mac…")
+                            Text("Contacting the ${Host.word}…")
                         }
                         else -> {
                             Text("${state.code.take(3)} ${state.code.drop(3)}", fontSize = 40.sp, fontWeight = FontWeight.SemiBold)
-                            Text("Check that Groovelight on the Mac shows the same code, then click Allow there.")
+                            Text("Check that Groovelight on the ${Host.word} shows the same code, then click Allow there.")
                         }
                     }
                 }
@@ -353,10 +356,10 @@ private fun PairedScreen(model: SyncViewModel, listening: (@Composable () -> Uni
 
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(prefs.macName ?: "Mac", fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+            Text(prefs.macName ?: "${Host.word}", fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
             Text(when (reachable) { true -> "Connected"; false -> "Not reachable: is Groovelight open on the same Wi-Fi?"; null -> "Checking…" },
                 color = if (reachable == true) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f), fontSize = 14.sp)
-            Text("Choose what this device gets on the Mac: it is listed under Devices in Groovelight.",
+            Text("Choose what this device gets on the ${Host.word}: it is listed under Devices in Groovelight.",
                 fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
         }
     }
@@ -415,7 +418,7 @@ private fun PairedScreen(model: SyncViewModel, listening: (@Composable () -> Uni
 
     listening?.invoke()
 
-    TextButton(onClick = { model.forget() }) { Text("Forget ${prefs.macName ?: "this Mac"}") }
+    TextButton(onClick = { model.forget() }) { Text("Forget ${prefs.macName ?: "this ${Host.word}"}") }
 
     if (previousFolder != null) {
         AlertDialog(

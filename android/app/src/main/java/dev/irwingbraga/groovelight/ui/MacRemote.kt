@@ -1,5 +1,7 @@
 package dev.irwingbraga.groovelight.ui
 
+import dev.irwingbraga.groovelight.sync.Host
+
 import android.content.Context
 import android.util.Log
 import dev.irwingbraga.groovelight.sync.MacClient
@@ -60,7 +62,7 @@ class MacRemote(private val context: Context, private val scope: CoroutineScope)
     var device: String? = null
         private set
 
-    val macName: String get() = prefs.macName ?: "Mac"
+    val macName: String get() = prefs.macName ?: "${Host.word}"
     val isPaired: Boolean get() = prefs.key != null && prefs.macId != null
 
     /** Asks the Mac whether this device may play music there (when the list of devices opens). */
@@ -103,7 +105,7 @@ class MacRemote(private val context: Context, private val scope: CoroutineScope)
                 } catch (error: Exception) {
                     failures++
                     client = null
-                    Log.w(TAG, "Following the Mac failed", error)
+                    Log.w(TAG, "Following the ${Host.word} failed", error)
                     if (failures >= 3) failed(error)
                     delay(1000L * minOf(failures, 5))
                 }

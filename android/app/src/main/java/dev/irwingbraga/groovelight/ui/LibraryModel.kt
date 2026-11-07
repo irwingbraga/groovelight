@@ -1,5 +1,7 @@
 package dev.irwingbraga.groovelight.ui
 
+import dev.irwingbraga.groovelight.sync.Host
+
 import android.app.Application
 import android.content.Context
 import android.net.Uri
@@ -303,8 +305,12 @@ class LibraryModel(application: Application) : AndroidViewModel(application) {
     }
 
     private companion object {
-        const val NO_TLS = "Groovelight on the Mac is not offering its secure connection, which its library needs here. If macOS asks " +
-            "on the Mac whether Groovelight may use its key, choose Always Allow; otherwise quit Groovelight there and open it again."
+        /** The computer serves HTTP only (no certificate): the library needs HTTPS. */
+        val NO_TLS: String
+            get() = if (Host.isWindows) "Groovelight on the PC is not offering its secure connection, which its library needs here. " +
+                "Turn off Settings, Devices, “Sync with phones and players over Wi-Fi” on the PC and turn it on again."
+            else "Groovelight on the Mac is not offering its secure connection, which its library needs here. If macOS asks " +
+                "on the Mac whether Groovelight may use its key, choose Always Allow; otherwise quit Groovelight there and open it again."
     }
 
     /** Asks for an album, artist or song on this device (or to remove it); sent now or when the Mac is reachable. */

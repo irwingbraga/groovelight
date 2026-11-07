@@ -1,4 +1,5 @@
 import LibraryKit
+import WirelessSyncClient
 import SwiftUI
 import UIKit
 
@@ -15,7 +16,7 @@ struct DownloadedToggle: View {
             }
             .toggleStyle(.button)
             .help("Downloaded Only")
-            .accessibilityHint(catalog.downloadedOnly ? "Showing only music on this device" : "Showing your Mac's music too")
+            .accessibilityHint(catalog.downloadedOnly ? "Showing only music on this device" : "Showing your \(Host.word)'s music too")
         }
     }
 }
@@ -32,11 +33,11 @@ struct CatalogNotice: View {
         let text: String? = if let error = catalog.error, !empty {
             error
         } else if catalog.reachable == false, !empty {
-            "\(model.sync.mac?.name ?? "The Mac") is not reachable: this is its library as of the last time." + (waiting > 0 ? " \(requests) will be sent when it is." : "")
+            "\(model.sync.mac?.name ?? "The \(Host.word)") is not reachable: this is its library as of the last time." + (waiting > 0 ? " \(requests) will be sent when it is." : "")
         } else if waiting > 0, catalog.isLoading {
-            "Sending \(requests) to the Mac…"
+            "Sending \(requests) to the \(Host.word)…"
         } else if waiting > 0 {
-            "\(requests) waiting for the Mac."
+            "\(requests) waiting for the \(Host.word)."
         } else {
             nil
         }
@@ -88,12 +89,12 @@ struct MacLibraryUnavailable: View {
     var body: some View {
         let catalog = model.catalog
         if catalog.isLoading {
-            ProgressView("Reading \(model.sync.mac?.name ?? "the Mac")'s library…")
+            ProgressView("Reading \(model.sync.mac?.name ?? "the \(Host.word)")'s library…")
         } else {
             ContentUnavailableView {
-                Label("Your Mac's Library", systemImage: "desktopcomputer")
+                Label("Your \(Host.word)'s Library", systemImage: "desktopcomputer")
             } description: {
-                Text(catalog.error ?? "Open Groovelight on your Mac, on the same Wi-Fi, to see everything there.")
+                Text(catalog.error ?? "Open Groovelight on your \(Host.word), on the same Wi-Fi, to see everything there.")
             } actions: {
                 Button("Try Again") { Task { await catalog.refresh() } }.buttonStyle(.glassProminent)
             }
@@ -353,7 +354,7 @@ struct MacAlbumView: View {
                         if model.playsOnMac {
                             HStack(spacing: 12) {
                                 Button { model.playOnMac(songs.map(\.id)) } label: {
-                                    Label("Play on the Mac", systemImage: "play.fill").frame(maxWidth: .infinity)
+                                    Label("Play on the \(Host.word)", systemImage: "play.fill").frame(maxWidth: .infinity)
                                 }
                                 .buttonStyle(.glassProminent)
                                 Button { model.playOnMac(songs.map(\.id), shuffle: true) } label: {
@@ -446,7 +447,7 @@ private struct AlbumTransferButtons: View {
             }
             // Here, but not as an album or artist chosen here: a playlist or genre on the Mac brings it.
             if availability == .onDevice, !catalog.canRemove(album: album), !catalog.holdsEverything {
-                Text("It is here through a playlist or genre chosen on the Mac.").font(.caption).foregroundStyle(.secondary)
+                Text("It is here through a playlist or genre chosen on the \(Host.word).").font(.caption).foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }
         }
@@ -522,7 +523,7 @@ struct MacArtistView: View {
                     .frame(maxWidth: 360)
                 }
                 if waiting {
-                    Text("Waiting for the Mac").font(.subheadline.weight(.medium)).foregroundStyle(Color.accentColor)
+                    Text("Waiting for the \(Host.word)").font(.subheadline.weight(.medium)).foregroundStyle(Color.accentColor)
                 }
                 MergedAlbumGrid(albums: albums, scrolls: false)
             }
@@ -538,9 +539,9 @@ extension CatalogAvailability {
         switch self {
         case .onDevice: "On this device"
         case .arriving: "Arrives at the next sync"
-        case .waiting: "Waiting for the Mac"
+        case .waiting: "Waiting for the \(Host.word)"
         case .leaving: "Leaves at the next sync"
-        case .onMac: "On the Mac"
+        case .onMac: "On the \(Host.word)"
         }
     }
 }

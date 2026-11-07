@@ -1,4 +1,5 @@
 import LibraryKit
+import WirelessSyncClient
 import SwiftUI
 
 /// Adds songs to a playlist here (not a smart one), or to a new one; the Mac gets the change with the next sync.
@@ -74,7 +75,7 @@ struct NewPlaylistButton: View {
             Button("Create") { model.library.createPlaylist(named: name.isEmpty ? "New Playlist" : name) }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("It goes to your Mac with the next sync.")
+            Text("It goes to your \(Host.word) with the next sync.")
         }
     }
 }
@@ -109,7 +110,7 @@ struct PlaylistActions: View {
                 dismiss()
             }
         } message: {
-            Text("It is deleted on your Mac too, with the next sync. Its songs stay.")
+            Text("It is deleted on your \(Host.word) too, with the next sync. Its songs stay.")
         }
     }
 }

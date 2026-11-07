@@ -1,4 +1,5 @@
 import LibraryKit
+import WirelessSyncClient
 import SwiftUI
 
 // Artists where there is room, as on the Mac: the artist list as a column of its own between the sidebar and the page,
@@ -173,7 +174,7 @@ struct ArtistPage: View {
             .disabled(tracks.isEmpty && macIds.isEmpty && !model.catalog.showsMac)
             .padding(.top, 4)
             if model.catalog.isWaiting(artist: name) {
-                Text("Waiting for the Mac").font(.subheadline.weight(.medium)).foregroundStyle(Color.accentColor)
+                Text("Waiting for the \(Host.word)").font(.subheadline.weight(.medium)).foregroundStyle(Color.accentColor)
             }
         }
         .padding(.bottom, 24)
@@ -297,7 +298,7 @@ private struct LocalArtistAlbumSection: View {
                 AddToPlaylistMenu(trackIds: tracks.compactMap(\.id), title: "Add Album to Playlist")
                 if model.sync.isPaired {
                     NavigationLink(value: LibraryRoute.macAlbum(album.albumKey)) {
-                        Label("Format and Songs on the Mac", systemImage: "desktopcomputer")
+                        Label("Format and Songs on the \(Host.word)", systemImage: "desktopcomputer")
                     }
                     Divider()
                     Button("Remove from This Device", systemImage: "minus.circle", role: .destructive) { isRemoving = true }
@@ -321,7 +322,7 @@ private struct LocalArtistAlbumSection: View {
         .confirmationDialog("Remove “\(album.title)” from This Device?", isPresented: $isRemoving, titleVisibility: .visible) {
             Button("Remove", role: .destructive) { model.catalog.request(.remove, .album, key: album.albumKey) }
         } message: {
-            Text("Its songs are deleted from this device at the next sync. Your Mac's library keeps everything.")
+            Text("Its songs are deleted from this device at the next sync. Your \(Host.word)'s library keeps everything.")
         }
     }
 }
@@ -363,7 +364,7 @@ private struct MacArtistAlbumSection: View {
             }
             Menu {
                 NavigationLink(value: LibraryRoute.macAlbum(album.key)) {
-                    Label("Format and Songs on the Mac", systemImage: "desktopcomputer")
+                    Label("Format and Songs on the \(Host.word)", systemImage: "desktopcomputer")
                 }
                 if catalog.canRemove(album: album) {
                     Divider()

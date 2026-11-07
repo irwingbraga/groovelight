@@ -1,4 +1,5 @@
 import Foundation
+import WirelessSyncClient
 import LibraryKit
 import MetadataKit
 import Observation
@@ -46,7 +47,7 @@ final class AppModel {
     var targetName: String {
         switch target {
         case .thisDevice: "This Device"
-        case .mac: remote.macName ?? "Mac"
+        case .mac: remote.macName ?? "\(Host.word)"
         case .device(let device): device.name
         }
     }

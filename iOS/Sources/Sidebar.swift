@@ -1,4 +1,5 @@
 import LibraryKit
+import WirelessSyncClient
 import SwiftUI
 
 /// The places of the app, as the Mac's sidebar lists them (same names, same symbols, same order): Search; Library
@@ -213,7 +214,7 @@ struct SidebarFooter: View {
                         .lineLimit(1)
                     }
                 } else {
-                    Button("Pair with Your Mac") { window.isPairing = true }
+                    Button("Pair with Your Computer") { window.isPairing = true }
                         .font(.footnote.weight(.semibold))
                 }
             }

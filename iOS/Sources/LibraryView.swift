@@ -1,4 +1,5 @@
 import LibraryKit
+import WirelessSyncClient
 import SwiftUI
 
 /// No music yet: pair with the Mac, or sync to bring it.
@@ -8,20 +9,20 @@ struct EmptyLibrary: View {
 
     var body: some View {
         ContentUnavailableView {
-            Label("Your music is on your Mac", systemImage: "laptopcomputer.and.iphone")
+            Label("Your music is on your computer", systemImage: "laptopcomputer.and.iphone")
         } description: {
             if model.sync.isPaired {
-                Text(model.sync.isSyncing ? "Syncing with \(model.sync.mac?.name ?? "your Mac")…"
-                     : "Turn off Downloaded to see \(model.sync.mac?.name ?? "your Mac")'s library and add music from it, or choose what this device gets on the Mac.")
+                Text(model.sync.isSyncing ? "Syncing with \(model.sync.mac?.name ?? "your \(Host.word)")…"
+                     : "Turn off Downloaded to see \(model.sync.mac?.name ?? "your \(Host.word)")'s library and add music from it, or choose what this device gets on the \(Host.word).")
             } else {
-                Text("Pair with Groovelight on your Mac to bring albums and playlists here, with everything Groovelight knows about them.")
+                Text("Pair with Groovelight on your Mac or PC to bring albums and playlists here, with everything Groovelight knows about them.")
             }
         } actions: {
             if !model.sync.isPaired {
-                Button("Pair with Your Mac") { window.isPairing = true }
+                Button("Pair with Your Computer") { window.isPairing = true }
                     .buttonStyle(.glassProminent)
             } else {
-                Button("Show the Mac's Music") { model.catalog.downloadedOnly = false }
+                Button("Show the \(Host.word)'s Music") { model.catalog.downloadedOnly = false }
                     .buttonStyle(.glassProminent)
                 if !model.sync.isSyncing {
                     Button("Sync Now") { model.sync.syncNow() }
@@ -360,7 +361,7 @@ struct AlbumDetail: View {
                     if model.sync.isPaired {
                         // Its page on the Mac: its songs that are not here, and the format it comes in.
                         NavigationLink(value: LibraryRoute.macAlbum(albumKey)) {
-                            Label("Format and Songs on the Mac", systemImage: "desktopcomputer")
+                            Label("Format and Songs on the \(Host.word)", systemImage: "desktopcomputer")
                         }
                         Divider()
                         Button("Remove from This Device", systemImage: "minus.circle", role: .destructive) { isRemoving = true }
@@ -376,7 +377,7 @@ struct AlbumDetail: View {
         .confirmationDialog("Remove “\(album?.title ?? "")” from This Device?", isPresented: $isRemoving, titleVisibility: .visible) {
             Button("Remove", role: .destructive) { model.catalog.request(.remove, .album, key: albumKey) }
         } message: {
-            Text("\(tracks.count == 1 ? "Its song is" : "Its \(tracks.count) songs are") deleted from this device at the next sync, to free its space. Your Mac's library keeps everything; add it again from the Library with Downloaded off.")
+            Text("\(tracks.count == 1 ? "Its song is" : "Its \(tracks.count) songs are") deleted from this device at the next sync, to free its space. Your \(Host.word)'s library keeps everything; add it again from the Library with Downloaded off.")
         }
     }
 

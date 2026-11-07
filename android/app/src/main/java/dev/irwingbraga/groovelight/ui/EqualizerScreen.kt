@@ -1,5 +1,7 @@
 package dev.irwingbraga.groovelight.ui
 
+import dev.irwingbraga.groovelight.sync.Host
+
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -334,9 +336,9 @@ private fun PresetSheet(curve: EqPreset, onDismiss: () -> Unit) {
                 }
             }
             if (mac.isNotEmpty()) {
-                item { SectionTitle("From the Mac") }
+                item { SectionTitle("From the ${Host.word}") }
                 items(mac, key = { "mac:${it.isCurrent}:${it.preset.name}" }) { preset ->
-                    PresetRow(preset.preset, curve, if (preset.isCurrent) "In use on the Mac" + if (preset.enabled) "" else " (off there)" else null, onDismiss)
+                    PresetRow(preset.preset, curve, if (preset.isCurrent) "In use on the ${Host.word}" + if (preset.enabled) "" else " (off there)" else null, onDismiss)
                 }
             }
             if (saved.isNotEmpty()) {

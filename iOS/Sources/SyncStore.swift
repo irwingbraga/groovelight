@@ -19,7 +19,9 @@ final class SyncStore {
         case failed(String)
     }
 
-    private(set) var mac: PairedMac?
+    private(set) var mac: PairedMac? {
+        didSet { Host.platform = mac?.platform }
+    }
     private(set) var phase = Phase.idle
     private(set) var lastResult: String?
     private(set) var lastSync: Date?
@@ -71,7 +73,9 @@ final class SyncStore {
             deviceId = UUID().uuidString
             defaults.set(deviceId, forKey: "sync.deviceId")
         }
-        mac = defaults.data(forKey: "sync.mac").flatMap { try? JSONDecoder().decode(PairedMac.self, from: $0) }
+        let saved = defaults.data(forKey: "sync.mac").flatMap { try? JSONDecoder().decode(PairedMac.self, from: $0) }
+        mac = saved
+        Host.platform = saved?.platform
         lastResult = defaults.string(forKey: "sync.lastResult")
         lastSync = defaults.object(forKey: "sync.lastSync") as? Date
         syncsOverMobileData = defaults.bool(forKey: "sync.mobileData")
@@ -102,7 +106,7 @@ final class SyncStore {
         if mac == nil, let address = defaults.string(forKey: "GLDebugMacAddress"), let colon = address.lastIndex(of: ":"),
            let port = Int(address[address.index(after: colon)...]) {
             let flow = PairingFlow(sync: self)
-            await flow.pair(host: String(address[..<colon]), port: port, name: "Mac")
+            await flow.pair(host: String(address[..<colon]), port: port, name: "\(Host.word)")
         }
         // `-GLDebugAway YES`: as away from home, the Mac's address at home unreachable and the Mac not found on the
         // network, so only its Tailscale address answers.
@@ -311,7 +315,7 @@ final class SyncStore {
 
     /// A connection to the Mac (pinned HTTPS), for things other than syncing (playing on the Mac).
     func client() async throws -> MacClient {
-        guard let mac, let key = PairingKeychain.key(macId: mac.id) else { throw MacError("Not paired with a Mac") }
+        guard let mac, let key = PairingKeychain.key(macId: mac.id) else { throw MacError("Not paired with a \(Host.word)") }
         let (client, connected) = try await mac.connect(deviceId: deviceId, key: key)
         remember(connected)
         isAway = client.isAway
@@ -379,7 +383,7 @@ final class PairingFlow {
                 step = .failed("\(info.name) did not allow this \(UIDevice.current.model).")
                 return
             }
-            sync.paired(PairedMac(id: result.macId, name: result.macName, host: host, port: port), key: result.key)
+            sync.paired(PairedMac(id: result.macId, name: result.macName, host: host, port: port, platform: info.platform ?? "macOS"), key: result.key)
             step = .done(result.macName)
             sync.syncNow()
         } catch is CancellationError {

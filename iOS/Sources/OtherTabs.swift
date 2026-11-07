@@ -1,4 +1,5 @@
 import LibraryKit
+import WirelessSyncClient
 import Skins
 import SwiftUI
 
@@ -108,7 +109,7 @@ struct SettingsView: View {
                 } header: {
                     Text("Sound")
                 } footer: {
-                    Text("Sound Check plays songs at the same loudness, from their ReplayGain tags or the Mac's measurement. Albums keep their own dynamics.")
+                    Text("Sound Check plays songs at the same loudness, from their ReplayGain tags or the \(Host.word)'s measurement. Albums keep their own dynamics.")
                 }
                 Section {
                     Picker("Crossfade", selection: $player.crossfade) {
@@ -139,7 +140,7 @@ struct SettingsView: View {
                     } header: {
                         Text("Play On")
                     } footer: {
-                        Text("While Groovelight is open here, your other phones and iPads paired with \(model.sync.mac?.name ?? "your Mac") can choose this device under Play On and play its songs here. The Mac needs Groovelight open, and lets each device do this on its page under Devices.")
+                        Text("While Groovelight is open here, your other phones and iPads paired with \(model.sync.mac?.name ?? "your \(Host.word)") can choose this device under Play On and play its songs here. The \(Host.word) needs Groovelight open, and lets each device do this on its page under Devices.")
                     }
                 }
                 Section("About") {
@@ -203,7 +204,7 @@ struct SyncSection: View {
                 }
                 Toggle(isOn: Binding(get: { sync.syncsAutomatically }, set: { sync.syncsAutomatically = $0 })) {
                     Text("Sync Automatically on Wi-Fi")
-                    Text("Checks the Mac now and then, as iOS allows, and syncs when there is something new.")
+                    Text("Checks the \(Host.word) now and then, as iOS allows, and syncs when there is something new.")
                 }
                 if sync.syncsAutomatically {
                     Toggle("Only While Charging", isOn: Binding(get: { sync.syncsOnlyWhileCharging }, set: { sync.syncsOnlyWhileCharging = $0 }))
@@ -211,19 +212,19 @@ struct SyncSection: View {
                 if mac.awayHosts?.isEmpty == false {
                     Toggle("Sync over Mobile Data", isOn: Binding(get: { sync.syncsOverMobileData }, set: { sync.syncsOverMobileData = $0 }))
                 }
-                Button("Forget This Mac", role: .destructive) { confirmingForget = true }
+                Button("Forget This \(Host.word)", role: .destructive) { confirmingForget = true }
                     .confirmationDialog("Forget \(mac.name)?", isPresented: $confirmingForget) {
                         Button("Forget", role: .destructive) { sync.forget() }
                     } message: {
                         Text("Your music stays on this device. Pair again to sync.")
                     }
             } else {
-                Button("Pair with Your Mac") { window.isPairing = true }
+                Button("Pair with Your Computer") { window.isPairing = true }
             }
         } header: {
-            Text("Mac")
+            Text("\(Host.word)")
         } footer: {
-            Text("What this device gets is chosen on the Mac, on its page under Devices. Away from home, this device reaches the Mac through Tailscale when it is on here and on the Mac, and the Mac allows it on that page.")
+            Text("What this device gets is chosen on the \(Host.word), on its page under Devices. Away from home, this device reaches the \(Host.word) through Tailscale when it is on here and on the \(Host.word), and the \(Host.word) allows it on that page.")
         }
     }
 }

@@ -123,14 +123,20 @@ public enum WirelessProtocol {
         public var tlsPort: Int?
         /// The Mac's Tailscale addresses, where paired devices reach it away from home (when it allows them).
         public var awayAddresses: [String]?
+        /// "macOS" or "windows" (Groovelight for Windows serves the same protocol); nil from older Macs, which are Macs.
+        public var platform: String?
 
-        public init(id: String, name: String, version: Int = WirelessProtocol.version, tlsPort: Int? = nil, awayAddresses: [String]? = nil) {
+        public init(id: String, name: String, version: Int = WirelessProtocol.version, tlsPort: Int? = nil, awayAddresses: [String]? = nil,
+                    platform: String? = "macOS") {
             self.id = id
             self.name = name
             self.version = version
             self.tlsPort = tlsPort
             self.awayAddresses = awayAddresses
+            self.platform = platform
         }
+
+        public var isWindows: Bool { platform == "windows" }
     }
 
     /// POST /pair: a device asks to pair.

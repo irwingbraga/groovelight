@@ -1,5 +1,7 @@
 package dev.irwingbraga.groovelight.ui
 
+import dev.irwingbraga.groovelight.sync.Host
+
 import androidx.compose.foundation.layout.Box
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Card
@@ -68,7 +70,7 @@ fun PlayOnButton(player: PlayerModel) {
             )
             DropdownMenuItem(
                 text = { Text(remote.macName) },
-                leadingIcon = { Icon(painterResource(R.drawable.ic_laptop), null) },
+                leadingIcon = { Icon(painterResource(hostIcon), null) },
                 trailingIcon = { Marker(target == PlayerModel.Target.MAC, moving && target != PlayerModel.Target.MAC) },
                 enabled = !moving && (availability == MacRemote.Availability.Available || target == PlayerModel.Target.MAC),
                 onClick = { choose(PlayerModel.Target.MAC) },
@@ -88,8 +90,8 @@ fun PlayOnButton(player: PlayerModel) {
             val note = when (availability) {
                 MacRemote.Availability.Unknown, MacRemote.Availability.Checking -> "Looking for ${remote.macName}…"
                 MacRemote.Availability.NotAllowed ->
-                    "Turn on “Let this device play music on this Mac and your other devices” on this device's page under Devices on the Mac."
-                is MacRemote.Availability.Unreachable -> "Open Groovelight on the Mac, on the same Wi-Fi as this device."
+                    "Turn on “Let this device play music on this ${Host.word} and your other devices” on this device's page under Devices on the ${Host.word}."
+                is MacRemote.Availability.Unreachable -> "Open Groovelight on the ${Host.word}, on the same Wi-Fi as this device."
                 MacRemote.Availability.Available -> null
             }
             note?.let {
@@ -120,7 +122,7 @@ fun PlayHereCard(player: PlayerModel) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("Let other devices play here", style = MaterialTheme.typography.bodyLarge)
-                Text("While Groovelight is open here, your other phones paired with ${player.remote.macName} can choose this device under Play On and play its songs here. The Mac lets each device do this on its page under Devices.",
+                Text("While Groovelight is open here, your other phones paired with ${player.remote.macName} can choose this device under Play On and play its songs here. The ${Host.word} lets each device do this on its page under Devices.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Switch(enabled, player.relay::setEnabled, Modifier.padding(start = 12.dp))

@@ -88,7 +88,7 @@ public final class MacClient: Sendable {
         let answer: WirelessProtocol.Certificate = try await json("GET", "/certificate?nonce=\(nonce)", signedPath: "/certificate")
         let proof = WirelessProtocol.certificateProof(fingerprint: answer.fingerprint, nonce: nonce, key: key)
         guard answer.fingerprint.count == 64, Self.equal(proof, answer.proof) else {
-            throw MacError("Could not verify the Mac's secure connection")
+            throw MacError("Could not verify the \(Host.word)'s secure connection")
         }
         return answer.fingerprint
     }
@@ -143,7 +143,7 @@ public final class MacClient: Sendable {
         let (data, response) = try await session.data(for: request)
         let http = response as? HTTPURLResponse
         if http?.statusCode == 304 { return nil }
-        guard http?.statusCode == 200 else { throw MacError("The Mac's library could not be read (\(http?.statusCode ?? 0))", status: http?.statusCode ?? 0) }
+        guard http?.statusCode == 200 else { throw MacError("The \(Host.word)'s library could not be read (\(http?.statusCode ?? 0))", status: http?.statusCode ?? 0) }
         if let expected = http?.value(forHTTPHeaderField: WirelessProtocol.Header.sha256), Self.sha256(data) != expected {
             throw MacError("Arrived damaged")
         }
@@ -266,7 +266,7 @@ public final class MacClient: Sendable {
             (data, response) = try await session.data(for: request)
         } catch let error as URLError where error.code == .cancelled || error.code == .serverCertificateUntrusted
                     || error.code == .secureConnectionFailed {
-            throw MacError("Could not verify the Mac's secure connection")
+            throw MacError("Could not verify the \(Host.word)'s secure connection")
         }
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard status < 400 else {

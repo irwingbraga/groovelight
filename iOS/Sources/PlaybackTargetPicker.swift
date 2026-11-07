@@ -1,4 +1,5 @@
 import SwiftUI
+import WirelessSyncClient
 import UIKit
 import WirelessSync
 
@@ -44,7 +45,7 @@ struct PlaybackTargetList: View {
             row(UIDevice.current.model == "iPad" ? "This iPad" : "This iPhone",
                 systemImage: UIDevice.current.model == "iPad" ? "ipad" : "iphone", target: .thisDevice, enabled: true)
             Divider().padding(.leading, 52)
-            row(remote.macName ?? "Mac", systemImage: "desktopcomputer", target: .mac, enabled: remote.availability == .available)
+            row(remote.macName ?? Host.word, systemImage: Host.isWindows ? "pc" : "desktopcomputer", target: .mac, enabled: remote.availability == .available)
             ForEach(otherDevices, id: \.id) { device in
                 Divider().padding(.leading, 52)
                 row(device.name, systemImage: Self.symbol(for: device.name), target: .device(device), enabled: true)
@@ -54,12 +55,12 @@ struct PlaybackTargetList: View {
                 case .checking, .unknown:
                     HStack(spacing: 8) {
                         ProgressView().controlSize(.small)
-                        Text("Looking for \(remote.macName ?? "the Mac")…")
+                        Text("Looking for \(remote.macName ?? "the \(Host.word)")…")
                     }
                 case .notAllowed:
-                    Text("Turn on “Let \(UIDevice.current.name) play music on this Mac and your other devices” on this device's page under Devices on the Mac.")
+                    Text("Turn on “Let \(UIDevice.current.name) play music on this \(Host.word) and your other devices” on this device's page under Devices on the \(Host.word).")
                 case .unreachable:
-                    Text("Open Groovelight on the Mac, on the same Wi-Fi as this device.")
+                    Text("Open Groovelight on the \(Host.word), on the same Wi-Fi as this device.")
                 case .available:
                     EmptyView()
                 }

@@ -35,8 +35,8 @@ class SyncEngine(private val context: Context, private val prefs: Prefs) {
      * pairing key, and from then on nothing else is accepted.
      */
     suspend fun connect(): MacClient {
-        val key = prefs.key?.let { Pairing.fromBase64(it) } ?: throw MacError("Not paired with a Mac")
-        val macId = prefs.macId ?: throw MacError("Not paired with a Mac")
+        val key = prefs.key?.let { Pairing.fromBase64(it) } ?: throw MacError("Not paired with a computer")
+        val macId = prefs.macId ?: throw MacError("Not paired with a computer")
         val (host, info) = locate(key, macId)
         prefs.isAway = isTailscale(host)
         val tlsPort = info.optInt("tlsPort", 0)
@@ -44,7 +44,7 @@ class SyncEngine(private val context: Context, private val prefs: Prefs) {
         if (tlsPort == 0) {
             // Pinned before: someone may be pretending the Mac has no HTTPS, so its traffic can be read.
             if (prefs.certificate != null) {
-                throw MacError("${prefs.macName ?: "The Mac"} did not offer its secure connection. Update Groovelight on the Mac, or forget it here and pair again.")
+                throw MacError("${prefs.macName ?: "The ${Host.word}"} did not offer its secure connection. Update Groovelight on the ${Host.word}, or forget it here and pair again.")
             }
             return MacClient(host, prefs.port, prefs.deviceId, key)
         }
@@ -69,6 +69,9 @@ class SyncEngine(private val context: Context, private val prefs: Prefs) {
             runCatching { MacClient(host, port, prefs.deviceId, key).info(timeout) }.getOrNull()?.takeIf { it.optString("id") == macId }
         fun found(host: String, info: JSONObject): Pair<String, JSONObject> {
             info.optJSONArray("awayAddresses")?.let { away -> prefs.awayHosts = (0 until away.length()).map { away.getString(it) } }
+            // Older Macs send no platform: a Mac.
+            val platform = info.optString("platform").ifEmpty { "macOS" }
+            if (platform != prefs.macPlatform) prefs.macPlatform = platform
             return host to info
         }
         prefs.host?.let { host -> probe(host, prefs.port, 4_000)?.let { return found(host, it) } }
@@ -83,7 +86,7 @@ class SyncEngine(private val context: Context, private val prefs: Prefs) {
             }
         }
         for (away in prefs.awayHosts) probe(away, prefs.port, 8_000)?.let { return found(away, it) }
-        throw MacError("${prefs.macName ?: "The Mac"} is not reachable. Is Groovelight open on the Mac, and this device on the same Wi-Fi (or, away from home, on Tailscale with the Mac allowing it)?")
+        throw MacError("${prefs.macName ?: "The ${Host.word}"} is not reachable. Is Groovelight open on the ${Host.word}, and this device on the same Wi-Fi (or, away from home, on Tailscale with the ${Host.word} allowing it)?")
     }
 
     suspend fun run(progress: (Progress) -> Unit): String {
@@ -107,7 +110,7 @@ class SyncEngine(private val context: Context, private val prefs: Prefs) {
             ?: JSONObject().put("entries", JSONObject())
         val entries = manifest.optJSONObject("entries") ?: JSONObject().also { manifest.put("entries", it) }
 
-        progress(Progress(0, 0, "Asking ${prefs.macName ?: "the Mac"}…"))
+        progress(Progress(0, 0, "Asking ${prefs.macName ?: "the ${Host.word}"}…"))
         val request = JSONObject()
             .put("manifest", manifest)
             .put("files", JSONArray(files))
@@ -200,7 +203,7 @@ class SyncEngine(private val context: Context, private val prefs: Prefs) {
      */
     private suspend fun updateLibrary(client: MacClient, session: String, token: String, failedPaths: Set<String>, tree: Uri): Int {
         val (data, hash) = client.snapshot(session, token)
-        if (hash != null && sha256(data) != hash) throw MacError("The library from the Mac arrived damaged: sync again")
+        if (hash != null && sha256(data) != hash) throw MacError("The library from the ${Host.word} arrived damaged: sync again")
         val full = Snapshot.read(data.inputStream())
         // Songs that could not be written are left out (their playlist entries too).
         val tracks = full.tracks.filter { it.path !in failedPaths }
@@ -266,7 +269,7 @@ class SyncEngine(private val context: Context, private val prefs: Prefs) {
                 val expected = connection.getHeaderField("X-GL-SHA256")
                 if (expected != null && folder.sha256(path) != expected) {
                     folder.delete(path)
-                    throw IOException("the copy did not match the Mac's")
+                    throw IOException("the copy did not match the ${Host.word}'s")
                 }
                 return size
             } catch (error: IOException) {
