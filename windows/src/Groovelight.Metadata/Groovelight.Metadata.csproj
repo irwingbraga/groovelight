@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- MusicBrainz, the Cover Art Archive, iTunes Search, Wikipedia and LRCLIB (the Mac's MetadataKit). Plain .NET. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Groovelight.Metadata</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Groovelight.Core\Groovelight.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Groovelight.Tests" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Application
+    x:Class="Groovelight.App"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <!-- Groovelight's navy (lighter in dark mode, for contrast) is the accent of every window, as on the Mac. -->
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Light">
+                    <Color x:Key="SystemAccentColor">#2A4CA0</Color>
+                    <Color x:Key="SystemAccentColorLight1">#3D62BD</Color>
+                    <Color x:Key="SystemAccentColorLight2">#5C7FD4</Color>
+                    <Color x:Key="SystemAccentColorLight3">#86A2E3</Color>
+                    <Color x:Key="SystemAccentColorDark1">#223E85</Color>
+                    <Color x:Key="SystemAccentColorDark2">#1A3069</Color>
+                    <Color x:Key="SystemAccentColorDark3">#13234E</Color>
+                    <Color x:Key="BrandColor">#2A4CA0</Color>
+                    <SolidColorBrush x:Key="BrandBrush" Color="#2A4CA0" />
+                    <SolidColorBrush x:Key="RowSelectedBrush" Color="#2A4CA0" Opacity="0.18" />
+                    <SolidColorBrush x:Key="ListSelectedBrush" Color="#2A4CA0" Opacity="0.25" />
+                    <SolidColorBrush x:Key="RowHoverBrush" Color="#000000" Opacity="0.05" />
+                    <SolidColorBrush x:Key="DropTargetBrush" Color="#2A4CA0" Opacity="0.30" />
+                    <SolidColorBrush x:Key="CardBackgroundBrush" Color="#FFFFFF" Opacity="0.7" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Dark">
+                    <Color x:Key="SystemAccentColor">#6F98E8</Color>
+                    <Color x:Key="SystemAccentColorLight1">#86A9EC</Color>
+                    <Color x:Key="SystemAccentColorLight2">#A0BBF0</Color>
+                    <Color x:Key="SystemAccentColorLight3">#BCD0F5</Color>
+                    <Color x:Key="SystemAccentColorDark1">#5A82D4</Color>
+                    <Color x:Key="SystemAccentColorDark2">#466BB8</Color>
+                    <Color x:Key="SystemAccentColorDark3">#34549A</Color>
+                    <Color x:Key="BrandColor">#6F98E8</Color>
+                    <SolidColorBrush x:Key="BrandBrush" Color="#6F98E8" />
+                    <SolidColorBrush x:Key="RowSelectedBrush" Color="#6F98E8" Opacity="0.18" />
+                    <SolidColorBrush x:Key="ListSelectedBrush" Color="#6F98E8" Opacity="0.25" />
+                    <SolidColorBrush x:Key="RowHoverBrush" Color="#FFFFFF" Opacity="0.06" />
+                    <SolidColorBrush x:Key="DropTargetBrush" Color="#6F98E8" Opacity="0.30" />
+                    <SolidColorBrush x:Key="CardBackgroundBrush" Color="#FFFFFF" Opacity="0.05" />
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+
+            <SolidColorBrush x:Key="LoveBrush" Color="#FF2D55" />
+
+            <!-- Text styles used by the views built in code (theme brushes follow light and dark live). -->
+            <Style x:Key="PageTitleText" TargetType="TextBlock">
+                <Setter Property="FontSize" Value="30" />
+                <Setter Property="FontWeight" Value="Bold" />
+                <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                <Setter Property="TextWrapping" Value="NoWrap" />
+            </Style>
+            <Style x:Key="LargeTitleText" TargetType="TextBlock">
+                <Setter Property="FontSize" Value="34" />
+                <Setter Property="FontWeight" Value="Bold" />
+                <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                <Setter Property="TextWrapping" Value="Wrap" />
+                <Setter Property="MaxLines" Value="2" />
+            </Style>
+            <Style x:Key="SectionTitleText" TargetType="TextBlock">
+                <Setter Property="FontSize" Value="20" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+            </Style>
+            <Style x:Key="BodyText" TargetType="TextBlock">
+                <Setter Property="FontSize" Value="14" />
+                <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                <Setter Property="TextWrapping" Value="NoWrap" />
+            </Style>
+            <Style x:Key="StrongText" TargetType="TextBlock" BasedOn="{StaticResource BodyText}">
+                <Setter Property="FontWeight" Value="SemiBold" />
+            </Style>
+            <Style x:Key="SecondaryText" TargetType="TextBlock" BasedOn="{StaticResource BodyText}">
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+            </Style>
+            <Style x:Key="CaptionText" TargetType="TextBlock" BasedOn="{StaticResource BodyText}">
+                <Setter Property="FontSize" Value="12" />
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+            </Style>
+            <Style x:Key="SmallText" TargetType="TextBlock" BasedOn="{StaticResource BodyText}">
+                <Setter Property="FontSize" Value="11" />
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorTertiaryBrush}" />
+            </Style>
+            <Style x:Key="WrappingSecondaryText" TargetType="TextBlock">
+                <Setter Property="FontSize" Value="13" />
+                <Setter Property="TextWrapping" Value="Wrap" />
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+            </Style>
+            <Style x:Key="BrandText" TargetType="TextBlock" BasedOn="{StaticResource BodyText}">
+                <Setter Property="Foreground" Value="{ThemeResource BrandBrush}" />
+            </Style>
+            <Style x:Key="CardBorder" TargetType="Border">
+                <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="CornerRadius" Value="{StaticResource OverlayCornerRadius}" />
+                <Setter Property="Padding" Value="16,12" />
+            </Style>
+            <Style x:Key="SeparatorBorder" TargetType="Border">
+                <Setter Property="Height" Value="1" />
+                <Setter Property="Background" Value="{ThemeResource DividerStrokeColorDefaultBrush}" />
+            </Style>
+            <Style x:Key="RowHoverBorder" TargetType="Border">
+                <Setter Property="Background" Value="{ThemeResource RowHoverBrush}" />
+            </Style>
+            <Style x:Key="RowSelectedBorder" TargetType="Border">
+                <Setter Property="Background" Value="{ThemeResource RowSelectedBrush}" />
+            </Style>
+            <Style x:Key="ListSelectedBorder" TargetType="Border">
+                <Setter Property="Background" Value="{ThemeResource ListSelectedBrush}" />
+            </Style>
+            <Style x:Key="BrandIcon" TargetType="FontIcon">
+                <Setter Property="Foreground" Value="{ThemeResource BrandBrush}" />
+            </Style>
+            <Style x:Key="SecondaryIcon" TargetType="FontIcon">
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+            </Style>
+            <Style x:Key="CircleButton" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+                <Setter Property="CornerRadius" Value="18" />
+                <Setter Property="Width" Value="36" />
+                <Setter Property="Height" Value="36" />
+                <Setter Property="Padding" Value="0" />
+            </Style>
+            <Style x:Key="PillButton" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+                <Setter Property="CornerRadius" Value="18" />
+                <Setter Property="MinHeight" Value="36" />
+                <Setter Property="Padding" Value="18,6" />
+            </Style>
+            <Style x:Key="AccentPillButton" TargetType="Button" BasedOn="{StaticResource AccentButtonStyle}">
+                <Setter Property="CornerRadius" Value="18" />
+                <Setter Property="MinHeight" Value="36" />
+                <Setter Property="Padding" Value="18,6" />
+            </Style>
+            <Style x:Key="BarButton" TargetType="Button" BasedOn="{StaticResource SubtleButtonStyle}">
+                <Setter Property="CornerRadius" Value="16" />
+                <Setter Property="MinWidth" Value="32" />
+                <Setter Property="MinHeight" Value="32" />
+                <Setter Property="Padding" Value="6" />
+            </Style>
+            <Style x:Key="LinkTextButton" TargetType="HyperlinkButton">
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="MinHeight" Value="0" />
+                <Setter Property="MinWidth" Value="0" />
+            </Style>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

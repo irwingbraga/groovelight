@@ -1,0 +1,20 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Groovelight.App/Groovelight.App.csproj" />
+    <Project Path="src/Groovelight.Audio.Windows/Groovelight.Audio.Windows.csproj" />
+    <Project Path="src/Groovelight.Audio/Groovelight.Audio.csproj" />
+    <Project Path="src/Groovelight.Cli/Groovelight.Cli.csproj" />
+    <Project Path="src/Groovelight.ControlKit/Groovelight.ControlKit.csproj" />
+    <Project Path="src/Groovelight.Core/Groovelight.Core.csproj" />
+    <Project Path="src/Groovelight.Metadata/Groovelight.Metadata.csproj" />
+    <Project Path="src/Groovelight.Skins/Groovelight.Skins.csproj" />
+    <Project Path="src/Groovelight.Visualizers/Groovelight.Visualizers.csproj" />
+    <Project Path="src/Groovelight.Wireless/Groovelight.Wireless.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Groovelight.Tests/Groovelight.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/AudioCheck/AudioCheck.csproj" />
+  </Folder>
+</Solution>

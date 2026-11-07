@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Playback: decoding (FFmpeg), the processing chain, gapless and crossfade, the queue. No Windows APIs: the output
+       device is behind IAudioOutput (WASAPI in the app), so this builds and is tested on the Mac too. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Groovelight.Audio</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="FFmpeg.AutoGen" Version="9.0.1.1" />
+    <PackageReference Include="SoundTouch.Net" Version="2.3.2" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Groovelight.Core\Groovelight.Core.csproj" />
+  </ItemGroup>
+  <!-- FFmpeg's DLLs on Windows, and its command-line tool for device conversions (scripts\get-ffmpeg.ps1 fetches them), copied into "ffmpeg" beside whatever uses this. -->
+  <PropertyGroup>
+    <FFmpegRuntime Condition="'$(RuntimeIdentifier)' == 'win-arm64' Or ('$(RuntimeIdentifier)' == '' And '$([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)' == 'Arm64')">win-arm64</FFmpegRuntime>
+    <FFmpegRuntime Condition="'$(FFmpegRuntime)' == ''">win-x64</FFmpegRuntime>
+  </PropertyGroup>
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Windows')) Or $(RuntimeIdentifier.StartsWith('win'))">
+    <None Include="$(MSBuildThisFileDirectory)..\..\native\ffmpeg\$(FFmpegRuntime)\*.dll;$(MSBuildThisFileDirectory)..\..\native\ffmpeg\$(FFmpegRuntime)\ffmpeg.exe;$(MSBuildThisFileDirectory)..\..\native\ffmpeg\$(FFmpegRuntime)\LICENSE.txt"
+          Link="ffmpeg\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" Visible="false" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Groovelight.Tests" />
+  </ItemGroup>
+</Project>

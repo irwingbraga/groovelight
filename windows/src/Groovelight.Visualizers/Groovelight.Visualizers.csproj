@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The visualizers (the Mac's Metal ones as SkiaSharp shaders): Bars and Waves, Lights, Ambience, Magnetosphere.
+       Plain .NET: they render offscreen on the Mac too, for tests. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Groovelight.Visualizers</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="SkiaSharp" Version="4.154.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Groovelight.Audio\Groovelight.Audio.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Groovelight.Tests" />
+  </ItemGroup>
+</Project>

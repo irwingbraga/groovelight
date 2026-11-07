@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" Version="4.0.2" />
+    <PackageReference Include="TagLibSharp" Version="2.3.0" />
+    <PackageReference Include="SkiaSharp" Version="4.154.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Fixtures\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Groovelight.Core\Groovelight.Core.csproj" />
+    <ProjectReference Include="..\..\src\Groovelight.Audio\Groovelight.Audio.csproj" />
+    <ProjectReference Include="..\..\src\Groovelight.Metadata\Groovelight.Metadata.csproj" />
+    <ProjectReference Include="..\..\src\Groovelight.Visualizers\Groovelight.Visualizers.csproj" />
+    <ProjectReference Include="..\..\src\Groovelight.Skins\Groovelight.Skins.csproj" />
+    <ProjectReference Include="..\..\src\Groovelight.Wireless\Groovelight.Wireless.csproj" />
+    <ProjectReference Include="..\..\src\Groovelight.ControlKit\Groovelight.ControlKit.csproj" />
+  </ItemGroup>
+</Project>

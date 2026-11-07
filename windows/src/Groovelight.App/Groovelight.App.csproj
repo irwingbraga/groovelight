@@ -1,0 +1,56 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Groovelight for Windows: the WinUI 3 app. Unpackaged and self-contained, for an installer with its own updates. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.22621.0</TargetPlatformMinVersion>
+    <RootNamespace>Groovelight</RootNamespace>
+    <AssemblyName>Groovelight</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\Groovelight.ico</ApplicationIcon>
+    <Platforms>x64;ARM64</Platforms>
+    <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
+    <UseWinUI>true</UseWinUI>
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
+    <SelfContained>true</SelfContained>
+    <!-- Generates Groovelight.pri (the compiled XAML) in publish output too; without it the published app cannot start. -->
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <!-- The command line tool is referenced only to be restored with the app; it is published self-contained beside it. -->
+    <ValidateExecutableReferencesMatchSelfContained>false</ValidateExecutableReferencesMatchSelfContained>
+  </PropertyGroup>
+  <ItemGroup>
+    <Content Include="Assets\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.6.4" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2957" />
+    <PackageReference Include="SkiaSharp.Views.WinUI" Version="4.154.0" />
+    <PackageReference Include="Velopack" Version="1.2.161" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Groovelight.Core\Groovelight.Core.csproj" />
+    <ProjectReference Include="..\Groovelight.Metadata\Groovelight.Metadata.csproj" />
+    <ProjectReference Include="..\Groovelight.Visualizers\Groovelight.Visualizers.csproj" />
+    <ProjectReference Include="..\Groovelight.Skins\Groovelight.Skins.csproj" />
+    <ProjectReference Include="..\Groovelight.Wireless\Groovelight.Wireless.csproj" />
+    <ProjectReference Include="..\Groovelight.ControlKit\Groovelight.ControlKit.csproj" />
+    <!-- Restored and built with the app (for its runtime), published next to it by the targets below. -->
+    <ProjectReference Include="..\Groovelight.Cli\Groovelight.Cli.csproj" ReferenceOutputAssembly="false" Private="false" />
+    <ProjectReference Include="..\Groovelight.Audio\Groovelight.Audio.csproj" />
+    <ProjectReference Include="..\Groovelight.Audio.Windows\Groovelight.Audio.Windows.csproj" />
+  </ItemGroup>
+  <!-- The groovelight command line tool, next to the app: published (self-contained, sharing the app's runtime files) into
+       the build and publish folders, then named groovelight.com so `groovelight` in a terminal finds it before the app. -->
+  <Target Name="AddCommandLineToolToBuild" AfterTargets="Build" Condition="'$(RuntimeIdentifier)' != '' and '$(_IsPublishing)' != 'true'">
+    <MSBuild Projects="..\Groovelight.Cli\Groovelight.Cli.csproj" Targets="Publish"
+             Properties="Configuration=$(Configuration);RuntimeIdentifier=$(RuntimeIdentifier);SelfContained=true;PublishDir=$([System.IO.Path]::GetFullPath('$(OutDir)'))" />
+    <Copy SourceFiles="$(OutDir)groovelight-cli.exe" DestinationFiles="$(OutDir)groovelight.com" SkipUnchangedFiles="true" />
+  </Target>
+  <Target Name="AddCommandLineToolToPublish" AfterTargets="Publish" Condition="'$(RuntimeIdentifier)' != ''">
+    <MSBuild Projects="..\Groovelight.Cli\Groovelight.Cli.csproj" Targets="Publish"
+             Properties="Configuration=$(Configuration);RuntimeIdentifier=$(RuntimeIdentifier);SelfContained=true;PublishDir=$([System.IO.Path]::GetFullPath('$(PublishDir)'))" />
+    <Copy SourceFiles="$(PublishDir)groovelight-cli.exe" DestinationFiles="$(PublishDir)groovelight.com" />
+  </Target>
+</Project>

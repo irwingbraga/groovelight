@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Wireless sync for Groovelight for Android and iOS (the Mac's WirelessSync): the protocol (pairing, signed requests,
+       pinned HTTPS), the small HTTP and HTTPS server, the remote control and relay. Plain .NET: tested on the Mac. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Groovelight.Wireless</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Groovelight.Core\Groovelight.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Groovelight.Tests" />
+  </ItemGroup>
+</Project>

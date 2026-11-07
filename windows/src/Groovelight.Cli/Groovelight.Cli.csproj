@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The groovelight command line tool (the Mac's CLI target). It ships beside Groovelight.exe as groovelight.com:
+       Windows runs .com before .exe, so `groovelight status` reaches the tool while the app keeps its own name.
+       Its assembly has another name, since groovelight.dll and Groovelight.dll would be the same file on Windows. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>groovelight-cli</AssemblyName>
+    <RootNamespace>Groovelight.Cli</RootNamespace>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <!-- For Windows it ships with the app's own runtime, like the app. -->
+    <SelfContained Condition="'$(RuntimeIdentifier)' != ''">true</SelfContained>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Groovelight.ControlKit\Groovelight.ControlKit.csproj" />
+  </ItemGroup>
+</Project>

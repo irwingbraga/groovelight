@@ -1,0 +1,13 @@
+<Project>
+  <!-- Shared by every project of Groovelight for Windows. -->
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <Version>0.8.1</Version>
+    <Company>Irwing Braga</Company>
+    <Product>Groovelight</Product>
+    <Copyright>Copyright © 2026 Irwing Braga</Copyright>
+  </PropertyGroup>
+</Project>

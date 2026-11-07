@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The command line tool's link to the running app (the Mac's ControlKit): requests and replies, the named pipe they
+       travel through, which paths may be imported, and the MCP server for AI tools. Plain .NET: tested on the Mac. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Groovelight.ControlKit</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Groovelight.Tests" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The library, its files and its rules, with no Windows APIs: it builds and is tested on the Mac too. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Groovelight.Core</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.14" />
+    <PackageReference Include="SkiaSharp" Version="4.154.0" />
+    <PackageReference Include="TagLibSharp" Version="2.3.0" />
+    <PackageReference Include="SharpCompress" Version="0.50.5" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Groovelight.Tests" />
+  </ItemGroup>
+</Project>
