@@ -1,0 +1,43 @@
+name: Windows
+
+# Builds Groovelight for Windows and runs its tests, on every push or pull request that touches windows/.
+# Releases: the Release workflow's windows job builds the installers (Velopack) and attaches them next to the DMG and the APK.
+
+on:
+  push:
+    paths: ["windows/**", ".github/workflows/windows.yml"]
+  pull_request:
+    paths: ["windows/**", ".github/workflows/windows.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "1"
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: windows
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: windows/global.json
+      - name: FFmpeg (LGPL, shared)
+        shell: pwsh
+        run: ./scripts/get-ffmpeg.ps1
+      - name: Test
+        run: dotnet test --project tests/Groovelight.Tests
+      - name: Build the app (x64)
+        run: dotnet build src/Groovelight.App/Groovelight.App.csproj -c Release -p:Platform=x64 -r win-x64
+      - name: Build the app (ARM64)
+        run: dotnet build src/Groovelight.App/Groovelight.App.csproj -c Release -p:Platform=ARM64 -r win-arm64

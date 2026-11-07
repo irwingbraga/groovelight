@@ -1,6 +1,6 @@
 name: Release
 
-# Builds Groovelight, packages a DMG and publishes it on a GitHub Release.
+# Builds Groovelight, packages a DMG and publishes it on a GitHub Release, with the Android APK and the Windows installers.
 # - Push a tag like v0.2.0 to release that version.
 # - Or run it from the Actions tab: set a version, and turn "publish" off for a test build (the DMG is kept as an
 #   artifact of the run instead).
@@ -243,3 +243,72 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release upload "v$VERSION" "$RUNNER_TEMP/Groovelight-$VERSION.apk" --clobber
+
+  windows:
+    # Groovelight for Windows: a Velopack installer per architecture (Groovelight-win-Setup.exe for x64,
+    # Groovelight-win-arm64-Setup.exe for ARM64), with the packages and releases.<channel>.json the installed app
+    # updates from, attached to the same release.
+    needs: release
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      VERSION: ${{ needs.release.outputs.version }}
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
+    defaults:
+      run:
+        working-directory: windows
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: windows/global.json
+
+      - name: FFmpeg (LGPL, shared)
+        run: ./scripts/get-ffmpeg.ps1
+
+      - name: Test
+        run: dotnet test --project tests/Groovelight.Tests
+
+      - name: Install Velopack
+        run: dotnet tool install -g vpk --version 1.2.161
+
+      - name: Build the installers
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $repo = "https://github.com/${{ github.repository }}"
+          foreach ($arch in @('x64', 'arm64')) {
+            $runtime = "win-$arch"
+            # The x64 build keeps Velopack's default channel ("win"), the ARM64 build has its own.
+            $channel = if ($arch -eq 'x64') { 'win' } else { 'win-arm64' }
+            $platform = if ($arch -eq 'x64') { 'x64' } else { 'ARM64' }
+            dotnet publish src/Groovelight.App -c Release -r $runtime -p:Platform=$platform -p:Version=$env:VERSION -o "publish/$runtime"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            # The previous release's package, so this one also gets a delta (a small update) from it.
+            vpk download github --repoUrl $repo --channel $channel --token $env:GH_TOKEN -o "releases/$runtime"
+            vpk pack -u Groovelight -v $env:VERSION -p "publish/$runtime" -e Groovelight.exe --channel $channel `
+              --packTitle Groovelight --packAuthors "Irwing Braga" --icon src/Groovelight.App/Assets/Groovelight.ico -o "releases/$runtime"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+
+      - name: Keep the installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: Groovelight-Windows-${{ env.VERSION }}
+          path: |
+            windows/releases/win-x64/*-Setup.exe
+            windows/releases/win-arm64/*-Setup.exe
+
+      - name: Attach to the release
+        if: ${{ github.ref_type == 'tag' || inputs.publish }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          foreach ($runtime in @('win-x64', 'win-arm64')) {
+            $channel = if ($runtime -eq 'win-x64') { 'win' } else { 'win-arm64' }
+            vpk upload github --repoUrl "https://github.com/${{ github.repository }}" --token $env:GH_TOKEN `
+              --tag "v$env:VERSION" --merge --channel $channel -o "releases/$runtime"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
