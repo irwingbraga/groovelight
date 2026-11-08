@@ -114,11 +114,12 @@ private fun HomeContent(home: HomeSnapshot) {
     // "Something Else": which card of each kind is shown.
     val shown = remember(home.day) { mutableStateMapOf<String, Int>() }
     val today = LocalDate.now()
+    val locale = currentLocale()
     val stale = home.day != today.toEpochDay()
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = LocalTopInset.current + 8.dp, bottom = 24.dp + LocalBottomInset.current)) {
         item(key = "header") {
             Column(Modifier.padding(horizontal = 16.dp)) {
-                Text(today.format(DateTimeFormatter.ofPattern("EEEE, d MMMM", Locale.getDefault())).uppercase(), style = MaterialTheme.typography.labelMedium,
+                Text(today.format(DateTimeFormatter.ofPattern("EEEE, d MMMM", locale)).uppercase(locale), style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(greeting(), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, modifier = Modifier.semantics { heading() })
                 if (stale) {
@@ -169,6 +170,10 @@ private fun HomeContent(home: HomeSnapshot) {
         }
     }
 }
+
+/** The app's locale, read so that a change of language recomposes. */
+@Composable
+private fun currentLocale(): Locale = androidx.compose.ui.platform.LocalConfiguration.current.locales[0]
 
 private fun greeting(): String = when (LocalTime.now().hour) {
     in 5..11 -> "Good Morning"
@@ -318,13 +323,13 @@ private fun Panel(title: String, content: @Composable ColumnScope.() -> Unit) {
 }
 
 /** "Mon" for a day of the week, "8" for a day of the month, "Nov" for a month, the year as is. */
-private fun shortLabel(label: String, range: String): String {
+private fun shortLabel(label: String, range: String, locale: Locale): String {
     val parts = label.split("-")
     return runCatching {
         when (range) {
-            "week" -> LocalDate.parse(label).dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.getDefault())
+            "week" -> LocalDate.parse(label).dayOfWeek.getDisplayName(TextStyle.SHORT, locale)
             "month" -> parts[2].toInt().toString()
-            "year" -> java.time.Month.of(parts[1].toInt()).getDisplayName(TextStyle.SHORT, Locale.getDefault())
+            "year" -> java.time.Month.of(parts[1].toInt()).getDisplayName(TextStyle.SHORT, locale)
             else -> label
         }
     }.getOrDefault(label)
@@ -333,6 +338,7 @@ private fun shortLabel(label: String, range: String): String {
 /** Minutes per day, month or year, stacked by place. */
 @Composable
 private fun OverTime(stats: HomeSnapshot.Stats) {
+    val locale = currentLocale()
     val colors = HomeSnapshot.PLACES.associateWith { placeColor(it) }
     val most = maxOf(stats.buckets.maxOfOrNull { it.total } ?: 0.0, 1.0)
     val grid = MaterialTheme.colorScheme.outlineVariant
@@ -359,7 +365,7 @@ private fun OverTime(stats: HomeSnapshot.Stats) {
     val step = maxOf(1, (stats.buckets.size + 6) / 7)
     Row(Modifier.fillMaxWidth()) {
         stats.buckets.forEachIndexed { index, bucket ->
-            Text(if (index % step == 0) shortLabel(bucket.label, stats.range) else "", style = MaterialTheme.typography.labelSmall,
+            Text(if (index % step == 0) shortLabel(bucket.label, stats.range, locale) else "", style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, softWrap = false,
                 modifier = Modifier.weight(1f).wrapContentWidth(Alignment.Start, unbounded = true))
         }
@@ -386,7 +392,8 @@ private fun HeatMap(stats: HomeSnapshot.Stats) {
     val most = maxOf(stats.hours.flatten().maxOrNull() ?: 0L, 1L)
     val color = MaterialTheme.colorScheme.primary
     // Sunday first, as the Mac sends them.
-    val days = (0 until 7).map { java.time.DayOfWeek.of(if (it == 0) 7 else it).getDisplayName(TextStyle.NARROW, Locale.getDefault()) }
+    val locale = currentLocale()
+    val days = (0 until 7).map { java.time.DayOfWeek.of(if (it == 0) 7 else it).getDisplayName(TextStyle.NARROW, locale) }
     Column(Modifier.semantics { contentDescription = "Plays by weekday and hour" }, verticalArrangement = Arrangement.spacedBy(2.dp)) {
         stats.hours.forEachIndexed { day, row ->
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
