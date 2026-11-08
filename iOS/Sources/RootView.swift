@@ -1,7 +1,7 @@
 import SwiftUI
 
 enum AppTab: Hashable {
-    case library, shelf, settings, search
+    case home, library, shelf, settings, search
 }
 
 /// Where there is room (iPad, the iPhone Duo's inner display), the Mac's layout: its sidebar beside the page, and its
@@ -16,9 +16,13 @@ struct RootView: View {
     // `-GLDebugShelf YES` opens the Shelf, for layout checks.
     // `-GLDebugSection recentlyAdded|artists|songs|genres` opens that place (where there is a sidebar).
     @State private var selection: SidebarItem? = UserDefaults.standard.bool(forKey: "GLDebugShelf") ? .shelf
-        : SidebarItem.library.first { "\($0)" == UserDefaults.standard.string(forKey: "GLDebugSection") } ?? .albums
+        : (SidebarItem.library + [.home]).first { "\($0)" == UserDefaults.standard.string(forKey: "GLDebugSection") } ?? .home
     @Environment(\.scenePhase) private var scenePhase
-    @State private var tab = UserDefaults.standard.bool(forKey: "GLDebugShelf") ? AppTab.shelf : AppTab.library
+    // Home first; the Library with `-GLDebugTab library`, or a debug opener of a library page.
+    @State private var tab = UserDefaults.standard.bool(forKey: "GLDebugShelf") ? AppTab.shelf
+        : UserDefaults.standard.string(forKey: "GLDebugTab") == "library"
+            || ["GLDebugOpenAlbum", "GLDebugOpenGenre", "GLDebugOpenSection"].contains { UserDefaults.standard.string(forKey: $0) != nil }
+            ? AppTab.library : AppTab.home
 
     var body: some View {
         @Bindable var window = window
@@ -49,7 +53,7 @@ struct RootView: View {
         .onChange(of: model.sync.isPaired) { _, paired in
             guard model.activeWindow === window else { return }
             if paired { model.relay.start(model: model) } else { model.relay.stop() }
-            if paired { model.catalog.downloadedOnly = false }
+            if paired { model.catalog.downloadedOnly = false } else { model.home.clear() }
         }
         .onChange(of: model.nowPlaying == nil) { _, stopped in
             guard stopped else { return }
@@ -171,15 +175,21 @@ extension EnvironmentValues {
     @Entry var playerBarInset: CGFloat = 0
 }
 
-/// The iPhone's tabs: Library, Shelf, Settings and Search.
+/// The iPhone's tabs: Home, Library, Shelf, Settings and Search.
 struct TabRoot: View {
     @Environment(AppModel.self) private var model
     @Environment(WindowModel.self) private var window
     @Binding var tab: AppTab
     @State private var path: [LibraryRoute] = []
+    @State private var homePath: [LibraryRoute] = []
 
     var body: some View {
         TabView(selection: $tab) {
+            Tab(SidebarItem.home.title, systemImage: SidebarItem.home.symbol, value: AppTab.home) {
+                NavigationStack(path: $homePath) {
+                    HomeScreen().libraryDestinations()
+                }
+            }
             Tab("Library", systemImage: "music.note.house", value: AppTab.library) {
                 NavigationStack(path: $path) {
                     LibraryHome().libraryDestinations()

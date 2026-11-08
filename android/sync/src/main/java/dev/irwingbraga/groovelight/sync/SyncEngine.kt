@@ -176,6 +176,8 @@ class SyncEngine(private val context: Context, private val prefs: Prefs) {
         }
         // The Mac's whole library, for browsing it here (only when it changed).
         if (player && prefs.tlsPort != 0) runCatching { Transfers.refreshCatalog(context, client, prefs) }
+        // Home, with this sync's plays in it.
+        if (player && prefs.tlsPort != 0) runCatching { HomeStore.refresh(context, client) }
         folder.scanMedia(touched)
         progress(Progress(writes.length(), writes.length(), "Finishing…"))
 

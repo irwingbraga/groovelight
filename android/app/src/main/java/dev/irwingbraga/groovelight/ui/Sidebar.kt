@@ -36,6 +36,7 @@ import dev.irwingbraga.groovelight.R
 /** A place in the sidebar of wide windows. */
 sealed interface SidebarPlace {
     data object Search : SidebarPlace
+    data object Home : SidebarPlace
     data class Section(val section: LibrarySection) : SidebarPlace
     data object Shelf : SidebarPlace
     data object LovedSongs : SidebarPlace
@@ -48,7 +49,7 @@ val SIDEBAR_WIDTH: Dp = 248.dp
 
 /**
  * The sidebar of wide windows (an unfolded foldable, a tablet), in place of the tabs, as on the iPad and the Mac:
- * Search; Library (Albums, Artists, Songs, Playlists); Explore (Shelf); Playlists (Loved Songs, each playlist); Settings
+ * Search; Home; Library (Albums, Artists, Songs, Playlists); Explore (Shelf); Playlists (Loved Songs, each playlist); Settings
  * at the bottom.
  */
 @Composable
@@ -59,6 +60,7 @@ fun Sidebar(selected: SidebarPlace, onSelect: (SidebarPlace) -> Unit, modifier: 
         Column(Modifier.windowInsetsPadding(WindowInsets.statusBars).windowInsetsPadding(WindowInsets.navigationBars)) {
             LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)) {
                 item { Place(selected, SidebarPlace.Search, "Search", R.drawable.ic_search, onSelect) }
+                item { Place(selected, SidebarPlace.Home, "Home", R.drawable.ic_home, onSelect) }
                 item { Heading("Library") }
                 items(LibrarySection.entries) { section ->
                     Place(selected, SidebarPlace.Section(section), section.title, section.icon, onSelect)

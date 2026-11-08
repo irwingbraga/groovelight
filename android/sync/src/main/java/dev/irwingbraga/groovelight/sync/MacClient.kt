@@ -282,23 +282,26 @@ class MacClient(private val host: String, private val port: Int, private val dev
      * The Mac's whole library (v2, HTTPS): its JSON and version, or null when the Mac's is still `tag` (nothing sent).
      * Arrives deflated; checked against its SHA-256 and, once inflated, against the version.
      */
-    fun catalog(tag: String?): Pair<ByteArray, String>? = retrying { readCatalog(tag) }
+    fun catalog(tag: String?): Pair<ByteArray, String>? = retrying { readDeflated("/catalog", tag, "library") }
 
-    private fun readCatalog(tag: String?): Pair<ByteArray, String>? {
-        val connection = open("GET", "/catalog", ByteArray(0), signed = true, timeout = 120_000)
+    /** Home (picks of the day and the listening dashboard, v2, HTTPS), or null when the Mac's is still `tag`. */
+    fun home(tag: String?): Pair<ByteArray, String>? = retrying { readDeflated("/home", tag, "Home") }
+
+    private fun readDeflated(path: String, tag: String?, what: String): Pair<ByteArray, String>? {
+        val connection = open("GET", path, ByteArray(0), signed = true, timeout = 120_000)
         try {
             if (tag != null) connection.setRequestProperty("If-None-Match", tag)
             val status = connection.responseCode
             if (status == 304) return null
-            if (status == 404) throw MacError("Update Groovelight on the ${Host.word} to see its whole library here.", status)
-            if (status != 200) throw MacError("The ${Host.word}'s library could not be read ($status)", status)
+            if (status == 404) throw MacError("Update Groovelight on the ${Host.word} to see its $what here.", status)
+            if (status != 200) throw MacError("The ${Host.word}'s $what could not be read ($status)", status)
             val body = connection.inputStream.use { it.readBytes() }
-            if (connection.getHeaderField("X-GL-SHA256")?.let { it != hex(body) } == true) throw MacError("The ${Host.word}'s library arrived damaged")
+            if (connection.getHeaderField("X-GL-SHA256")?.let { it != hex(body) } == true) throw MacError("The ${Host.word}'s $what arrived damaged")
             val json = if (connection.getHeaderField("X-GL-Encoding") == "deflate") {
                 java.util.zip.InflaterInputStream(body.inputStream(), java.util.zip.Inflater(true)).use { it.readBytes() }
             } else body
             val version = connection.getHeaderField("ETag") ?: hex(json)
-            if (version != hex(json)) throw MacError("The ${Host.word}'s library arrived damaged")
+            if (version != hex(json)) throw MacError("The ${Host.word}'s $what arrived damaged")
             return json to version
         } finally {
             connection.disconnect()

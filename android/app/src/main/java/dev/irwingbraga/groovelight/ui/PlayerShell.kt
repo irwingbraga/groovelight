@@ -132,6 +132,7 @@ import kotlin.math.abs
 
 /** A screen of the player: the tabs' first screens and the pages opened from them. */
 sealed interface Route {
+    data object Home : Route
     data object Library : Route
     data object Search : Route
     data object Shelf : Route
@@ -158,6 +159,7 @@ sealed interface Route {
     companion object {
         /** As text, for saving the tabs' screens across process death. */
         fun encode(route: Route): String = when (route) {
+            Home -> "home"
             Library -> "library"
             Search -> "search"
             Shelf -> "shelf"
@@ -180,6 +182,7 @@ sealed interface Route {
             val kind = text.substringBefore(':')
             val value = text.substringAfter(':', "")
             return when (kind) {
+                "home" -> Home
                 "library" -> Library
                 "search" -> Search
                 "shelf" -> Shelf
@@ -203,6 +206,7 @@ sealed interface Route {
 }
 
 enum class Tab(val label: String, val icon: Int, val root: Route) {
+    HOME("Home", R.drawable.ic_home, Route.Home),
     LIBRARY("Library", R.drawable.ic_library, Route.Library),
     SEARCH("Search", R.drawable.ic_search, Route.Search),
     SHELF("Shelf", R.drawable.ic_shelf, Route.Shelf),
@@ -215,13 +219,13 @@ private val stackSaver = listSaver<SnapshotStateList<Route>, String>(
 )
 
 /**
- * Player mode: Library, Search, Shelf and Settings (with Sync), each keeping its own pages (Back and the predictive back gesture return,
+ * Player mode: Home, Library, Search, Shelf and Settings (with Sync), each keeping its own pages (Back and the predictive back gesture return,
  * tapping the current tab again goes to its first screen); a bar on phones, a rail on wider screens and in landscape.
  * The mini player sits above the navigation, and Now Playing opens over everything.
  */
 @Composable
 fun PlayerShell(sync: SyncViewModel, player: PlayerModel = viewModel(), library: LibraryModel = viewModel()) {
-    var tab by rememberSaveable { mutableStateOf(Tab.LIBRARY) }
+    var tab by rememberSaveable { mutableStateOf(Tab.HOME) }
     val stacks = Tab.entries.associateWith { rememberSaveable(saver = stackSaver) { mutableStateListOf(it.root) } }
     var expanded by rememberSaveable { mutableStateOf(false) }
     // Now Playing grows out of the mini player and shrinks back into it (a container transform): one seekable
@@ -319,6 +323,7 @@ fun PlayerShell(sync: SyncViewModel, player: PlayerModel = viewModel(), library:
     // The sidebar's places: the tabs, the Library's sections, and Loved Songs and the playlists (opened over Playlists).
     val libraryStack = stacks.getValue(Tab.LIBRARY)
     val place: SidebarPlace = when (tab) {
+        Tab.HOME -> SidebarPlace.Home
         Tab.SEARCH -> SidebarPlace.Search
         Tab.SHELF -> SidebarPlace.Shelf
         Tab.SETTINGS -> SidebarPlace.Settings
@@ -330,6 +335,7 @@ fun PlayerShell(sync: SyncViewModel, player: PlayerModel = viewModel(), library:
     }
     val choose: (SidebarPlace) -> Unit = { chosen ->
         when (chosen) {
+            SidebarPlace.Home -> select(Tab.HOME)
             SidebarPlace.Search -> select(Tab.SEARCH)
             SidebarPlace.Shelf -> select(Tab.SHELF)
             SidebarPlace.Settings -> select(Tab.SETTINGS)
@@ -368,8 +374,8 @@ fun PlayerShell(sync: SyncViewModel, player: PlayerModel = viewModel(), library:
                 if (sidebar) Sidebar(place, choose)
                 Box(Modifier.weight(1f).fillMaxHeight()) {
                     Box(Modifier.fillMaxSize().hazeSource(haze)) {
-                    // Back from another tab's first screen goes to the Library before leaving the app.
-                    BackHandler(enabled = tab != Tab.LIBRARY && stacks.getValue(tab).size == 1) { tab = Tab.LIBRARY }
+                    // Back from another tab's first screen goes to Home before leaving the app.
+                    BackHandler(enabled = tab != Tab.HOME && stacks.getValue(tab).size == 1) { tab = Tab.HOME }
                     // Covers move between a list and their page (shared elements); tabs fade through.
                     SharedTransitionLayout {
                     CompositionLocalProvider(LocalSharedTransition provides this) {
@@ -389,6 +395,7 @@ fun PlayerShell(sync: SyncViewModel, player: PlayerModel = viewModel(), library:
                                     CompositionLocalProvider(LocalBack provides { if (stack.size > 1) stack.removeAt(stack.lastIndex) },
                                         LocalPageScope provides LocalNavAnimatedContentScope.current) {
                                     when (it) {
+                                        Route.Home -> HomeScreen()
                                         Route.Library -> LibraryHome()
                                         Route.Search -> SearchScreen()
                                         Route.Shelf -> ShelfScreen()

@@ -1,0 +1,1457 @@
+{
+  "album" : [
+    {
+      "key" : "radiohead\u001fok computer",
+      "kind" : "album",
+      "reason" : "favorite,1",
+      "reasonText" : "One of your favorites, 1 play",
+      "subtitle" : "Radiohead",
+      "title" : "OK Computer",
+      "trackIds" : [
+        4
+      ]
+    },
+    {
+      "key" : "beatles\u001frevolver",
+      "kind" : "album",
+      "reason" : "unplayed",
+      "reasonText" : "Not played yet",
+      "subtitle" : "The Beatles",
+      "title" : "Revolver",
+      "trackIds" : [
+        3
+      ]
+    },
+    {
+      "key" : "\u0001compilation\u001fhits 1999",
+      "kind" : "album",
+      "reason" : "unplayed",
+      "reasonText" : "Not played yet",
+      "subtitle" : "Various Artists",
+      "title" : "Hits 1999",
+      "trackIds" : [
+        5,
+        6
+      ]
+    },
+    {
+      "key" : "beatles\u001fabbey road",
+      "kind" : "album",
+      "reason" : "favorite,1",
+      "reasonText" : "One of your favorites, 1 play",
+      "subtitle" : "The Beatles",
+      "title" : "Abbey Road",
+      "trackIds" : [
+        1,
+        2
+      ]
+    }
+  ],
+  "artist" : [
+    {
+      "key" : "The Beatles",
+      "kind" : "artist",
+      "reason" : "favorite,1",
+      "reasonText" : "One of your favorites, 1 play",
+      "subtitle" : "Essentials, 3 songs",
+      "title" : "The Beatles",
+      "trackIds" : [
+        1,
+        3,
+        2
+      ]
+    },
+    {
+      "key" : "Radiohead",
+      "kind" : "artist",
+      "reason" : "favorite,1",
+      "reasonText" : "One of your favorites, 1 play",
+      "subtitle" : "Essentials, 1 song",
+      "title" : "Radiohead",
+      "trackIds" : [
+        4
+      ]
+    }
+  ],
+  "day" : 20833,
+  "song" : [
+    {
+      "key" : "5",
+      "kind" : "song",
+      "reason" : "unplayed",
+      "reasonText" : "Not played yet",
+      "subtitle" : "Someone",
+      "title" : "Song A",
+      "trackIds" : [
+        5
+      ]
+    },
+    {
+      "key" : "2",
+      "kind" : "song",
+      "reason" : "unplayed",
+      "reasonText" : "Not played yet",
+      "subtitle" : "The Beatles",
+      "title" : "Something",
+      "trackIds" : [
+        2
+      ]
+    },
+    {
+      "key" : "3",
+      "kind" : "song",
+      "reason" : "unplayed",
+      "reasonText" : "Not played yet",
+      "subtitle" : "The Beatles",
+      "title" : "Yellow Submarine",
+      "trackIds" : [
+        3
+      ]
+    },
+    {
+      "key" : "6",
+      "kind" : "song",
+      "reason" : "unplayed",
+      "reasonText" : "Not played yet",
+      "subtitle" : "Other",
+      "title" : "Song B",
+      "trackIds" : [
+        6
+      ]
+    }
+  ],
+  "stats" : [
+    {
+      "buckets" : [
+        {
+          "label" : "2027-01-09",
+          "minutes" : {
+
+          }
+        },
+        {
+          "label" : "2027-01-10",
+          "minutes" : {
+
+          }
+        },
+        {
+          "label" : "2027-01-11",
+          "minutes" : {
+
+          }
+        },
+        {
+          "label" : "2027-01-12",
+          "minutes" : {
+
+          }
+        },
+        {
+          "label" : "2027-01-13",
+          "minutes" : {
+
+          }
+        },
+        {
+          "label" : "2027-01-14",
+          "minutes" : {
+            "here" : 2
+          }
+        },
+        {
+          "label" : "2027-01-15",
+          "minutes" : {
+            "here" : 3
+          }
+        }
+      ],
+      "decades" : [
+        {
+          "detail" : "",
+          "key" : "1960",
+          "name" : "1960s",
+          "plays" : 2
+        }
+      ],
+      "genres" : [
+        {
+          "detail" : "",
+          "key" : "Rock",
+          "name" : "Rock",
+          "plays" : 2
+        }
+      ],
+      "hours" : [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "librarySongs" : 6,
+      "loved" : 0,
+      "minutes" : 5,
+      "neverPlayed" : 4,
+      "newSongs" : 2,
+      "places" : {
+        "here" : 2
+      },
+      "plays" : 2,
+      "range" : "week",
+      "songs" : 2,
+      "streak" : 2,
+      "topAlbums" : [
+        {
+          "detail" : "The Beatles",
+          "key" : "beatles\u001fabbey road",
+          "name" : "Abbey Road",
+          "plays" : 1
+        },
+        {
+          "detail" : "Radiohead",
+          "key" : "radiohead\u001fok computer",
+          "name" : "OK Computer",
+          "plays" : 1
+        }
+      ],
+      "topArtists" : [
+        {
+          "detail" : "",
+          "key" : "Radiohead",
+          "name" : "Radiohead",
+          "plays" : 1
+        },
+        {
+          "detail" : "",
+          "key" : "The Beatles",
+          "name" : "The Beatles",
+          "plays" : 1
+        }
+      ],
+      "topSongs" : [
+        {
+          "detail" : "The Beatles",
+          "key" : "1",
+          "name" : "Come Together",
+          "plays" : 1
+        },
+        {
+          "detail" : "Radiohead",
+          "key" : "4",
+          "name" : "Paranoid Android",
+          "plays" : 1
+        }
+      ]
+    },
+    {
+      "buckets" : [
+        {
+          "label" : "2026-12-17",
+          "minutes" : {
+
+          }
+        },
+        {
+          "label" : "2026-12-18",
+          "minutes" : {
+
+          }
+        },
+        {
+          "label" : "2026-12-19",
+          "minutes" : {
+
+          }
+        },
+        {
+          "label" : "2026-12-20",
+          "minutes" : {
+
+          }
+        },
+        {
+          "label" : "2026-12-21",
+          "minutes" : {
+
+          }
+        },
+        {
+          "label" : "2026-12-22",
+          "minutes" : {
+
+          }
+        },
+        {
+          "label" : "2026-12-23",
+          "minutes" : {
+
+          }
+        },
+        {
+          "label" : "2026-12-24",
+          "minutes" : {
+
+          }
+        },
+        {
+          "label" : "2026-12-25",
+          "minutes" : {
+
+          }
+        },
+        {
+          "label" : "2026-12-26",
+          "minutes" : {
+
+          }
+        },
+        {
+          "label" : "2026-12-27",
+          "minutes" : {
+
+          }
+        },
+        {
+          "label" : "2026-12-28",
+          "minutes" : {
+
+          }
+        },
+        {
+          "label" : "2026-12-29",
+          "minutes" : {
+
+          }
+        },
+        {
+          "label" : "2026-12-30",
+          "minutes" : {
+
+          }
+        },
+        {
+          "label" : "2026-12-31",
+          "minutes" : {
+
+          }
+        },
+        {
+          "label" : "2027-01-01",
+          "minutes" : {
+
+          }
+        },
+        {
+          "label" : "2027-01-02",
+          "minutes" : {
+
+          }
+        },
+        {
+          "label" : "2027-01-03",
+          "minutes" : {
+
+          }
+        },
+        {
+          "label" : "2027-01-04",
+          "minutes" : {
+
+          }
+        },
+        {
+          "label" : "2027-01-05",
+          "minutes" : {
+
+          }
+        },
+        {
+          "label" : "2027-01-06",
+          "minutes" : {
+
+          }
+        },
+        {
+          "label" : "2027-01-07",
+          "minutes" : {
+
+          }
+        },
+        {
+          "label" : "2027-01-08",
+          "minutes" : {
+
+          }
+        },
+        {
+          "label" : "2027-01-09",
+          "minutes" : {
+
+          }
+        },
+        {
+          "label" : "2027-01-10",
+          "minutes" : {
+
+          }
+        },
+        {
+          "label" : "2027-01-11",
+          "minutes" : {
+
+          }
+        },
+        {
+          "label" : "2027-01-12",
+          "minutes" : {
+
+          }
+        },
+        {
+          "label" : "2027-01-13",
+          "minutes" : {
+
+          }
+        },
+        {
+          "label" : "2027-01-14",
+          "minutes" : {
+            "here" : 2
+          }
+        },
+        {
+          "label" : "2027-01-15",
+          "minutes" : {
+            "here" : 3
+          }
+        }
+      ],
+      "decades" : [
+        {
+          "detail" : "",
+          "key" : "1960",
+          "name" : "1960s",
+          "plays" : 2
+        }
+      ],
+      "genres" : [
+        {
+          "detail" : "",
+          "key" : "Rock",
+          "name" : "Rock",
+          "plays" : 2
+        }
+      ],
+      "hours" : [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "librarySongs" : 6,
+      "loved" : 0,
+      "minutes" : 5,
+      "neverPlayed" : 4,
+      "newSongs" : 2,
+      "places" : {
+        "here" : 2
+      },
+      "plays" : 2,
+      "range" : "month",
+      "songs" : 2,
+      "streak" : 2,
+      "topAlbums" : [
+        {
+          "detail" : "The Beatles",
+          "key" : "beatles\u001fabbey road",
+          "name" : "Abbey Road",
+          "plays" : 1
+        },
+        {
+          "detail" : "Radiohead",
+          "key" : "radiohead\u001fok computer",
+          "name" : "OK Computer",
+          "plays" : 1
+        }
+      ],
+      "topArtists" : [
+        {
+          "detail" : "",
+          "key" : "Radiohead",
+          "name" : "Radiohead",
+          "plays" : 1
+        },
+        {
+          "detail" : "",
+          "key" : "The Beatles",
+          "name" : "The Beatles",
+          "plays" : 1
+        }
+      ],
+      "topSongs" : [
+        {
+          "detail" : "The Beatles",
+          "key" : "1",
+          "name" : "Come Together",
+          "plays" : 1
+        },
+        {
+          "detail" : "Radiohead",
+          "key" : "4",
+          "name" : "Paranoid Android",
+          "plays" : 1
+        }
+      ]
+    },
+    {
+      "buckets" : [
+        {
+          "label" : "2026-02",
+          "minutes" : {
+
+          }
+        },
+        {
+          "label" : "2026-03",
+          "minutes" : {
+
+          }
+        },
+        {
+          "label" : "2026-04",
+          "minutes" : {
+
+          }
+        },
+        {
+          "label" : "2026-05",
+          "minutes" : {
+
+          }
+        },
+        {
+          "label" : "2026-06",
+          "minutes" : {
+
+          }
+        },
+        {
+          "label" : "2026-07",
+          "minutes" : {
+
+          }
+        },
+        {
+          "label" : "2026-08",
+          "minutes" : {
+
+          }
+        },
+        {
+          "label" : "2026-09",
+          "minutes" : {
+
+          }
+        },
+        {
+          "label" : "2026-10",
+          "minutes" : {
+
+          }
+        },
+        {
+          "label" : "2026-11",
+          "minutes" : {
+
+          }
+        },
+        {
+          "label" : "2026-12",
+          "minutes" : {
+
+          }
+        },
+        {
+          "label" : "2027-01",
+          "minutes" : {
+            "here" : 5
+          }
+        }
+      ],
+      "decades" : [
+        {
+          "detail" : "",
+          "key" : "1960",
+          "name" : "1960s",
+          "plays" : 2
+        }
+      ],
+      "genres" : [
+        {
+          "detail" : "",
+          "key" : "Rock",
+          "name" : "Rock",
+          "plays" : 2
+        }
+      ],
+      "hours" : [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "librarySongs" : 6,
+      "loved" : 0,
+      "minutes" : 5,
+      "neverPlayed" : 4,
+      "newSongs" : 2,
+      "places" : {
+        "here" : 2
+      },
+      "plays" : 2,
+      "range" : "year",
+      "songs" : 2,
+      "streak" : 2,
+      "topAlbums" : [
+        {
+          "detail" : "The Beatles",
+          "key" : "beatles\u001fabbey road",
+          "name" : "Abbey Road",
+          "plays" : 1
+        },
+        {
+          "detail" : "Radiohead",
+          "key" : "radiohead\u001fok computer",
+          "name" : "OK Computer",
+          "plays" : 1
+        }
+      ],
+      "topArtists" : [
+        {
+          "detail" : "",
+          "key" : "Radiohead",
+          "name" : "Radiohead",
+          "plays" : 1
+        },
+        {
+          "detail" : "",
+          "key" : "The Beatles",
+          "name" : "The Beatles",
+          "plays" : 1
+        }
+      ],
+      "topSongs" : [
+        {
+          "detail" : "The Beatles",
+          "key" : "1",
+          "name" : "Come Together",
+          "plays" : 1
+        },
+        {
+          "detail" : "Radiohead",
+          "key" : "4",
+          "name" : "Paranoid Android",
+          "plays" : 1
+        }
+      ]
+    },
+    {
+      "buckets" : [
+        {
+          "label" : "2027",
+          "minutes" : {
+            "here" : 5
+          }
+        }
+      ],
+      "decades" : [
+        {
+          "detail" : "",
+          "key" : "1960",
+          "name" : "1960s",
+          "plays" : 2
+        }
+      ],
+      "genres" : [
+        {
+          "detail" : "",
+          "key" : "Rock",
+          "name" : "Rock",
+          "plays" : 2
+        }
+      ],
+      "hours" : [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "librarySongs" : 6,
+      "loved" : 0,
+      "minutes" : 5,
+      "neverPlayed" : 4,
+      "newSongs" : 2,
+      "places" : {
+        "here" : 2
+      },
+      "plays" : 2,
+      "range" : "all",
+      "songs" : 2,
+      "streak" : 2,
+      "topAlbums" : [
+        {
+          "detail" : "The Beatles",
+          "key" : "beatles\u001fabbey road",
+          "name" : "Abbey Road",
+          "plays" : 1
+        },
+        {
+          "detail" : "Radiohead",
+          "key" : "radiohead\u001fok computer",
+          "name" : "OK Computer",
+          "plays" : 1
+        }
+      ],
+      "topArtists" : [
+        {
+          "detail" : "",
+          "key" : "Radiohead",
+          "name" : "Radiohead",
+          "plays" : 1
+        },
+        {
+          "detail" : "",
+          "key" : "The Beatles",
+          "name" : "The Beatles",
+          "plays" : 1
+        }
+      ],
+      "topSongs" : [
+        {
+          "detail" : "The Beatles",
+          "key" : "1",
+          "name" : "Come Together",
+          "plays" : 1
+        },
+        {
+          "detail" : "Radiohead",
+          "key" : "4",
+          "name" : "Paranoid Android",
+          "plays" : 1
+        }
+      ]
+    }
+  ]
+}

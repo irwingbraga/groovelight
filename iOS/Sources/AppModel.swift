@@ -17,6 +17,7 @@ final class AppModel {
     let remote: RemoteStore
     /// The Mac's whole library, to bring music here.
     let catalog: CatalogStore
+    let home: HomeStore
     /// Other devices playing music here, through the Mac.
     let relay = RelayReceiver()
     /// The user's cassettes for Now Playing's cassette skin.
@@ -59,6 +60,7 @@ final class AppModel {
         player = PlayerStore(library: library)
         remote = RemoteStore(sync: sync)
         catalog = CatalogStore(library: library, sync: sync, folders: folders)
+        home = HomeStore(sync: sync, folders: folders)
         // A song playing elsewhere that is not here shows the Mac library's cover on the lock screen too.
         player.coverElsewhere = { [catalog] in catalog.cachedCoverURL($0) }
         library.onLove = { [sync] in sync.sendHistorySoon() }

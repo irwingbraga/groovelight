@@ -1,6 +1,8 @@
 package dev.irwingbraga.groovelight.ui
 
 import dev.irwingbraga.groovelight.sync.Host
+import dev.irwingbraga.groovelight.sync.HomeSnapshot
+import dev.irwingbraga.groovelight.sync.HomeStore
 
 import android.app.Application
 import android.content.Context
@@ -311,6 +313,43 @@ class LibraryModel(application: Application) : AndroidViewModel(application) {
                 "Turn off Settings, Devices, “Sync with phones and players over Wi-Fi” on the PC and turn it on again."
             else "Groovelight on the Mac is not offering its secure connection, which its library needs here. If macOS asks " +
                 "on the Mac whether Groovelight may use its key, choose Always Allow; otherwise quit Groovelight there and open it again."
+    }
+
+    // Home: the Mac's picks of the day and listening dashboard, kept here for when it is away.
+
+    val home: StateFlow<HomeSnapshot?> = HomeStore.home(application)
+
+    /** Whether Home is being fetched, and why it could not be (when the Mac answered with an error). */
+    data class HomeState(val loading: Boolean = false, val error: String? = null)
+
+    val homeState = MutableStateFlow(HomeState())
+
+    val isPaired: Boolean get() = prefs.isPaired
+
+    /** When Home last came from the Mac (0: never). */
+    fun homeFetchedAt(): Long = HomeStore.fetchedAt(getApplication())
+
+    /** Asks the Mac for Home (only sent when it changed); the last one stays when it is away. */
+    fun refreshHome() {
+        if (homeState.value.loading || !prefs.isPaired) return
+        homeState.value = homeState.value.copy(loading = true)
+        viewModelScope.launch(Dispatchers.IO) {
+            val app = getApplication<Application>()
+            val result = runCatching {
+                val client = SyncEngine(app, prefs).connect()
+                if (prefs.tlsPort == 0) throw IllegalStateException(NO_TLS)
+                HomeStore.refresh(app, client)
+            }
+            val error = result.exceptionOrNull()
+            homeState.value = HomeState(loading = false,
+                error = error?.message?.takeIf { error is IllegalStateException || (error as? MacError)?.status?.let { it > 0 } == true })
+        }
+    }
+
+    /** The songs here among `ids`, in their order. */
+    suspend fun tracksWithIds(ids: List<Long>): List<Track> {
+        val found = library.tracksWithIds(ids).associateBy { it.id }
+        return ids.mapNotNull { found[it] }
     }
 
     /** Asks for an album, artist or song on this device (or to remove it); sent now or when the Mac is reachable. */

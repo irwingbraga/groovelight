@@ -238,6 +238,7 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
 
     fun forget() {
         prefs.forgetMac()
+        dev.irwingbraga.groovelight.sync.HomeStore.clear(getApplication())
         paired.value = false
         reachable.value = null
         SyncWorker.schedule(getApplication(), prefs)

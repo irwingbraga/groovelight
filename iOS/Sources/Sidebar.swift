@@ -6,7 +6,7 @@ import SwiftUI
 /// (Recently Added, Artists, Albums, Songs, Genres); Explore (Shelf); Playlists (All Playlists, Loved Songs, each
 /// playlist).
 enum SidebarItem: Hashable {
-    case search
+    case search, home
     case recentlyAdded, artists, albums, songs, genres
     case shelf
     case allPlaylists, lovedSongs
@@ -17,6 +17,7 @@ enum SidebarItem: Hashable {
     var title: String {
         switch self {
         case .search: "Search"
+        case .home: "Home"
         case .recentlyAdded: "Recently Added"
         case .artists: "Artists"
         case .albums: "Albums"
@@ -33,6 +34,7 @@ enum SidebarItem: Hashable {
     var symbol: String {
         switch self {
         case .search: "magnifyingglass"
+        case .home: "house"
         case .recentlyAdded: "clock"
         case .artists: "music.microphone"
         case .albums: "square.stack"
@@ -86,11 +88,12 @@ struct SidebarItemContent: View {
         Group {
             if filtered, model.catalog.showsMac {
                 MergedLibrarySection(item: item)
-            } else if model.library.isEmpty, item != .search, item != .shelf {
+            } else if model.library.isEmpty, item != .search, item != .shelf, item != .home {
                 EmptyLibrary()
             } else {
                 switch item {
                 case .search: SearchResults()
+                case .home: HomeScreen()
                 case .recentlyAdded: AlbumGrid(albums: contents.recentlyAdded)
                 case .albums: AlbumGrid(albums: contents.albums)
                 case .artists: ArtistList(artists: contents.artists, compilations: contents.compilations)
@@ -124,6 +127,7 @@ struct LibrarySidebar: View {
     var body: some View {
         List(selection: $selection) {
             SidebarRow(item: .search).tag(SidebarItem.search)
+            SidebarRow(item: .home).tag(SidebarItem.home)
             Section("Library") {
                 ForEach(SidebarItem.library, id: \.self) { item in
                     SidebarRow(item: item).tag(item)
