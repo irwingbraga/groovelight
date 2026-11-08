@@ -23,6 +23,23 @@ Groovelight is licensed under the GNU General Public License v3.0 (see `LICENSE`
 
 The LGPL libraries are separate dynamic frameworks inside `Groovelight.app/Contents/Frameworks` (TagLib is compiled from source); their source is available at the links above, and Groovelight's own source is this repository.
 
+## Windows app
+
+| Software | Used for | License |
+|---|---|---|
+| [.NET](https://github.com/dotnet/runtime) and [Microsoft.Data.Sqlite](https://github.com/dotnet/efcore) | Runtime, library database (SQLite) | MIT |
+| [Windows App SDK and WinUI 3](https://github.com/microsoft/WindowsAppSDK) | The interface | MIT |
+| [FFmpeg](https://ffmpeg.org) (the LGPL build of [BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds), shared libraries and `ffmpeg.exe`) | Decoding every format, and converting songs for devices | LGPL-2.1 or later |
+| [FFmpeg.AutoGen](https://github.com/Ruslan-B/FFmpeg.AutoGen) | Calling FFmpeg from C# | LGPL-3.0 |
+| [TagLib#](https://github.com/mono/taglib-sharp) | Reading and writing tags | LGPL-2.1 |
+| [SoundTouch.Net](https://github.com/owoudenberg/soundtouch.net) | Playback speed with the pitch kept | LGPL-2.1 |
+| [NAudio](https://github.com/naudio/NAudio) | WASAPI output | MIT |
+| [SkiaSharp](https://github.com/mono/SkiaSharp) | Visualizers, charts and the vintage players | MIT |
+| [SharpCompress](https://github.com/adamhathcock/sharpcompress) | Importing archives (zip, 7z, rar, tar) | MIT |
+| [Velopack](https://github.com/velopack/velopack) | The installer and updates | MIT |
+
+FFmpeg's libraries are separate DLLs next to `Groovelight.exe` in the installed app, where they can be replaced; the portable exe carries the same files and unpacks them to a folder when it starts. FFmpeg's source is available at the link above, and Groovelight's own source is this repository.
+
 ## Android app (Groovelight Sync)
 
 | Software | License |
@@ -32,4 +49,4 @@ The LGPL libraries are separate dynamic frameworks inside `Groovelight.app/Conte
 
 ## Online services
 
-Groovelight looks things up in these services when the corresponding settings are on: [MusicBrainz](https://musicbrainz.org) and the [Cover Art Archive](https://coverartarchive.org) (data under CC0; covers belong to their owners), the iTunes Search API (artwork), [LRCLIB](https://lrclib.net) (lyrics, contributed by its users), [Wikipedia and Wikidata](https://www.wikipedia.org) (text under CC BY-SA, shown with a link to the article) and [Last.fm](https://www.last.fm) (scrobbling). Their terms apply to what they return.
+Groovelight (on every platform) looks things up in these services when the corresponding settings are on: [MusicBrainz](https://musicbrainz.org) and the [Cover Art Archive](https://coverartarchive.org) (data under CC0; covers belong to their owners), the iTunes Search API (artwork), [LRCLIB](https://lrclib.net) (lyrics, contributed by its users), [Wikipedia and Wikidata](https://www.wikipedia.org) (text under CC BY-SA, shown with a link to the article) and [Last.fm](https://www.last.fm) (scrobbling). Their terms apply to what they return.
