@@ -38,6 +38,8 @@ public static class Program
         new("stop", "stop [--json]", "Stop playing.", args => Simple(args, new PlaybackRequest(PlaybackAction.Stop))),
         new("now-playing", "now-playing [--json]", "Show what is playing.", args => Simple(args, new NowPlayingRequest())),
         new("playlists", "playlists [--json]", "List the playlists.", args => Simple(args, new ListPlaylistsRequest())),
+        new("today", "today [--json]", "Show Song, Album and Artist of the Day, and why each was picked.", args => Simple(args, new TodayRequest())),
+        new("stats", "stats [--range week|month|year|all] [--json]", "Show what you listened to: time, plays, top songs, albums, artists and genres.", Stats),
         new("create-playlist", "create-playlist <name> --songs IDS... [--json]", "Create a playlist of songs, in order.", CreatePlaylist,
             "Song ids come from `groovelight search`: create-playlist \"Gino's Best\" --songs 2798 2765 2801"),
         new("add-to-playlist", "add-to-playlist <playlist> --songs IDS... [--json]", "Add songs at the end of a playlist.", AddToPlaylist),
@@ -177,6 +179,14 @@ public static class Program
             SongIds = songs.Count == 0 ? null : songs, Album = parsed.Option("album"), Artist = parsed.Option("artist"), Playlist = parsed.Option("playlist"),
             Song = parsed.Option("song"), Query = parsed.Positional.Count == 0 ? null : string.Join(' ', parsed.Positional), Shuffle = parsed.Flag("shuffle"),
         }), parsed.Flag("json"));
+    }
+
+    private static int Stats(string[] args)
+    {
+        var parsed = new Arguments(args, ["json"], ["range"]);
+        var range = parsed.Option("range") ?? "month";
+        if (range is not ("week" or "month" or "year" or "all")) throw new UsageException("--range is week, month, year or all.");
+        return Execute(new ListeningStatsRequest(range), parsed.Flag("json"));
     }
 
     private static int CreatePlaylist(string[] args)

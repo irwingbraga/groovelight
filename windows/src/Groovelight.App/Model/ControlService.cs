@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Groovelight.Audio;
 using Groovelight.ControlKit;
+using Groovelight.Core.Discovery;
 using Groovelight.Core.Library;
 using Groovelight.Metadata;
 using OrganizeOptions = Groovelight.ControlKit.OrganizeOptions;
@@ -80,6 +81,8 @@ public sealed class ControlService
                 CreatePlaylistRequest create => CreatePlaylist(create.Name, create.SongIds),
                 AddToPlaylistRequest add => AddToPlaylist(add.Playlist, add.SongIds),
                 NowPlayingRequest => NowPlaying(),
+                TodayRequest => Today(),
+                ListeningStatsRequest stats => Stats(stats.Range),
                 PollRequest poll => Poll(poll.Job),
                 CancelRequest cancel => Cancel(cancel.Job),
                 _ => ControlReply.Failure("Groovelight does not know this request. Update the app and the tool together."),
@@ -530,6 +533,62 @@ public sealed class ControlService
     }
 
     // MARK: Playlists
+
+    // MARK: Home
+
+    /// <summary>Today's picks, as Home shows them (made and kept for the day on the first ask).</summary>
+    private ControlReply Today()
+    {
+        var home = model.Database.HomeSnapshotFor(stats: false, choices: 1);
+        var picks = Enum.GetValues<Discovery.Kind>().Select(kind => home.Cards(kind).FirstOrDefault()).OfType<HomeSnapshot.Card>().ToList();
+        if (picks.Count == 0) return new ControlReply { Summary = "No picks today: the library is empty.", Data = new JsonObject { ["picks"] = new JsonArray() } };
+        var lines = picks.Select(card =>
+        {
+            var title = card.Kind == Discovery.Kind.Artist ? $"{card.Title} (essentials)" : $"{card.Title}, by {card.Subtitle}";
+            return $"{HomeStore.Title(card.Kind)}: {title}\n  {card.ReasonText} ({Count(card.TrackIds.Count, "song")})";
+        });
+        var data = new JsonArray([.. picks.Select(card => (JsonNode)new JsonObject
+        {
+            ["kind"] = Discovery.Raw(card.Kind), ["title"] = card.Title, ["subtitle"] = card.Subtitle, ["key"] = card.Key, ["reason"] = card.ReasonText,
+            ["song_ids"] = new JsonArray([.. card.TrackIds.Select(id => (JsonNode)id)]),
+        })]);
+        return new ControlReply { Summary = string.Join('\n', lines), Data = new JsonObject { ["picks"] = data } };
+    }
+
+    /// <summary>The dashboard for a range, as Home shows it.</summary>
+    private ControlReply Stats(string name)
+    {
+        if (!Enum.TryParse<ListeningStats.StatsRange>(name, ignoreCase: true, out var range) || int.TryParse(name, out _))
+            throw new ControlException("The range is one of: week, month, year, all.");
+        var stats = model.Database.Read(db => db.ListeningStatsFor(range));
+        var title = range switch
+        {
+            ListeningStats.StatsRange.Week => "The last 7 days",
+            ListeningStats.StatsRange.Month => "The last 30 days",
+            ListeningStats.StatsRange.Year => "The last 12 months",
+            _ => "All time",
+        };
+        var hours = stats.Minutes >= 120 ? $"{Math.Round(stats.Minutes / 60)} hours" : $"{Math.Round(stats.Minutes)} minutes";
+        var lines = new List<string>
+        {
+            $"{title}: {hours} of listening, {Count((int)stats.Plays, "play")} of {Count((int)stats.Songs, "song")}, {stats.NewSongs} new to you; a streak of {Count((int)stats.Streak, "day")}.",
+        };
+        void List(string heading, List<ListeningStats.Ranked> items, bool detail)
+        {
+            if (items.Count == 0) return;
+            lines.Add(heading + ":");
+            lines.AddRange(items.Take(10).Select((item, index) =>
+                $"  {index + 1}. {item.Name}{(detail && item.Detail.Length > 0 ? $" by {item.Detail}" : "")} ({Count((int)item.Plays, "play")})"));
+        }
+        List("Top songs", stats.TopSongs, true);
+        List("Top albums", stats.TopAlbums, true);
+        List("Top artists", stats.TopArtists, false);
+        if (stats.Genres.Count > 0) lines.Add("Genres: " + string.Join(", ", stats.Genres.Select(genre => $"{genre.Name} ({genre.Plays})")));
+        var places = new[] { (ListeningStats.Place.Here, "this PC"), (ListeningStats.Place.Devices, "phones"), (ListeningStats.Place.LastFm, "Last.fm") }
+            .Where(place => stats.Places.ContainsKey(place.Item1)).Select(place => $"{place.Item2} {stats.Places[place.Item1]}").ToList();
+        if (places.Count > 0) lines.Add("Plays by place: " + string.Join(", ", places));
+        return new ControlReply { Summary = string.Join('\n', lines), Data = JsonSerializer.SerializeToNode(stats, Groovelight.Core.Devices.WireJson.Options) };
+    }
 
     private ControlReply ListPlaylists()
     {

@@ -39,6 +39,11 @@ public enum ControlRequest: Codable, Hashable, Sendable {
     /// Adds songs at the end of a playlist (by name).
     case addToPlaylist(playlist: String, songIds: [Int64])
     case nowPlaying
+    /// Song, Album and Artist of the Day (Home's picks), with why each was picked and its songs.
+    case today
+    /// Home's dashboard for a range ("week", "month", "year" or "all"): listening time, plays, top songs, albums,
+    /// artists and genres.
+    case listeningStats(range: String)
     /// Files the tool is about to open with the app (to grant it access): the app takes them in silently instead of
     /// showing its import sheet.
     case expectFiles([String])

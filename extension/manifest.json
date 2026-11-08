@@ -55,7 +55,9 @@
     {"name": "create_playlist", "description": "Create a playlist of songs from the library."},
     {"name": "add_to_playlist", "description": "Add songs to a playlist."},
     {"name": "playback_control", "description": "Pause, resume, skip or stop."},
-    {"name": "now_playing", "description": "The song playing now."}
+    {"name": "now_playing", "description": "The song playing now."},
+    {"name": "todays_picks", "description": "Song, Album and Artist of the Day, and why."},
+    {"name": "listening_stats", "description": "What you listened to over a week, month, year or all time."}
   ],
   "keywords": ["music", "library", "player", "metadata", "musicbrainz", "macos", "windows"],
   "license": "GPL-3.0",

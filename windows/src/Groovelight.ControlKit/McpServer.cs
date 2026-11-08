@@ -179,6 +179,8 @@ public sealed class McpServer(string version, Func<ControlRequest, Action<Contro
                         return ToolError("action must be one of: " + string.Join(", ", Enum.GetNames<PlaybackAction>().Select(value => value.ToLowerInvariant())) + ".");
                     return ToolResult(execute(new PlaybackRequest(action), progress));
                 case "now_playing": return Snapshot(new NowPlayingRequest(), progress);
+                case "todays_picks": return Snapshot(new TodayRequest(), progress);
+                case "listening_stats": return Snapshot(new ListeningStatsRequest(Text(arguments["range"]) ?? "month"), progress);
                 default: return ToolError($"Unknown tool: {name}");
             }
         }
@@ -287,6 +289,8 @@ public sealed class McpServer(string version, Func<ControlRequest, Action<Contro
         Groovelight is the user's music player and library on their PC. Use search_library and library_status to answer questions about the music. Changes to files go in two steps: call a preview tool (preview_import, preview_fix_metadata, preview_organize), show the user what it would change, and call the matching apply tool with its preview_id only after they agree. Imports and organizing can be undone with undo_last_file_operation; metadata fixes cannot. To make a playlist, find each song with search_library (songs come with their ids) and pass the ids to create_playlist, in order; play takes song_ids too. Paths are absolute Windows paths on the user's PC.
 
         The user also uses Groovelight directly, so the song playing, playlists and the library change outside this conversation. A result shows the state when the tool ran (its as_of time). Before answering about what is playing, playlists or what is in the library, call the tool again rather than relying on an earlier result.
+
+        todays_picks gives Song, Album and Artist of the Day (as the app's Home shows them, the same all day) with their song ids for play; listening_stats summarizes what the user listened to (time, plays, top songs, albums, artists, genres) over a week, a month, a year or all time.
         """;
 
     public static JsonArray Tools() => (JsonNode.Parse(ToolsJson) as JsonArray)!;
@@ -390,6 +394,15 @@ public sealed class McpServer(string version, Func<ControlRequest, Action<Contro
           {"name": "now_playing", "title": "Now playing",
            "description": "The song playing now (or paused), with its position. Changes as the music plays and as the user uses the app: call it again each time the user asks.",
            "inputSchema": {"type": "object", "properties": {}},
+           "annotations": {"readOnlyHint": true}},
+          {"name": "todays_picks", "title": "Today's picks",
+           "description": "Song, Album and Artist of the Day, picked from the user's listening (songs they used to love, loved songs they rarely play, new additions, release anniversaries), with why each was picked and its song ids (play them with play and song_ids). The picks stay the same all day.",
+           "inputSchema": {"type": "object", "properties": {}},
+           "annotations": {"readOnlyHint": true}},
+          {"name": "listening_stats", "title": "Listening stats",
+           "description": "What the user listened to over a range: listening time, plays, songs, songs new to them, their streak of days, top songs, albums and artists, genres, decades, plays by hour and weekday, and where (this computer, phones, Last.fm).",
+           "inputSchema": {"type": "object", "properties": {
+             "range": {"type": "string", "enum": ["week", "month", "year", "all"], "description": "The last 7 days, 30 days, 12 months, or all time (default month)."}}},
            "annotations": {"readOnlyHint": true}}
         ]
         """;

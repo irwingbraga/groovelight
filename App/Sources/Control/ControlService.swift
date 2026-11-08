@@ -86,6 +86,8 @@ final class ControlService {
             case .createPlaylist(let name, let songIds): return try createPlaylist(named: name, songIds: songIds)
             case .addToPlaylist(let playlist, let songIds): return try addToPlaylist(playlist, songIds: songIds)
             case .nowPlaying: return nowPlaying()
+            case .today: return try today()
+            case .listeningStats(let range): return try listeningStats(range)
             case .expectFiles(let paths):
                 for path in paths { expected[Self.normalized(path)] = .now }
                 return ControlReply()
@@ -453,6 +455,57 @@ final class ControlService {
     }
 
     // MARK: - Playlists
+
+    // MARK: - Home
+
+    /// Today's picks, as Home shows them (made and kept for the day on the first ask).
+    private func today() throws -> ControlReply {
+        let home = try model.database.homeSnapshot(stats: false, choices: 1)
+        let picks = Discovery.Kind.allCases.compactMap { home.cards($0).first }
+        guard !picks.isEmpty else { return ControlReply(summary: "No picks today: the library is empty.", data: .object(["picks": .array([])])) }
+        let lines = picks.map { card in
+            let title = card.kind == .artist ? "\(card.title) (essentials)" : "\(card.title), by \(card.subtitle)"
+            return "\(card.kind.title): \(title)\n  \(card.reasonText) (\(Self.count(card.trackIds.count, "song")))"
+        }
+        let data = picks.map { card -> [String: JSONValue] in
+            ["kind": .string(card.kind.rawValue), "title": .string(card.title), "subtitle": .string(card.subtitle), "key": .string(card.key),
+             "reason": .string(card.reasonText), "song_ids": .array(card.trackIds.map { .number(Double($0)) })]
+        }
+        return ControlReply(summary: lines.joined(separator: "\n"), data: .object(["picks": .array(data.map(JSONValue.object))]))
+    }
+
+    /// The dashboard for a range, as Home shows it.
+    private func listeningStats(_ name: String) throws -> ControlReply {
+        guard let range = ListeningStats.Range(rawValue: name.lowercased()) else {
+            throw ControlError("The range is one of: week, month, year, all.")
+        }
+        let stats = try model.database.writer.read { try LibraryDatabase.listeningStats($0, range: range) }
+        let title = switch range {
+        case .week: "The last 7 days"
+        case .month: "The last 30 days"
+        case .year: "The last 12 months"
+        case .all: "All time"
+        }
+        let hours = stats.minutes >= 120 ? "\(Int((stats.minutes / 60).rounded())) hours" : "\(Int(stats.minutes.rounded())) minutes"
+        var lines = ["\(title): \(hours) of listening, \(Self.count(stats.plays, "play")) of \(Self.count(stats.songs, "song")), "
+                     + "\(stats.newSongs) new to you; a streak of \(Self.count(stats.streak, "day"))."]
+        func list(_ heading: String, _ items: [ListeningStats.Ranked], detail: Bool) {
+            guard !items.isEmpty else { return }
+            lines.append(heading + ":")
+            for (index, item) in items.prefix(10).enumerated() {
+                let by = detail && !item.detail.isEmpty ? " by \(item.detail)" : ""
+                lines.append("  \(index + 1). \(item.name)\(by) (\(Self.count(item.plays, "play")))")
+            }
+        }
+        list("Top songs", stats.topSongs, detail: true)
+        list("Top albums", stats.topAlbums, detail: true)
+        list("Top artists", stats.topArtists, detail: false)
+        if !stats.genres.isEmpty { lines.append("Genres: " + stats.genres.map { "\($0.name) (\($0.plays))" }.joined(separator: ", ")) }
+        let places: [(ListeningStats.Place, String)] = [(.here, "this Mac"), (.devices, "phones"), (.lastfm, "Last.fm")]
+        let byPlace = places.compactMap { place, name in stats.places[place].map { "\(name) \($0)" } }
+        if !byPlace.isEmpty { lines.append("Plays by place: " + byPlace.joined(separator: ", ")) }
+        return ControlReply(summary: lines.joined(separator: "\n"), data: try JSONValue(encoding: stats))
+    }
 
     private func listPlaylists() throws -> ControlReply {
         let found = try model.database.writer.read { db in

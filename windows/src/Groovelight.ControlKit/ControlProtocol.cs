@@ -49,6 +49,8 @@ public static class ControlPipe
 [JsonDerivedType(typeof(CreatePlaylistRequest), "createPlaylist")]
 [JsonDerivedType(typeof(AddToPlaylistRequest), "addToPlaylist")]
 [JsonDerivedType(typeof(NowPlayingRequest), "nowPlaying")]
+[JsonDerivedType(typeof(TodayRequest), "today")]
+[JsonDerivedType(typeof(ListeningStatsRequest), "listeningStats")]
 [JsonDerivedType(typeof(PollRequest), "poll")]
 [JsonDerivedType(typeof(CancelRequest), "cancel")]
 public abstract record ControlRequest;
@@ -71,6 +73,10 @@ public sealed record CreatePlaylistRequest(string Name, IReadOnlyList<long> Song
 /// <summary>Adds songs at the end of a playlist (by name).</summary>
 public sealed record AddToPlaylistRequest(string Playlist, IReadOnlyList<long> SongIds) : ControlRequest;
 public sealed record NowPlayingRequest : ControlRequest;
+/// <summary>Song, Album and Artist of the Day (Home's picks), with why each was picked and its songs.</summary>
+public sealed record TodayRequest : ControlRequest;
+/// <summary>Home's dashboard for a range ("week", "month", "year" or "all").</summary>
+public sealed record ListeningStatsRequest(string Range) : ControlRequest;
 /// <summary>What a job did since the last poll, and its result when it is done.</summary>
 public sealed record PollRequest(string Job) : ControlRequest;
 public sealed record CancelRequest(string Job) : ControlRequest;

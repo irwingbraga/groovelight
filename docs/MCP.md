@@ -63,6 +63,7 @@ Any client that runs local stdio servers can use it: the command is `/usr/local/
 - "Fix the metadata of OK Computer" / "The songs of Brother to Brother have different album names, fix them as one album"
 - "Rename my files with my naming settings, only for the Steely Dan albums"
 - "Undo that import"
+- "What's my album of the day? Play it" / "What did I listen to most this year?"
 
 ## Tools
 
@@ -72,6 +73,8 @@ Any client that runs local stdio servers can use it: the command is `/usr/local/
 | `search_library` | Artists, albums and songs matching a query (title, artist, album, lyrics, credits). Songs come with their ids and file paths. | Nothing |
 | `now_playing` | The song playing or paused, with its position. | Nothing |
 | `list_playlists` | Playlists with their song counts. | Nothing |
+| `todays_picks` | Song, Album and Artist of the Day (as Home shows them, the same all day), with why each was picked and their song ids for `play`. | Nothing |
+| `listening_stats` | What you listened to over a week, month, year or all time: time, plays, top songs, albums and artists, genres, decades, hours, and where (this computer, phones, Last.fm). | Nothing |
 | `preview_import` | What importing songs, folders or archives would do: each album as identified on MusicBrainz and where each file would go. Returns a `preview_id`. | Nothing |
 | `import_music` | Imports what a preview showed. Takes the `preview_id` only. | Files (undoable) |
 | `preview_fix_metadata` | The best MusicBrainz release for an album (or the one asked for), the tag changes song by song, and the other releases found. Returns a `preview_id`. | Nothing |
@@ -107,7 +110,7 @@ Every result has the summary as text (what Claude reads) and the data as `struct
 
 You keep using Groovelight while you talk to Claude: songs change, you skip, you edit playlists. An MCP server cannot make Claude look again after a while (Claude only acts when you send a message), so the server tells it how old each answer is and when to ask again:
 
-- The results of `library_status`, `search_library`, `list_playlists` and `now_playing` carry the time they were read: an `as_of` field in `structuredContent` (ISO 8601, with the Mac's time zone) and a last line `As of <time>.` in the text.
+- The results of `library_status`, `search_library`, `list_playlists`, `now_playing`, `todays_picks` and `listening_stats` carry the time they were read: an `as_of` field in `structuredContent` (ISO 8601, with the Mac's time zone) and a last line `As of <time>.` in the text.
 - The server's instructions say that a result shows the state when the tool ran, and to call the tool again before answering about what is playing, playlists or the library.
 - The descriptions of `now_playing` and `list_playlists` repeat it.
 

@@ -156,6 +156,8 @@ public final class MCPServer {
                 }
                 return try run(.playback(action), progress)
             case "now_playing": return try snapshot(.nowPlaying, progress)
+            case "todays_picks": return try snapshot(.today, progress)
+            case "listening_stats": return try snapshot(.listeningStats(range: arguments["range"]?.stringValue ?? "month"), progress)
             default: return Self.toolError("Unknown tool: \(name)")
             }
         } catch {
@@ -255,6 +257,10 @@ public final class MCPServer {
         The user also uses Groovelight directly, so the song playing, playlists and the library change outside this \
         conversation. A result shows the state when the tool ran (its as_of time). Before answering about what is \
         playing, playlists or what is in the library, call the tool again rather than relying on an earlier result.
+
+        todays_picks gives Song, Album and Artist of the Day (as the app's Home shows them, the same all day) with \
+        their song ids for play; listening_stats summarizes what the user listened to (time, plays, top songs, \
+        albums, artists, genres) over a week, a month, a year or all time.
         """
 
     static let tools: [JSONValue] = {
@@ -357,6 +363,15 @@ public final class MCPServer {
           {"name": "now_playing", "title": "Now playing",
            "description": "The song playing now (or paused), with its position. Changes as the music plays and as the user uses the app: call it again each time the user asks.",
            "inputSchema": {"type": "object", "properties": {}},
+           "annotations": {"readOnlyHint": true}},
+          {"name": "todays_picks", "title": "Today's picks",
+           "description": "Song, Album and Artist of the Day, picked from the user's listening (songs they used to love, loved songs they rarely play, new additions, release anniversaries), with why each was picked and its song ids (play them with play and song_ids). The picks stay the same all day.",
+           "inputSchema": {"type": "object", "properties": {}},
+           "annotations": {"readOnlyHint": true}},
+          {"name": "listening_stats", "title": "Listening stats",
+           "description": "What the user listened to over a range: listening time, plays, songs, songs new to them, their streak of days, top songs, albums and artists, genres, decades, plays by hour and weekday, and where (this computer, phones, Last.fm).",
+           "inputSchema": {"type": "object", "properties": {
+             "range": {"type": "string", "enum": ["week", "month", "year", "all"], "description": "The last 7 days, 30 days, 12 months, or all time (default month)."}}},
            "annotations": {"readOnlyHint": true}}
         ]
         """#

@@ -15,7 +15,7 @@ struct Groovelight: ParsableCommand {
             version: Runner.version,
             subcommands: [Status.self, Search.self, Import.self, FixMetadata.self, Organize.self, Undo.self, Rescan.self,
                           Play.self, Pause.self, Resume.self, Toggle.self, Next.self, Previous.self, Stop.self, NowPlaying.self,
-                          Playlists.self, CreatePlaylist.self, AddToPlaylist.self,
+                          Playlists.self, CreatePlaylist.self, AddToPlaylist.self, Today.self, Stats.self,
                           MCP.self]
         )
     }
@@ -238,6 +238,26 @@ struct NowPlaying: ParsableCommand {
     static let configuration = CommandConfiguration(abstract: "Show what is playing.")
     @OptionGroup var output: OutputOptions
     func run() throws { try Runner.execute(.nowPlaying, output: output) }
+}
+
+// MARK: - Home
+
+struct Today: ParsableCommand {
+    static let configuration = CommandConfiguration(abstract: "Show Song, Album and Artist of the Day, and why each was picked.")
+    @OptionGroup var output: OutputOptions
+    func run() throws { try Runner.execute(.today, output: output) }
+}
+
+struct Stats: ParsableCommand {
+    enum Range: String, ExpressibleByArgument, CaseIterable {
+        case week, month, year, all
+    }
+
+    static let configuration = CommandConfiguration(abstract: "Show what you listened to: time, plays, top songs, albums, artists and genres.")
+    @Option(help: "The last week, month (30 days), year (12 months), or all time.")
+    var range: Range = .month
+    @OptionGroup var output: OutputOptions
+    func run() throws { try Runner.execute(.listeningStats(range: range.rawValue), output: output) }
 }
 
 // MARK: - Playlists

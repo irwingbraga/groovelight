@@ -60,6 +60,18 @@ public class ControlTests
             ["params"] = new JsonObject { ["name"] = tool, ["arguments"] = arguments ?? [], ["_meta"] = new JsonObject { ["progressToken"] = "t" } },
         }, note => notes?.Add(note))!["result"]!;
 
+    /// <summary>Home's picks and the dashboard: stamped with the time, the range passed along (a month when none is given).</summary>
+    [Fact]
+    public void ReadsTodaysPicksAndStats()
+    {
+        var app = new FakeApp();
+        var server = new McpServer("1.0", app.Execute);
+        Assert.NotNull(Call(server, "todays_picks")["structuredContent"]?["as_of"]);
+        Call(server, "listening_stats", new JsonObject { ["range"] = "year" });
+        Call(server, "listening_stats");
+        Assert.Equal<ControlRequest>([new TodayRequest(), new ListeningStatsRequest("year"), new ListeningStatsRequest("month")], app.Requests);
+    }
+
     [Fact]
     public void AnswersInitializeAndListsTheTools()
     {
@@ -71,7 +83,7 @@ public class ControlTests
         Assert.Equal("2025-06-18", old["result"]!["protocolVersion"]!.GetValue<string>());
         Assert.Null(server.Handle(JsonNode.Parse("""{"jsonrpc":"2.0","method":"notifications/initialized"}""")!, _ => { }));
         var tools = server.Handle(JsonNode.Parse("""{"jsonrpc":"2.0","id":3,"method":"tools/list"}""")!, _ => { })!["result"]!["tools"]!.AsArray();
-        Assert.Equal(16, tools.Count);
+        Assert.Equal(18, tools.Count);
         Assert.Contains(tools, tool => tool!["name"]!.GetValue<string>() == "preview_import");
         var unknown = server.Handle(JsonNode.Parse("""{"jsonrpc":"2.0","id":4,"method":"nope"}""")!, _ => { })!;
         Assert.Equal(-32601, unknown["error"]!["code"]!.GetValue<int>());

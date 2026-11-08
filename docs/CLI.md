@@ -9,7 +9,7 @@ For Claude and other AI tools, the same commands are available as an MCP server:
 - [Install](#install)
 - [Quick start](#quick-start)
 - [How names are matched](#how-names-are-matched)
-- [Commands](#commands): [library](#library), [import and files](#import-and-files), [metadata](#metadata), [playlists](#playlists), [playback](#playback), [mcp](#mcp)
+- [Commands](#commands): [library](#library), [import and files](#import-and-files), [metadata](#metadata), [playlists](#playlists), [playback](#playback), [home](#home), [mcp](#mcp)
 - [Output, JSON and exit codes](#output-json-and-exit-codes)
 - [Scripting examples](#scripting-examples)
 - [Troubleshooting](#troubleshooting)
@@ -235,6 +235,24 @@ The song playing (or paused), its album, and the position.
 groovelight now-playing [--json]
 ```
 
+### Home
+
+#### `today`
+
+Song, Album and Artist of the Day, as Home shows them (the same all day), each with why it was picked and how many songs it has.
+
+```sh
+groovelight today [--json]
+```
+
+#### `stats`
+
+What you listened to over a range: listening time, plays, songs, songs new to you, your streak of days, top songs, albums and artists, genres, and plays by place (this computer, phones, Last.fm). The range is the last 7 days, 30 days (the default), 12 months, or all time.
+
+```sh
+groovelight stats [--range week|month|year|all] [--json]
+```
+
 ### `mcp`
 
 Runs the MCP server for Claude and other AI tools over stdin and stdout. It is not meant to be run by hand: see [MCP.md](MCP.md).
@@ -270,6 +288,8 @@ JSON shapes (fields without a value are left out):
 | `now-playing` and playback commands | `id`, `title`, `artist`, `album`, `state` (`playing`, `paused`, `stopped`), `position`, `duration` (seconds); `null` when nothing is playing |
 | `playlists` | `playlists` (`id`, `name`, `smart`, `songs`) |
 | `create-playlist`, `add-to-playlist` | `id`, `name`, `smart`, `songs` |
+| `today` | `picks` (`kind`: `song`, `album` or `artist`; `title`, `subtitle`, `key`, `reason`, `song_ids`) |
+| `stats` | `range`, `minutes`, `plays`, `songs`, `newSongs`, `streak`, `buckets` (`label`, `minutes` by place), `hours` (7 rows of 24, Sunday first), `topSongs`, `topAlbums`, `topArtists`, `genres`, `decades` (`name`, `detail`, `key`, `plays`, `artworkHash`), `places` (`here`, `devices`, `lastfm`), `librarySongs`, `neverPlayed`, `loved` |
 
 ## Scripting examples
 
