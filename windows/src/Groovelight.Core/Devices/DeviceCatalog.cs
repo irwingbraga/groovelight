@@ -128,7 +128,6 @@ public static class DeviceHistory
     {
         var changed = new Dictionary<long, bool>();
         var changes = new DeviceHistoryChanges();
-        using var transaction = db.BeginTransaction();
         // Playlist edits keep the device's order; the rest by time.
         foreach (var edit in events.Where(item => item.IsPlaylistEdit))
             if (FirstTime(db, edit, deviceId)) ApplyPlaylistEdit(db, edit, deviceId);
@@ -151,6 +150,10 @@ public static class DeviceHistory
                     break;
                 case "play" or "skip":
                     if (!FirstTime(db, item, deviceId)) continue;
+                    ListeningLog.Insert(db, Listen.Of(track, item.Date, Math.Max(item.Value, 0), Listen.Sources.Device(deviceId)) with
+                    {
+                        Counted = item.Kind == "play", Skipped = item.Kind == "skip",
+                    });
                     if (item.Kind == "skip") db.Execute("UPDATE track SET skipCount = skipCount + 1 WHERE id = ?", item.TrackId);
                     else
                     {
@@ -166,7 +169,6 @@ public static class DeviceHistory
         }
         // Counted plays are remembered for a year.
         db.Execute("DELETE FROM deviceHistoryEvent WHERE appliedAt < ?", DateTime.UtcNow.AddDays(-365));
-        transaction.Commit();
         changes.Loves.AddRange(changed.OrderBy(pair => pair.Key).Select(pair => (pair.Key, pair.Value)));
         return changes;
     });

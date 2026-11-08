@@ -15,6 +15,7 @@ final class LastFMStore {
         static let nowPlaying = "lastfm.nowPlaying"
         static let syncLoves = "lastfm.syncLoves"
         static let lastSentAt = "lastfm.lastSentAt"
+        static let historyImportedAt = "lastfm.historyImportedAt"
     }
 
     /// The user's name on Last.fm while connected.
@@ -26,6 +27,14 @@ final class LastFMStore {
     /// What went wrong last (nil after a successful send).
     private(set) var problem: String?
     private(set) var lastSentAt: Date?
+
+    /// Bringing the user's Last.fm history into the listening log (for Home): progress while it runs, and what is in.
+    private(set) var historyProgress: LastFMHistoryImport.Progress?
+    private(set) var historyProblem: String?
+    private(set) var historyImportedAt: Date?
+    /// Last.fm plays in the log, and how many of them are songs in the library.
+    private(set) var historyCounts = (plays: 0, matched: 0)
+    private(set) var isImportingHistory = false
 
     /// The app's Last.fm API account (key in the preferences, secret in the keychain).
     var apiKey: String {
@@ -45,6 +54,9 @@ final class LastFMStore {
     @ObservationIgnored private var connectTask: Task<Void, Never>?
     @ObservationIgnored private var sendTask: Task<Void, Never>?
     @ObservationIgnored private var timerTask: Task<Void, Never>?
+    @ObservationIgnored private var historyTask: Task<Void, Never>? {
+        didSet { isImportingHistory = historyTask != nil }
+    }
     /// The song playing now: when it started and its library record (album artist, track number).
     @ObservationIgnored private var current: (id: Int64, startedAt: Date, track: Track?)?
 
@@ -53,6 +65,7 @@ final class LastFMStore {
         sender = LastFMSender(database: database)
         apiKey = UserDefaults.standard.string(forKey: Keys.apiKey) ?? ""
         lastSentAt = UserDefaults.standard.object(forKey: Keys.lastSentAt) as? Date
+        historyImportedAt = UserDefaults.standard.object(forKey: Keys.historyImportedAt) as? Date
         UserDefaults.standard.register(defaults: [Keys.scrobble: true, Keys.nowPlaying: true, Keys.syncLoves: true])
         // After launch, so macOS can ask to allow keychain access (items saved by a build with another signature).
         // During `App.init` that prompt is cancelled, and the sign-in would look lost.
@@ -64,11 +77,24 @@ final class LastFMStore {
                 for try await count in database.observe({ try LibraryDatabase.lastFMQueueCount($0) }) { self?.pendingCount = count }
             } catch {}
         }
-        // Retries what is waiting every few minutes (offline, Last.fm down), and right away at launch.
+        Task { [weak self, database] in
+            do {
+                for try await counts in database.observe({ try LibraryDatabase.listenCounts($0, source: Listen.Source.lastfm) }) {
+                    self?.historyCounts = counts
+                }
+            } catch {}
+        }
+        // Retries what is waiting every few minutes (offline, Last.fm down), and right away at launch. Once the history was
+        // imported, what is new on Last.fm (from other players) follows every 6 hours.
         timerTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(5))
+            var lastHistoryCheck = Date.distantPast
             while !Task.isCancelled {
                 self?.sendSoon(after: 0)
+                if let self, self.historyImportedAt != nil, Date.now.timeIntervalSince(lastHistoryCheck) > 6 * 3600 {
+                    lastHistoryCheck = .now
+                    self.importHistory()
+                }
                 try? await Task.sleep(for: .seconds(300))
             }
         }
@@ -138,6 +164,39 @@ final class LastFMStore {
         username = nil
         Keychain.set(nil, for: "session")
         UserDefaults.standard.removeObject(forKey: Keys.username)
+    }
+
+    // MARK: - History
+
+    /// Imports the plays on Last.fm not in the log yet, in the background (1 page of 200 a second).
+    func importHistory() {
+        guard historyTask == nil, let client = client(), let username else { return }
+        historyProblem = nil
+        let importer = LastFMHistoryImport(database: database, client: client, user: username)
+        historyTask = Task.detached(priority: .utility) { [weak self] in
+            do {
+                _ = try await importer.run { progress in
+                    Task { @MainActor in self?.historyProgress = progress }
+                }
+                await MainActor.run {
+                    self?.historyImportedAt = .now
+                    UserDefaults.standard.set(Date.now, forKey: Keys.historyImportedAt)
+                }
+            } catch is CancellationError {
+            } catch let error as LastFMError {
+                await MainActor.run { self?.historyProblem = LastFMSender.describe(error) }
+            } catch {
+                await MainActor.run { self?.historyProblem = error.localizedDescription }
+            }
+            await MainActor.run {
+                self?.historyTask = nil
+                self?.historyProgress = nil
+            }
+        }
+    }
+
+    func cancelHistoryImport() {
+        historyTask?.cancel()
     }
 
     var profileURL: URL? {

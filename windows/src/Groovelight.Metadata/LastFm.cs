@@ -96,6 +96,50 @@ public sealed class LastFmClient(LastFmCredentials credentials, string? sessionK
     public Task SetLovedAsync(bool loved, string artist, string track) =>
         CallAsync(loved ? "track.love" : "track.unlove", new() { ["artist"] = artist, ["track"] = track }, true, true);
 
+    /// <summary>
+    /// One page of the user's scrobbles (user.getRecentTracks, newest first, up to 200 a page), between <paramref name="from"/>
+    /// and <paramref name="to"/>. The song playing now (no date yet) is left out.
+    /// </summary>
+    public async Task<LastFmHistoryPage> RecentTracksAsync(string user, DateTime? from, DateTime to, int page, int limit = 200)
+    {
+        var parameters = new Dictionary<string, string>
+        {
+            ["user"] = user, ["page"] = page.ToString(CultureInfo.InvariantCulture), ["limit"] = limit.ToString(CultureInfo.InvariantCulture),
+            ["to"] = new DateTimeOffset(DateTime.SpecifyKind(to, DateTimeKind.Utc)).ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture),
+        };
+        if (from is { } start)
+            parameters["from"] = new DateTimeOffset(DateTime.SpecifyKind(start, DateTimeKind.Utc)).ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture);
+        return HistoryPage(await CallAsync("user.getRecentTracks", parameters, false, false));
+    }
+
+    public static LastFmHistoryPage HistoryPage(JsonElement json)
+    {
+        if (!json.TryGetProperty("recenttracks", out var recent)) throw new LastFmException(LastFmException.Kind.InvalidResponse);
+        var plays = new List<LastFmPlay>();
+        if (recent.TryGetProperty("track", out var tracks))
+        {
+            // One track comes as an object, not a list.
+            var items = tracks.ValueKind == JsonValueKind.Array ? tracks.EnumerateArray().ToList() : [tracks];
+            foreach (var item in items)
+            {
+                if (!item.TryGetProperty("date", out var date) || !date.TryGetProperty("uts", out var uts)
+                    || !long.TryParse(uts.ValueKind == JsonValueKind.String ? uts.GetString() : uts.GetRawText(), out var seconds)
+                    || !item.TryGetProperty("name", out var name) || name.GetString() is not { } title)
+                    continue;
+                plays.Add(new LastFmPlay(Text(item, "artist"), title, Text(item, "album"), DateTime.UnixEpoch.AddSeconds(seconds)));
+            }
+        }
+        var attributes = recent.TryGetProperty("@attr", out var attr) ? attr : default;
+        return attributes.ValueKind == JsonValueKind.Object
+            ? new LastFmHistoryPage(plays, Int(attributes, "page"), Int(attributes, "totalPages"), Int(attributes, "total"))
+            : new LastFmHistoryPage(plays, 0, 0, 0);
+
+        static string Text(JsonElement item, string key) =>
+            item.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.Object
+                ? (value.TryGetProperty("#text", out var text) ? text.GetString() : value.TryGetProperty("name", out var named) ? named.GetString() : null) ?? ""
+                : "";
+    }
+
     /// <summary>Indexed parameters of a scrobble batch ("artist[0]", "timestamp[0]"...).</summary>
     public static Dictionary<string, string> ScrobbleParameters(IReadOnlyList<(LastFmTrack Track, DateTime StartedAt)> scrobbles)
     {

@@ -7,7 +7,7 @@ namespace Groovelight.Support;
 /// <summary>
 /// Command line options for checking the UI over SSH (the Mac's debug tour launch arguments):
 /// <c>--debug-data &lt;folder&gt;</c> uses another library, <c>--debug-library &lt;folder&gt;</c> adds a music folder,
-/// <c>--debug-page &lt;page&gt;</c> opens a page (albums, artists, songs, genres, shelf, playlists, loved, search:&lt;text&gt;,
+/// <c>--debug-page &lt;page&gt;</c> opens a page (home, albums, artists, songs, genres, shelf, playlists, loved, search:&lt;text&gt;,
 /// settings, album:&lt;title&gt;), <c>--debug-play</c> starts the first album, <c>--debug-panel lyrics|queue</c>,
 /// <c>--debug-now-playing</c>, and <c>--debug-snapshot-delay &lt;seconds&gt;</c>.
 /// </summary>
@@ -60,7 +60,7 @@ internal static class DebugOptions
                 default:
                     if (SidebarItem.FromTag(page switch
                         {
-                            "albums" => "Albums", "artists" => "Artists", "songs" => "Songs", "genres" => "Genres", "shelf" => "Shelf",
+                            "home" => "Home", "albums" => "Albums", "artists" => "Artists", "songs" => "Songs", "genres" => "Genres", "shelf" => "Shelf",
                             "playlists" => "AllPlaylists", "loved" => "LovedSongs", "recent" => "RecentlyAdded", _ => page,
                         }) is { } item) model.Selection = item;
                     break;

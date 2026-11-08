@@ -154,7 +154,7 @@ public sealed partial class AppModel : Support.Observable
 
     // MARK: Navigation state
 
-    private SidebarItem selection = SidebarItem.Albums;
+    private SidebarItem selection = SidebarItem.Home;
 
     public SidebarItem Selection
     {
@@ -579,14 +579,13 @@ public sealed partial class AppModel : Support.Observable
         Player.Seek(Math.Clamp(Player.CurrentTime + seconds, 0, Player.Duration));
     }
 
-    /// <summary>Plays count when at least half the track (or 4 minutes) was heard; early skips count as skips.</summary>
+    /// <summary>Logs the listen: plays count when at least half the track (or 4 minutes) was heard, early stops count as skips.</summary>
     private void RecordListen(PlayableItem item, double seconds)
     {
-        var threshold = Math.Min(item.Duration * 0.5, 240);
+        if (seconds <= 0) return;
         try
         {
-            if (seconds >= threshold && item.Duration > 0) Database.RecordPlay(item.Id);
-            else if (seconds < Math.Min(20, item.Duration * 0.5)) Database.RecordSkip(item.Id);
+            Database.RecordListen(item.Id, DateTime.UtcNow.AddSeconds(-seconds), seconds);
         }
         catch (Microsoft.Data.Sqlite.SqliteException)
         {

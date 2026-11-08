@@ -154,6 +154,7 @@ struct DetailView: View {
         Group {
             switch model.selection ?? .albums {
             case .search: SearchView()
+            case .home: HomeView()
             case .recentlyAdded: AlbumsGridView(mode: .recentlyAdded)
             case .albums: AlbumsGridView(mode: .all)
             case .artists: ArtistsView()

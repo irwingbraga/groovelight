@@ -211,6 +211,40 @@ public final class LibraryDatabase: Sendable {
                 t.primaryKey(["deviceId", "eventId"])
             }
         }
+        migrator.registerMigration("v13-listen") { db in
+            // One row per listen (Home's picks and charts). Songs played before the log get one summary row with their total.
+            try db.create(table: Listen.databaseTableName) { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("trackId", .integer).references(Track.databaseTableName, onDelete: .setNull)
+                t.column("startedAt", .datetime).notNull().indexed()
+                t.column("listened", .double).notNull()
+                t.column("duration", .double).notNull()
+                t.column("counted", .boolean).notNull()
+                t.column("skipped", .boolean).notNull()
+                t.column("source", .text).notNull()
+                t.column("count", .integer).notNull().defaults(to: 1)
+                t.column("artist", .text).notNull()
+                t.column("title", .text).notNull()
+                t.column("album", .text).notNull()
+            }
+            try db.create(index: "listen_track_time", on: Listen.databaseTableName, columns: ["trackId", "startedAt"])
+            try db.execute(sql: """
+                INSERT INTO listen (trackId, startedAt, listened, duration, counted, skipped, source, count, artist, title, album)
+                SELECT id, COALESCE(lastPlayedAt, dateAdded), duration, duration, 1, 0, 'summary', playCount,
+                       COALESCE(artist, ''), COALESCE(title, ''), COALESCE(album, '')
+                FROM track WHERE playCount > 0
+                """)
+        }
+        migrator.registerMigration("v14-dailyPick") { db in
+            // Home's picks of the day, kept so a day's pick stays all day and does not come back too soon.
+            try db.create(table: "dailyPick") { t in
+                t.column("day", .integer).notNull()
+                t.column("kind", .text).notNull()
+                t.column("key", .text).notNull()
+                t.column("reason", .text)
+                t.primaryKey(["day", "kind"])
+            }
+        }
         return migrator
     }
 

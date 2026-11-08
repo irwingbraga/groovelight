@@ -126,3 +126,86 @@ public class LastFmTests
         Assert.True(error.IsUnauthorizedToken);
     }
 }
+
+/// <summary>The Mac's LastFMHistoryTests, ported.</summary>
+public class LastFmHistoryTests
+{
+    private sealed class Pages(Func<Dictionary<string, string>, (int Status, string Body)> answer) : HttpMessageHandler
+    {
+        public List<Dictionary<string, string>> Calls { get; } = [];
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var parameters = request.RequestUri!.Query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries).Select(pair => pair.Split('=', 2))
+                .ToDictionary(pair => Uri.UnescapeDataString(pair[0]), pair => Uri.UnescapeDataString(pair.Length > 1 ? pair[1] : ""));
+            Calls.Add(parameters);
+            var (status, body) = answer(parameters);
+            return Task.FromResult(new HttpResponseMessage((HttpStatusCode)status) { Content = new StringContent(body) });
+        }
+    }
+
+    [Fact]
+    public void MatchesNamesSpelledDifferently()
+    {
+        Assert.Equal(SongKey.Key("Beyonce", "Crazy In Love"), SongKey.Key("Beyoncé feat. JAY-Z", "Crazy in Love (Remastered 2023)"));
+        Assert.Equal(SongKey.Key("Beatles", "Something"), SongKey.Key("The Beatles", "Something - 2019 Mix"));
+        Assert.Equal(SongKey.Key("Simon and Garfunkel", "Mrs Robinson"), SongKey.Key("Simon & Garfunkel", "Mrs. Robinson"));
+        Assert.Equal("stay with me", SongKey.Normalize("Stay With Me"));
+        Assert.NotEqual(SongKey.Key("Radiohead", "Lucky"), SongKey.Key("Radiohead", "Airbag"));
+    }
+
+    [Fact]
+    public void ReadsAPageOfHistory()
+    {
+        var json = System.Text.Json.JsonDocument.Parse("""
+            {"recenttracks": {"@attr": {"page": "2", "totalPages": "7", "total": "1300"}, "track": [
+              {"name": "Now", "artist": {"#text": "A"}, "album": {"#text": "B"}, "@attr": {"nowplaying": "true"}},
+              {"name": "Airbag", "artist": {"#text": "Radiohead"}, "album": {"#text": "OK Computer"}, "date": {"uts": "1700000000"}}
+            ]}}
+            """).RootElement;
+        var page = LastFmClient.HistoryPage(json);
+        Assert.Equal((2, 7, 1300), (page.Page, page.TotalPages, page.Total));
+        Assert.Equal([new LastFmPlay("Radiohead", "Airbag", "OK Computer", DateTime.UnixEpoch.AddSeconds(1_700_000_000))], page.Plays);
+    }
+
+    [Fact]
+    public async Task ImportsHistoryOldestFirstWithoutCountingOwnScrobblesTwice()
+    {
+        using var database = TestLibrary.Seeded();
+        var base_ = DateTime.UnixEpoch.AddSeconds(1_800_000_000);
+        var seconds = 1_800_000_000L;
+        // Played here, then scrobbled by Groovelight: the same play.
+        database.RecordListen(4, base_, 180);
+        string Item(string artist, string title, string album, int offset) =>
+            $$$"""{"name": "{{{title}}}", "artist": {"#text": "{{{artist}}}"}, "album": {"#text": "{{{album}}}"}, "date": {"uts": "{{{seconds + offset}}}"}}""";
+        var pages = new Dictionary<int, string[]>
+        {
+            [1] = [Item("Radiohead", "Paranoid Android", "OK Computer", 30), Item("Unknown Band", "Lost Song", "X", -500)],
+            [2] = [Item("the beatles", "Something (Remastered)", "Abbey Road", -1000), Item("Beatles", "Come Together", "Abbey Road", -2000)],
+        };
+        var fake = new Pages(parameters =>
+        {
+            var number = int.Parse(parameters.GetValueOrDefault("page", "1"));
+            var tracks = string.Join(",", pages.GetValueOrDefault(number) ?? []);
+            return (200, $$$"""{"recenttracks": {"@attr": {"page": "{{{number}}}", "totalPages": "2", "total": "4"}, "track": [{{{tracks}}}]}}""");
+        });
+        var importer = new LastFmHistoryImport(database, new LastFmClient(new LastFmCredentials("K", "S"), handler: fake), "ana")
+        {
+            Pause = TimeSpan.Zero, Now = () => base_.AddHours(1),
+        };
+        var result = await importer.RunAsync(cancellation: TestContext.Current.CancellationToken);
+        Assert.Equal((3, 2, 2), (result.Imported, result.Matched, result.Page));
+        Assert.Equal(["1", "2"], fake.Calls.Select(call => call["page"]));
+        Assert.All(fake.Calls, call => Assert.Equal(("user.getRecentTracks", "ana", false), (call["method"], call["user"], call.ContainsKey("from"))));
+
+        var imported = database.Listens().Where(listen => listen.Source == Listen.Sources.LastFm).ToList();
+        Assert.Equal(["Come Together", "Something (Remastered)", "Lost Song"], imported.Select(listen => listen.Title));
+        Assert.Equal([1L, 2L, null], imported.Select(listen => listen.TrackId));
+        Assert.True(imported[0].Counted && imported[0].Duration == 180);
+        // Play counts stay as they were: Last.fm plays are history, not new plays.
+        Assert.Equal(0, database.Read(db => db.FetchTracks("SELECT * FROM track WHERE id = 1"))[0].PlayCount);
+
+        await importer.RunAsync(cancellation: TestContext.Current.CancellationToken);
+        Assert.Equal((seconds - 500 + 1).ToString(System.Globalization.CultureInfo.InvariantCulture), fake.Calls[^1]["from"]);
+    }
+}

@@ -41,7 +41,7 @@ let package = Package(
         ),
         .target(
             name: "Scrobbler",
-            dependencies: ["LibraryKit", "MetadataKit"]
+            dependencies: ["LibraryKit", "MetadataKit", .product(name: "GRDB", package: "GRDB.swift")]
         ),
         .target(
             name: "WirelessSync",

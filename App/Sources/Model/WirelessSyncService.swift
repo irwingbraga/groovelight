@@ -242,7 +242,11 @@ final class WirelessSyncService {
             mayControl: { [weak self] id in await self?.controlsPlayback(id) ?? false },
             deviceName: { [weak self] id in await self?.paired.first { $0.id == id }?.name },
             mayConnectAway: { [weak self] id in await self?.connectsAway(id) ?? false },
-            lyrics: { [weak self] id in await self?.lyrics(of: id) })
+            lyrics: { [weak self] id in await self?.lyrics(of: id) },
+            home: { [database = model.database] _ in
+                let home = try await Task.detached(priority: .userInitiated) { try database.homeSnapshot() }.value
+                return try WirelessProtocol.encoder.encode(home)
+            })
     }
 
     /// A song's lyrics for a device showing it without having it (music playing on this Mac, or on another device

@@ -1,0 +1,5241 @@
+{
+ "today": 20400,
+ "songs": [
+  {
+   "id": 1,
+   "title": "OK Computer Song 1",
+   "artist": "Radiohead",
+   "albumArtist": "Radiohead",
+   "album": "OK Computer",
+   "albumKey": "radiohead|ok computer",
+   "genre": "Rock",
+   "year": 1997,
+   "loved": false,
+   "rating": 0,
+   "addedDay": 18874,
+   "duration": 201.0,
+   "order": 1001
+  },
+  {
+   "id": 2,
+   "title": "OK Computer Song 2",
+   "artist": "Radiohead",
+   "albumArtist": "Radiohead",
+   "album": "OK Computer",
+   "albumKey": "radiohead|ok computer",
+   "genre": "Rock",
+   "year": 1997,
+   "loved": true,
+   "rating": 5,
+   "addedDay": 17534,
+   "duration": 202.0,
+   "order": 1002
+  },
+  {
+   "id": 3,
+   "title": "OK Computer Song 3",
+   "artist": "Radiohead",
+   "albumArtist": "Radiohead",
+   "album": "OK Computer",
+   "albumKey": "radiohead|ok computer",
+   "genre": "Rock",
+   "year": 1997,
+   "loved": true,
+   "rating": 3,
+   "addedDay": 18006,
+   "duration": 203.0,
+   "order": 1003
+  },
+  {
+   "id": 4,
+   "title": "OK Computer Song 4",
+   "artist": "Radiohead",
+   "albumArtist": "Radiohead",
+   "album": "OK Computer",
+   "albumKey": "radiohead|ok computer",
+   "genre": "Rock",
+   "year": 1997,
+   "loved": false,
+   "rating": 0,
+   "addedDay": 19963,
+   "duration": 204.0,
+   "order": 1004
+  },
+  {
+   "id": 5,
+   "title": "OK Computer Song 5",
+   "artist": "Radiohead",
+   "albumArtist": "Radiohead",
+   "album": "OK Computer",
+   "albumKey": "radiohead|ok computer",
+   "genre": "Rock",
+   "year": 1997,
+   "loved": true,
+   "rating": 0,
+   "addedDay": 20047,
+   "duration": 205.0,
+   "order": 1005
+  },
+  {
+   "id": 6,
+   "title": "Kid A Song 1",
+   "artist": "Radiohead",
+   "albumArtist": "Radiohead",
+   "album": "Kid A",
+   "albumKey": "radiohead|kid a",
+   "genre": "Rock",
+   "year": 2000,
+   "loved": false,
+   "rating": 3,
+   "addedDay": 19914,
+   "duration": 201.0,
+   "order": 1001
+  },
+  {
+   "id": 7,
+   "title": "Kid A Song 2",
+   "artist": "Radiohead",
+   "albumArtist": "Radiohead",
+   "album": "Kid A",
+   "albumKey": "radiohead|kid a",
+   "genre": "Rock",
+   "year": 2000,
+   "loved": true,
+   "rating": 3,
+   "addedDay": 18462,
+   "duration": 202.0,
+   "order": 1002
+  },
+  {
+   "id": 8,
+   "title": "Kid A Song 3",
+   "artist": "Radiohead",
+   "albumArtist": "Radiohead",
+   "album": "Kid A",
+   "albumKey": "radiohead|kid a",
+   "genre": "Rock",
+   "year": 2000,
+   "loved": false,
+   "rating": 4,
+   "addedDay": 19693,
+   "duration": 203.0,
+   "order": 1003
+  },
+  {
+   "id": 9,
+   "title": "Kid A Song 4",
+   "artist": "Radiohead",
+   "albumArtist": "Radiohead",
+   "album": "Kid A",
+   "albumKey": "radiohead|kid a",
+   "genre": "Rock",
+   "year": 2000,
+   "loved": false,
+   "rating": 0,
+   "addedDay": 17631,
+   "duration": 204.0,
+   "order": 1004
+  },
+  {
+   "id": 10,
+   "title": "Kid A Song 5",
+   "artist": "Radiohead",
+   "albumArtist": "Radiohead",
+   "album": "Kid A",
+   "albumKey": "radiohead|kid a",
+   "genre": "Rock",
+   "year": 2000,
+   "loved": false,
+   "rating": 0,
+   "addedDay": 17837,
+   "duration": 205.0,
+   "order": 1005
+  },
+  {
+   "id": 11,
+   "title": "Homogenic Song 1",
+   "artist": "Björk",
+   "albumArtist": "Björk",
+   "album": "Homogenic",
+   "albumKey": "björk|homogenic",
+   "genre": "Rock",
+   "year": 1997,
+   "loved": true,
+   "rating": 5,
+   "addedDay": 19295,
+   "duration": 201.0,
+   "order": 1001
+  },
+  {
+   "id": 12,
+   "title": "Homogenic Song 2",
+   "artist": "Björk",
+   "albumArtist": "Björk",
+   "album": "Homogenic",
+   "albumKey": "björk|homogenic",
+   "genre": "Rock",
+   "year": 1997,
+   "loved": false,
+   "rating": 0,
+   "addedDay": 19655,
+   "duration": 202.0,
+   "order": 1002
+  },
+  {
+   "id": 13,
+   "title": "Homogenic Song 3",
+   "artist": "Björk",
+   "albumArtist": "Björk",
+   "album": "Homogenic",
+   "albumKey": "björk|homogenic",
+   "genre": "Rock",
+   "year": 1997,
+   "loved": true,
+   "rating": 0,
+   "addedDay": 17986,
+   "duration": 203.0,
+   "order": 1003
+  },
+  {
+   "id": 14,
+   "title": "Homogenic Song 4",
+   "artist": "Björk",
+   "albumArtist": "Björk",
+   "album": "Homogenic",
+   "albumKey": "björk|homogenic",
+   "genre": "Rock",
+   "year": 1997,
+   "loved": false,
+   "rating": 0,
+   "addedDay": 17906,
+   "duration": 204.0,
+   "order": 1004
+  },
+  {
+   "id": 15,
+   "title": "Homogenic Song 5",
+   "artist": "Björk",
+   "albumArtist": "Björk",
+   "album": "Homogenic",
+   "albumKey": "björk|homogenic",
+   "genre": "Rock",
+   "year": 1997,
+   "loved": false,
+   "rating": 4,
+   "addedDay": 19778,
+   "duration": 205.0,
+   "order": 1005
+  },
+  {
+   "id": 16,
+   "title": "Abbey Road Song 1",
+   "artist": "The Beatles",
+   "albumArtist": "The Beatles",
+   "album": "Abbey Road",
+   "albumKey": "the beatles|abbey road",
+   "genre": "Rock",
+   "year": 1969,
+   "loved": false,
+   "rating": 3,
+   "addedDay": 19431,
+   "duration": 201.0,
+   "order": 1001
+  },
+  {
+   "id": 17,
+   "title": "Abbey Road Song 2",
+   "artist": "The Beatles",
+   "albumArtist": "The Beatles",
+   "album": "Abbey Road",
+   "albumKey": "the beatles|abbey road",
+   "genre": "Rock",
+   "year": 1969,
+   "loved": false,
+   "rating": 3,
+   "addedDay": 19943,
+   "duration": 202.0,
+   "order": 1002
+  },
+  {
+   "id": 18,
+   "title": "Abbey Road Song 3",
+   "artist": "The Beatles",
+   "albumArtist": "The Beatles",
+   "album": "Abbey Road",
+   "albumKey": "the beatles|abbey road",
+   "genre": "Rock",
+   "year": 1969,
+   "loved": false,
+   "rating": 3,
+   "addedDay": 19357,
+   "duration": 203.0,
+   "order": 1003
+  },
+  {
+   "id": 19,
+   "title": "Abbey Road Song 4",
+   "artist": "The Beatles",
+   "albumArtist": "The Beatles",
+   "album": "Abbey Road",
+   "albumKey": "the beatles|abbey road",
+   "genre": "Rock",
+   "year": 1969,
+   "loved": false,
+   "rating": 0,
+   "addedDay": 18449,
+   "duration": 204.0,
+   "order": 1004
+  },
+  {
+   "id": 20,
+   "title": "Abbey Road Song 5",
+   "artist": "The Beatles",
+   "albumArtist": "The Beatles",
+   "album": "Abbey Road",
+   "albumKey": "the beatles|abbey road",
+   "genre": "Rock",
+   "year": 1969,
+   "loved": false,
+   "rating": 0,
+   "addedDay": 17802,
+   "duration": 205.0,
+   "order": 1005
+  },
+  {
+   "id": 21,
+   "title": "Revolver Song 1",
+   "artist": "The Beatles",
+   "albumArtist": "The Beatles",
+   "album": "Revolver",
+   "albumKey": "the beatles|revolver",
+   "genre": "Rock",
+   "year": 1972,
+   "loved": false,
+   "rating": 0,
+   "addedDay": 18973,
+   "duration": 201.0,
+   "order": 1001
+  },
+  {
+   "id": 22,
+   "title": "Revolver Song 2",
+   "artist": "The Beatles",
+   "albumArtist": "The Beatles",
+   "album": "Revolver",
+   "albumKey": "the beatles|revolver",
+   "genre": "Rock",
+   "year": 1972,
+   "loved": true,
+   "rating": 0,
+   "addedDay": 19201,
+   "duration": 202.0,
+   "order": 1002
+  },
+  {
+   "id": 23,
+   "title": "Revolver Song 3",
+   "artist": "The Beatles",
+   "albumArtist": "The Beatles",
+   "album": "Revolver",
+   "albumKey": "the beatles|revolver",
+   "genre": "Rock",
+   "year": 1972,
+   "loved": false,
+   "rating": 0,
+   "addedDay": 18049,
+   "duration": 203.0,
+   "order": 1003
+  },
+  {
+   "id": 24,
+   "title": "Revolver Song 4",
+   "artist": "The Beatles",
+   "albumArtist": "The Beatles",
+   "album": "Revolver",
+   "albumKey": "the beatles|revolver",
+   "genre": "Rock",
+   "year": 1972,
+   "loved": false,
+   "rating": 0,
+   "addedDay": 18362,
+   "duration": 204.0,
+   "order": 1004
+  },
+  {
+   "id": 25,
+   "title": "Revolver Song 5",
+   "artist": "The Beatles",
+   "albumArtist": "The Beatles",
+   "album": "Revolver",
+   "albumKey": "the beatles|revolver",
+   "genre": "Rock",
+   "year": 1972,
+   "loved": false,
+   "rating": 0,
+   "addedDay": 19717,
+   "duration": 205.0,
+   "order": 1005
+  },
+  {
+   "id": 26,
+   "title": "Mezzanine Song 1",
+   "artist": "Massive Attack",
+   "albumArtist": "Massive Attack",
+   "album": "Mezzanine",
+   "albumKey": "massive attack|mezzanine",
+   "genre": "Rock",
+   "year": 1998,
+   "loved": false,
+   "rating": 0,
+   "addedDay": 18799,
+   "duration": 201.0,
+   "order": 1001
+  },
+  {
+   "id": 27,
+   "title": "Mezzanine Song 2",
+   "artist": "Massive Attack",
+   "albumArtist": "Massive Attack",
+   "album": "Mezzanine",
+   "albumKey": "massive attack|mezzanine",
+   "genre": "Rock",
+   "year": 1998,
+   "loved": true,
+   "rating": 4,
+   "addedDay": 18473,
+   "duration": 202.0,
+   "order": 1002
+  },
+  {
+   "id": 28,
+   "title": "Mezzanine Song 3",
+   "artist": "Massive Attack",
+   "albumArtist": "Massive Attack",
+   "album": "Mezzanine",
+   "albumKey": "massive attack|mezzanine",
+   "genre": "Rock",
+   "year": 1998,
+   "loved": false,
+   "rating": 3,
+   "addedDay": 19883,
+   "duration": 203.0,
+   "order": 1003
+  },
+  {
+   "id": 29,
+   "title": "Mezzanine Song 4",
+   "artist": "Massive Attack",
+   "albumArtist": "Massive Attack",
+   "album": "Mezzanine",
+   "albumKey": "massive attack|mezzanine",
+   "genre": "Rock",
+   "year": 1998,
+   "loved": false,
+   "rating": 0,
+   "addedDay": 18915,
+   "duration": 204.0,
+   "order": 1004
+  },
+  {
+   "id": 30,
+   "title": "Mezzanine Song 5",
+   "artist": "Massive Attack",
+   "albumArtist": "Massive Attack",
+   "album": "Mezzanine",
+   "albumKey": "massive attack|mezzanine",
+   "genre": "Rock",
+   "year": 1998,
+   "loved": false,
+   "rating": 5,
+   "addedDay": 17766,
+   "duration": 205.0,
+   "order": 1005
+  },
+  {
+   "id": 31,
+   "title": "Dummy Song 1",
+   "artist": "Portishead",
+   "albumArtist": "Portishead",
+   "album": "Dummy",
+   "albumKey": "portishead|dummy",
+   "genre": "Rock",
+   "year": 1994,
+   "loved": true,
+   "rating": 0,
+   "addedDay": 18332,
+   "duration": 201.0,
+   "order": 1001
+  },
+  {
+   "id": 32,
+   "title": "Dummy Song 2",
+   "artist": "Portishead",
+   "albumArtist": "Portishead",
+   "album": "Dummy",
+   "albumKey": "portishead|dummy",
+   "genre": "Rock",
+   "year": 1994,
+   "loved": false,
+   "rating": 4,
+   "addedDay": 19095,
+   "duration": 202.0,
+   "order": 1002
+  },
+  {
+   "id": 33,
+   "title": "Dummy Song 3",
+   "artist": "Portishead",
+   "albumArtist": "Portishead",
+   "album": "Dummy",
+   "albumKey": "portishead|dummy",
+   "genre": "Rock",
+   "year": 1994,
+   "loved": true,
+   "rating": 4,
+   "addedDay": 19934,
+   "duration": 203.0,
+   "order": 1003
+  },
+  {
+   "id": 34,
+   "title": "Dummy Song 4",
+   "artist": "Portishead",
+   "albumArtist": "Portishead",
+   "album": "Dummy",
+   "albumKey": "portishead|dummy",
+   "genre": "Rock",
+   "year": 1994,
+   "loved": false,
+   "rating": 4,
+   "addedDay": 18932,
+   "duration": 204.0,
+   "order": 1004
+  },
+  {
+   "id": 35,
+   "title": "Dummy Song 5",
+   "artist": "Portishead",
+   "albumArtist": "Portishead",
+   "album": "Dummy",
+   "albumKey": "portishead|dummy",
+   "genre": "Rock",
+   "year": 1994,
+   "loved": false,
+   "rating": 0,
+   "addedDay": 18375,
+   "duration": 205.0,
+   "order": 1005
+  },
+  {
+   "id": 36,
+   "title": "Moon Safari Song 1",
+   "artist": "Air",
+   "albumArtist": "Air",
+   "album": "Moon Safari",
+   "albumKey": "air|moon safari",
+   "genre": "Rock",
+   "year": 1998,
+   "loved": false,
+   "rating": 0,
+   "addedDay": 17462,
+   "duration": 201.0,
+   "order": 1001
+  },
+  {
+   "id": 37,
+   "title": "Moon Safari Song 2",
+   "artist": "Air",
+   "albumArtist": "Air",
+   "album": "Moon Safari",
+   "albumKey": "air|moon safari",
+   "genre": "Rock",
+   "year": 1998,
+   "loved": false,
+   "rating": 0,
+   "addedDay": 18745,
+   "duration": 202.0,
+   "order": 1002
+  },
+  {
+   "id": 38,
+   "title": "Moon Safari Song 3",
+   "artist": "Air",
+   "albumArtist": "Air",
+   "album": "Moon Safari",
+   "albumKey": "air|moon safari",
+   "genre": "Rock",
+   "year": 1998,
+   "loved": true,
+   "rating": 5,
+   "addedDay": 18178,
+   "duration": 203.0,
+   "order": 1003
+  },
+  {
+   "id": 39,
+   "title": "Moon Safari Song 4",
+   "artist": "Air",
+   "albumArtist": "Air",
+   "album": "Moon Safari",
+   "albumKey": "air|moon safari",
+   "genre": "Rock",
+   "year": 1998,
+   "loved": false,
+   "rating": 0,
+   "addedDay": 19023,
+   "duration": 204.0,
+   "order": 1004
+  },
+  {
+   "id": 40,
+   "title": "Moon Safari Song 5",
+   "artist": "Air",
+   "albumArtist": "Air",
+   "album": "Moon Safari",
+   "albumKey": "air|moon safari",
+   "genre": "Rock",
+   "year": 1998,
+   "loved": false,
+   "rating": 5,
+   "addedDay": 18571,
+   "duration": 205.0,
+   "order": 1005
+  },
+  {
+   "id": 41,
+   "title": "re:member Song 1",
+   "artist": "Ólafur Arnalds",
+   "albumArtist": "Ólafur Arnalds",
+   "album": "re:member",
+   "albumKey": "ólafur arnalds|re:member",
+   "genre": "Rock",
+   "year": 2018,
+   "loved": true,
+   "rating": 0,
+   "addedDay": 18167,
+   "duration": 201.0,
+   "order": 1001
+  },
+  {
+   "id": 42,
+   "title": "re:member Song 2",
+   "artist": "Ólafur Arnalds",
+   "albumArtist": "Ólafur Arnalds",
+   "album": "re:member",
+   "albumKey": "ólafur arnalds|re:member",
+   "genre": "Rock",
+   "year": 2018,
+   "loved": false,
+   "rating": 0,
+   "addedDay": 18555,
+   "duration": 202.0,
+   "order": 1002
+  },
+  {
+   "id": 43,
+   "title": "re:member Song 3",
+   "artist": "Ólafur Arnalds",
+   "albumArtist": "Ólafur Arnalds",
+   "album": "re:member",
+   "albumKey": "ólafur arnalds|re:member",
+   "genre": "Rock",
+   "year": 2018,
+   "loved": false,
+   "rating": 0,
+   "addedDay": 18437,
+   "duration": 203.0,
+   "order": 1003
+  },
+  {
+   "id": 44,
+   "title": "re:member Song 4",
+   "artist": "Ólafur Arnalds",
+   "albumArtist": "Ólafur Arnalds",
+   "album": "re:member",
+   "albumKey": "ólafur arnalds|re:member",
+   "genre": "Rock",
+   "year": 2018,
+   "loved": false,
+   "rating": 4,
+   "addedDay": 18499,
+   "duration": 204.0,
+   "order": 1004
+  },
+  {
+   "id": 45,
+   "title": "re:member Song 5",
+   "artist": "Ólafur Arnalds",
+   "albumArtist": "Ólafur Arnalds",
+   "album": "re:member",
+   "albumKey": "ólafur arnalds|re:member",
+   "genre": "Rock",
+   "year": 2018,
+   "loved": false,
+   "rating": 0,
+   "addedDay": 18642,
+   "duration": 205.0,
+   "order": 1005
+  },
+  {
+   "id": 46,
+   "title": "Mordechai Song 1",
+   "artist": "Khruangbin",
+   "albumArtist": "Khruangbin",
+   "album": "Mordechai",
+   "albumKey": "khruangbin|mordechai",
+   "genre": "Rock",
+   "year": 2020,
+   "loved": false,
+   "rating": 0,
+   "addedDay": 19861,
+   "duration": 201.0,
+   "order": 1001
+  },
+  {
+   "id": 47,
+   "title": "Mordechai Song 2",
+   "artist": "Khruangbin",
+   "albumArtist": "Khruangbin",
+   "album": "Mordechai",
+   "albumKey": "khruangbin|mordechai",
+   "genre": "Rock",
+   "year": 2020,
+   "loved": false,
+   "rating": 0,
+   "addedDay": 17503,
+   "duration": 202.0,
+   "order": 1002
+  },
+  {
+   "id": 48,
+   "title": "Mordechai Song 3",
+   "artist": "Khruangbin",
+   "albumArtist": "Khruangbin",
+   "album": "Mordechai",
+   "albumKey": "khruangbin|mordechai",
+   "genre": "Rock",
+   "year": 2020,
+   "loved": false,
+   "rating": 0,
+   "addedDay": 17787,
+   "duration": 203.0,
+   "order": 1003
+  },
+  {
+   "id": 49,
+   "title": "Mordechai Song 4",
+   "artist": "Khruangbin",
+   "albumArtist": "Khruangbin",
+   "album": "Mordechai",
+   "albumKey": "khruangbin|mordechai",
+   "genre": "Rock",
+   "year": 2020,
+   "loved": false,
+   "rating": 3,
+   "addedDay": 20184,
+   "duration": 204.0,
+   "order": 1004
+  },
+  {
+   "id": 50,
+   "title": "Mordechai Song 5",
+   "artist": "Khruangbin",
+   "albumArtist": "Khruangbin",
+   "album": "Mordechai",
+   "albumKey": "khruangbin|mordechai",
+   "genre": "Rock",
+   "year": 2020,
+   "loved": false,
+   "rating": 0,
+   "addedDay": 18688,
+   "duration": 205.0,
+   "order": 1005
+  },
+  {
+   "id": 51,
+   "title": "First Light Song 1",
+   "artist": "New Band",
+   "albumArtist": "New Band",
+   "album": "First Light",
+   "albumKey": "new band|first light",
+   "genre": "Rock",
+   "year": 2025,
+   "loved": false,
+   "rating": 4,
+   "addedDay": 20380,
+   "duration": 201.0,
+   "order": 1001
+  },
+  {
+   "id": 52,
+   "title": "First Light Song 2",
+   "artist": "New Band",
+   "albumArtist": "New Band",
+   "album": "First Light",
+   "albumKey": "new band|first light",
+   "genre": "Rock",
+   "year": 2025,
+   "loved": false,
+   "rating": 3,
+   "addedDay": 20380,
+   "duration": 202.0,
+   "order": 1002
+  },
+  {
+   "id": 53,
+   "title": "First Light Song 3",
+   "artist": "New Band",
+   "albumArtist": "New Band",
+   "album": "First Light",
+   "albumKey": "new band|first light",
+   "genre": "Rock",
+   "year": 2025,
+   "loved": false,
+   "rating": 4,
+   "addedDay": 20380,
+   "duration": 203.0,
+   "order": 1003
+  },
+  {
+   "id": 54,
+   "title": "First Light Song 4",
+   "artist": "New Band",
+   "albumArtist": "New Band",
+   "album": "First Light",
+   "albumKey": "new band|first light",
+   "genre": "Rock",
+   "year": 2025,
+   "loved": true,
+   "rating": 5,
+   "addedDay": 20380,
+   "duration": 204.0,
+   "order": 1004
+  },
+  {
+   "id": 55,
+   "title": "First Light Song 5",
+   "artist": "New Band",
+   "albumArtist": "New Band",
+   "album": "First Light",
+   "albumKey": "new band|first light",
+   "genre": "Rock",
+   "year": 2025,
+   "loved": false,
+   "rating": 5,
+   "addedDay": 20380,
+   "duration": 205.0,
+   "order": 1005
+  }
+ ],
+ "plays": [
+  {
+   "trackId": 23,
+   "day": 18900,
+   "counted": true,
+   "skipped": false,
+   "count": 15,
+   "source": "summary"
+  },
+  {
+   "trackId": 27,
+   "day": 18900,
+   "counted": true,
+   "skipped": false,
+   "count": 15,
+   "source": "summary"
+  },
+  {
+   "trackId": 28,
+   "day": 18900,
+   "counted": true,
+   "skipped": false,
+   "count": 8,
+   "source": "summary"
+  },
+  {
+   "trackId": 34,
+   "day": 18900,
+   "counted": true,
+   "skipped": false,
+   "count": 6,
+   "source": "summary"
+  },
+  {
+   "trackId": 39,
+   "day": 18900,
+   "counted": true,
+   "skipped": false,
+   "count": 23,
+   "source": "summary"
+  },
+  {
+   "trackId": 44,
+   "day": 18900,
+   "counted": true,
+   "skipped": false,
+   "count": 24,
+   "source": "summary"
+  },
+  {
+   "trackId": 13,
+   "day": 19005,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 20,
+   "day": 19014,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 1,
+   "day": 19015,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 13,
+   "day": 19019,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 15,
+   "day": 19020,
+   "counted": false,
+   "skipped": true,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 15,
+   "day": 19020,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 15,
+   "day": 19023,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 15,
+   "day": 19026,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 13,
+   "day": 19028,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 7,
+   "day": 19035,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 20,
+   "day": 19046,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 7,
+   "day": 19070,
+   "counted": false,
+   "skipped": true,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 13,
+   "day": 19070,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 20,
+   "day": 19081,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 13,
+   "day": 19087,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 7,
+   "day": 19088,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 7,
+   "day": 19090,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 15,
+   "day": 19090,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 7,
+   "day": 19091,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 7,
+   "day": 19096,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 13,
+   "day": 19099,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 1,
+   "day": 19112,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 1,
+   "day": 19121,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 7,
+   "day": 19129,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 13,
+   "day": 19143,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 7,
+   "day": 19164,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 1,
+   "day": 19192,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 1,
+   "day": 19193,
+   "counted": false,
+   "skipped": true,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 15,
+   "day": 19208,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 1,
+   "day": 19210,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 7,
+   "day": 19220,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 15,
+   "day": 19229,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 7,
+   "day": 19231,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 1,
+   "day": 19236,
+   "counted": false,
+   "skipped": true,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 1,
+   "day": 19255,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 7,
+   "day": 19256,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 7,
+   "day": 19263,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 15,
+   "day": 19268,
+   "counted": false,
+   "skipped": true,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 1,
+   "day": 19275,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 7,
+   "day": 19278,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 15,
+   "day": 19283,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 20,
+   "day": 19287,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 20,
+   "day": 19293,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 20,
+   "day": 19299,
+   "counted": false,
+   "skipped": true,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 1,
+   "day": 19300,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 15,
+   "day": 19366,
+   "counted": false,
+   "skipped": true,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 20,
+   "day": 19382,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 1,
+   "day": 19424,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 1,
+   "day": 19425,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 1,
+   "day": 19427,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 13,
+   "day": 19427,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 13,
+   "day": 19438,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 20,
+   "day": 19439,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 1,
+   "day": 19441,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 1,
+   "day": 19447,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 15,
+   "day": 19455,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 13,
+   "day": 19463,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 13,
+   "day": 19463,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 1,
+   "day": 19464,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 15,
+   "day": 19466,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 1,
+   "day": 19469,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 15,
+   "day": 19478,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 7,
+   "day": 19486,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 7,
+   "day": 19493,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 18,
+   "day": 19500,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 18,
+   "day": 19503,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 24,
+   "day": 19503,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 24,
+   "day": 19505,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 24,
+   "day": 19508,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 24,
+   "day": 19518,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 44,
+   "day": 19538,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 49,
+   "day": 19542,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 18,
+   "day": 19543,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 42,
+   "day": 19543,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 49,
+   "day": 19559,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 21,
+   "day": 19563,
+   "counted": false,
+   "skipped": true,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 44,
+   "day": 19563,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 42,
+   "day": 19567,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 49,
+   "day": 19578,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 18,
+   "day": 19581,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 49,
+   "day": 19598,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 44,
+   "day": 19599,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 44,
+   "day": 19599,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 44,
+   "day": 19601,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 18,
+   "day": 19608,
+   "counted": false,
+   "skipped": true,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 21,
+   "day": 19635,
+   "counted": false,
+   "skipped": true,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 44,
+   "day": 19640,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 42,
+   "day": 19653,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 18,
+   "day": 19655,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 44,
+   "day": 19658,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 49,
+   "day": 19661,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 21,
+   "day": 19675,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 44,
+   "day": 19676,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 42,
+   "day": 19679,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 49,
+   "day": 19680,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 44,
+   "day": 19681,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 18,
+   "day": 19682,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 44,
+   "day": 19688,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 49,
+   "day": 19696,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 49,
+   "day": 19706,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 24,
+   "day": 19709,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 49,
+   "day": 19711,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 42,
+   "day": 19723,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 24,
+   "day": 19730,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 42,
+   "day": 19735,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 42,
+   "day": 19735,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 49,
+   "day": 19746,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 18,
+   "day": 19748,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 18,
+   "day": 19754,
+   "counted": false,
+   "skipped": true,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 18,
+   "day": 19755,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 24,
+   "day": 19757,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 49,
+   "day": 19757,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 44,
+   "day": 19761,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 18,
+   "day": 19763,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 42,
+   "day": 19767,
+   "counted": false,
+   "skipped": true,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 42,
+   "day": 19768,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 49,
+   "day": 19772,
+   "counted": false,
+   "skipped": true,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 44,
+   "day": 19782,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 16,
+   "day": 19784,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 37,
+   "day": 19785,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 49,
+   "day": 19785,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 37,
+   "day": 19790,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 21,
+   "day": 19801,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 42,
+   "day": 19801,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 24,
+   "day": 19802,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 49,
+   "day": 19812,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 22,
+   "day": 19813,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 27,
+   "day": 19813,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 37,
+   "day": 19814,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 17,
+   "day": 19815,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 21,
+   "day": 19816,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 44,
+   "day": 19817,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 12,
+   "day": 19821,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 44,
+   "day": 19823,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 35,
+   "day": 19825,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 22,
+   "day": 19828,
+   "counted": false,
+   "skipped": true,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 12,
+   "day": 19834,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 48,
+   "day": 19834,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 44,
+   "day": 19836,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 37,
+   "day": 19845,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 35,
+   "day": 19848,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 16,
+   "day": 19852,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 12,
+   "day": 19857,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 17,
+   "day": 19857,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 24,
+   "day": 19858,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 27,
+   "day": 19859,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 18,
+   "day": 19863,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 43,
+   "day": 19863,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 35,
+   "day": 19864,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 43,
+   "day": 19866,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 18,
+   "day": 19870,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 36,
+   "day": 19870,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 43,
+   "day": 19870,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 21,
+   "day": 19871,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 17,
+   "day": 19872,
+   "counted": false,
+   "skipped": true,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 42,
+   "day": 19872,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 44,
+   "day": 19872,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 42,
+   "day": 19876,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 37,
+   "day": 19877,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 48,
+   "day": 19877,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 12,
+   "day": 19879,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 48,
+   "day": 19879,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 3,
+   "day": 19882,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 12,
+   "day": 19885,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 24,
+   "day": 19886,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 39,
+   "day": 19887,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 17,
+   "day": 19889,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 44,
+   "day": 19893,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 30,
+   "day": 19896,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 26,
+   "day": 19897,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 14,
+   "day": 19900,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 33,
+   "day": 19903,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 17,
+   "day": 19905,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 34,
+   "day": 19905,
+   "counted": false,
+   "skipped": true,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 14,
+   "day": 19907,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 43,
+   "day": 19907,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 25,
+   "day": 19908,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 26,
+   "day": 19910,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 48,
+   "day": 19910,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 22,
+   "day": 19912,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 35,
+   "day": 19914,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 37,
+   "day": 19915,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 35,
+   "day": 19916,
+   "counted": false,
+   "skipped": true,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 34,
+   "day": 19918,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 42,
+   "day": 19918,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 28,
+   "day": 19919,
+   "counted": false,
+   "skipped": true,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 36,
+   "day": 19920,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 36,
+   "day": 19920,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 25,
+   "day": 19922,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 29,
+   "day": 19922,
+   "counted": false,
+   "skipped": true,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 44,
+   "day": 19922,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 25,
+   "day": 19923,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 31,
+   "day": 19923,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 39,
+   "day": 19926,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 28,
+   "day": 19927,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 25,
+   "day": 19929,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 35,
+   "day": 19929,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 36,
+   "day": 19931,
+   "counted": false,
+   "skipped": true,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 31,
+   "day": 19932,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 33,
+   "day": 19933,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 29,
+   "day": 19934,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 14,
+   "day": 19936,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 25,
+   "day": 19937,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 21,
+   "day": 19939,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 16,
+   "day": 19940,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 36,
+   "day": 19940,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 26,
+   "day": 19941,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 17,
+   "day": 19943,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 28,
+   "day": 19943,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 16,
+   "day": 19944,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 17,
+   "day": 19944,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 48,
+   "day": 19945,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 36,
+   "day": 19948,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 24,
+   "day": 19950,
+   "counted": false,
+   "skipped": true,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 26,
+   "day": 19950,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 22,
+   "day": 19951,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 34,
+   "day": 19953,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 17,
+   "day": 19954,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 43,
+   "day": 19954,
+   "counted": false,
+   "skipped": true,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 47,
+   "day": 19954,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 26,
+   "day": 19955,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 33,
+   "day": 19955,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 24,
+   "day": 19957,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 3,
+   "day": 19958,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 17,
+   "day": 19958,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 49,
+   "day": 19958,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 17,
+   "day": 19959,
+   "counted": false,
+   "skipped": true,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 43,
+   "day": 19959,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 16,
+   "day": 19960,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 18,
+   "day": 19961,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 34,
+   "day": 19961,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 18,
+   "day": 19962,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 24,
+   "day": 19963,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 41,
+   "day": 19964,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 47,
+   "day": 19965,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 48,
+   "day": 19965,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 30,
+   "day": 19967,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 12,
+   "day": 19969,
+   "counted": false,
+   "skipped": true,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 48,
+   "day": 19969,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 27,
+   "day": 19970,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 30,
+   "day": 19971,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 44,
+   "day": 19971,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 24,
+   "day": 19972,
+   "counted": false,
+   "skipped": true,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 35,
+   "day": 19972,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 16,
+   "day": 19974,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 21,
+   "day": 19974,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 29,
+   "day": 19975,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 35,
+   "day": 19976,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 29,
+   "day": 19978,
+   "counted": false,
+   "skipped": true,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 34,
+   "day": 19979,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 23,
+   "day": 19981,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 42,
+   "day": 19981,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 47,
+   "day": 19981,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 43,
+   "day": 19983,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 49,
+   "day": 19983,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 14,
+   "day": 19984,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 39,
+   "day": 19984,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 24,
+   "day": 19986,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 37,
+   "day": 19986,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 36,
+   "day": 19988,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 41,
+   "day": 19991,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 3,
+   "day": 19992,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 18,
+   "day": 19992,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 12,
+   "day": 19993,
+   "counted": false,
+   "skipped": true,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 24,
+   "day": 19995,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 12,
+   "day": 19996,
+   "counted": false,
+   "skipped": true,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 28,
+   "day": 19996,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 33,
+   "day": 19996,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 44,
+   "day": 19999,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 24,
+   "day": 20000,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 39,
+   "day": 20000,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 39,
+   "day": 20000,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 26,
+   "day": 20001,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 48,
+   "day": 20001,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 12,
+   "day": 20002,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 25,
+   "day": 20006,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 23,
+   "day": 20007,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 34,
+   "day": 20007,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 12,
+   "day": 20008,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 23,
+   "day": 20012,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 28,
+   "day": 20013,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 43,
+   "day": 20013,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 29,
+   "day": 20014,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 36,
+   "day": 20014,
+   "counted": false,
+   "skipped": true,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 37,
+   "day": 20015,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 41,
+   "day": 20015,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 16,
+   "day": 20017,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 27,
+   "day": 20018,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 29,
+   "day": 20018,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 37,
+   "day": 20029,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 17,
+   "day": 20030,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 27,
+   "day": 20034,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 47,
+   "day": 20039,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 37,
+   "day": 20040,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 43,
+   "day": 20040,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 31,
+   "day": 20044,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 41,
+   "day": 20044,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 3,
+   "day": 20045,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 27,
+   "day": 20045,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 39,
+   "day": 20049,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 22,
+   "day": 20050,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 36,
+   "day": 20052,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 12,
+   "day": 20054,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 30,
+   "day": 20054,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 33,
+   "day": 20054,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 29,
+   "day": 20056,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 37,
+   "day": 20057,
+   "counted": false,
+   "skipped": true,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 16,
+   "day": 20060,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 29,
+   "day": 20061,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 31,
+   "day": 20061,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 41,
+   "day": 20061,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 28,
+   "day": 20063,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 30,
+   "day": 20063,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 29,
+   "day": 20066,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 29,
+   "day": 20067,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 34,
+   "day": 20067,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 30,
+   "day": 20068,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 16,
+   "day": 20073,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 22,
+   "day": 20073,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 35,
+   "day": 20073,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 33,
+   "day": 20074,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 39,
+   "day": 20074,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 35,
+   "day": 20075,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 47,
+   "day": 20075,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 29,
+   "day": 20078,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 30,
+   "day": 20078,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 36,
+   "day": 20078,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 17,
+   "day": 20079,
+   "counted": false,
+   "skipped": true,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 43,
+   "day": 20080,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 36,
+   "day": 20081,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 26,
+   "day": 20083,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 43,
+   "day": 20085,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 17,
+   "day": 20088,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 28,
+   "day": 20088,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 33,
+   "day": 20088,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 29,
+   "day": 20089,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 33,
+   "day": 20090,
+   "counted": false,
+   "skipped": true,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 16,
+   "day": 20094,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 33,
+   "day": 20096,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 16,
+   "day": 20103,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 3,
+   "day": 20105,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 14,
+   "day": 20108,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 17,
+   "day": 20109,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 39,
+   "day": 20111,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 47,
+   "day": 20111,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 48,
+   "day": 20111,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 23,
+   "day": 20114,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 23,
+   "day": 20115,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 39,
+   "day": 20115,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 37,
+   "day": 20117,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 39,
+   "day": 20119,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 34,
+   "day": 20125,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 43,
+   "day": 20125,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 36,
+   "day": 20126,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 26,
+   "day": 20127,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 48,
+   "day": 20127,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 36,
+   "day": 20129,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 37,
+   "day": 20133,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 41,
+   "day": 20133,
+   "counted": false,
+   "skipped": true,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 39,
+   "day": 20134,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 22,
+   "day": 20136,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 17,
+   "day": 20138,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 23,
+   "day": 20140,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 3,
+   "day": 20142,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 16,
+   "day": 20143,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 47,
+   "day": 20143,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 26,
+   "day": 20144,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 29,
+   "day": 20144,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 14,
+   "day": 20145,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 35,
+   "day": 20147,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 47,
+   "day": 20147,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 41,
+   "day": 20148,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 17,
+   "day": 20151,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 33,
+   "day": 20151,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 39,
+   "day": 20151,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 12,
+   "day": 20153,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 17,
+   "day": 20153,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 35,
+   "day": 20153,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 47,
+   "day": 20153,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 27,
+   "day": 20154,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 39,
+   "day": 20154,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 26,
+   "day": 20155,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 47,
+   "day": 20156,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 30,
+   "day": 20157,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 17,
+   "day": 20160,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 28,
+   "day": 20160,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 29,
+   "day": 20160,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 16,
+   "day": 20163,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 39,
+   "day": 20165,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 28,
+   "day": 20166,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 30,
+   "day": 20167,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 34,
+   "day": 20167,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 17,
+   "day": 20169,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 36,
+   "day": 20170,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 28,
+   "day": 20171,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 43,
+   "day": 20172,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 43,
+   "day": 20173,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 23,
+   "day": 20174,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 26,
+   "day": 20176,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 36,
+   "day": 20176,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 39,
+   "day": 20176,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 30,
+   "day": 20178,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 26,
+   "day": 20180,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 39,
+   "day": 20180,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 47,
+   "day": 20181,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 29,
+   "day": 20182,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 22,
+   "day": 20183,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 25,
+   "day": 20183,
+   "counted": false,
+   "skipped": true,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 29,
+   "day": 20183,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 48,
+   "day": 20183,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 23,
+   "day": 20184,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 29,
+   "day": 20186,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 29,
+   "day": 20186,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 3,
+   "day": 20188,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 30,
+   "day": 20191,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 35,
+   "day": 20191,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 12,
+   "day": 20192,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 39,
+   "day": 20192,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 22,
+   "day": 20193,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 33,
+   "day": 20194,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 30,
+   "day": 20196,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 14,
+   "day": 20197,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 23,
+   "day": 20199,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 30,
+   "day": 20199,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 14,
+   "day": 20201,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 26,
+   "day": 20202,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 23,
+   "day": 20203,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 17,
+   "day": 20204,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 14,
+   "day": 20207,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 17,
+   "day": 20207,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 35,
+   "day": 20208,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 25,
+   "day": 20210,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 30,
+   "day": 20212,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 34,
+   "day": 20212,
+   "counted": false,
+   "skipped": true,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 27,
+   "day": 20213,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 34,
+   "day": 20213,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 48,
+   "day": 20215,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 29,
+   "day": 20217,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 35,
+   "day": 20217,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 33,
+   "day": 20222,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 16,
+   "day": 20226,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 28,
+   "day": 20228,
+   "counted": false,
+   "skipped": true,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 26,
+   "day": 20231,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 23,
+   "day": 20232,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 17,
+   "day": 20234,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 25,
+   "day": 20236,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 26,
+   "day": 20236,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 17,
+   "day": 20237,
+   "counted": false,
+   "skipped": true,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 3,
+   "day": 20238,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 39,
+   "day": 20238,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 26,
+   "day": 20239,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 35,
+   "day": 20239,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 43,
+   "day": 20242,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 47,
+   "day": 20246,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 31,
+   "day": 20248,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 35,
+   "day": 20248,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 12,
+   "day": 20249,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 47,
+   "day": 20250,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 35,
+   "day": 20251,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 28,
+   "day": 20252,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 35,
+   "day": 20252,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 22,
+   "day": 20255,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 37,
+   "day": 20256,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 16,
+   "day": 20257,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 17,
+   "day": 20258,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 35,
+   "day": 20258,
+   "counted": false,
+   "skipped": true,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 28,
+   "day": 20260,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 16,
+   "day": 20262,
+   "counted": false,
+   "skipped": true,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 25,
+   "day": 20264,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 28,
+   "day": 20265,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 31,
+   "day": 20265,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 41,
+   "day": 20265,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 47,
+   "day": 20267,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 36,
+   "day": 20268,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 30,
+   "day": 20269,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 34,
+   "day": 20269,
+   "counted": false,
+   "skipped": true,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 47,
+   "day": 20269,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 28,
+   "day": 20270,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 37,
+   "day": 20270,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 26,
+   "day": 20272,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 35,
+   "day": 20274,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 28,
+   "day": 20275,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 27,
+   "day": 20276,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 28,
+   "day": 20276,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 47,
+   "day": 20276,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 25,
+   "day": 20277,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 37,
+   "day": 20278,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 28,
+   "day": 20284,
+   "counted": false,
+   "skipped": true,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 36,
+   "day": 20284,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 39,
+   "day": 20284,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 14,
+   "day": 20288,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 39,
+   "day": 20288,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 23,
+   "day": 20289,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 25,
+   "day": 20290,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 29,
+   "day": 20291,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 31,
+   "day": 20296,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 25,
+   "day": 20301,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 47,
+   "day": 20303,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 23,
+   "day": 20306,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 28,
+   "day": 20307,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 23,
+   "day": 20310,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 36,
+   "day": 20313,
+   "counted": false,
+   "skipped": true,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 47,
+   "day": 20313,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 31,
+   "day": 20314,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 36,
+   "day": 20316,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 14,
+   "day": 20327,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 36,
+   "day": 20327,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 26,
+   "day": 20330,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 23,
+   "day": 20331,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 36,
+   "day": 20337,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 26,
+   "day": 20338,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 28,
+   "day": 20341,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 26,
+   "day": 20345,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 28,
+   "day": 20346,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 23,
+   "day": 20348,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 26,
+   "day": 20350,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 29,
+   "day": 20350,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 30,
+   "day": 20351,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 41,
+   "day": 20353,
+   "counted": false,
+   "skipped": true,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 26,
+   "day": 20354,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 36,
+   "day": 20354,
+   "counted": false,
+   "skipped": true,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 26,
+   "day": 20355,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 36,
+   "day": 20355,
+   "counted": false,
+   "skipped": true,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 3,
+   "day": 20356,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 26,
+   "day": 20358,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 14,
+   "day": 20361,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 31,
+   "day": 20362,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 29,
+   "day": 20363,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 30,
+   "day": 20368,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 31,
+   "day": 20368,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 30,
+   "day": 20374,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 30,
+   "day": 20374,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 31,
+   "day": 20375,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 28,
+   "day": 20377,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 25,
+   "day": 20378,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 47,
+   "day": 20378,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 29,
+   "day": 20379,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 31,
+   "day": 20382,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 25,
+   "day": 20383,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 30,
+   "day": 20384,
+   "counted": false,
+   "skipped": true,
+   "count": 1,
+   "source": "lastfm"
+  },
+  {
+   "trackId": 47,
+   "day": 20385,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "device:phone"
+  },
+  {
+   "trackId": 29,
+   "day": 20388,
+   "counted": false,
+   "skipped": true,
+   "count": 1,
+   "source": "mac"
+  },
+  {
+   "trackId": 25,
+   "day": 20392,
+   "counted": true,
+   "skipped": false,
+   "count": 1,
+   "source": "mac"
+  }
+ ],
+ "past": [
+  {
+   "day": 20397,
+   "kind": "song",
+   "key": "12"
+  },
+  {
+   "day": 20390,
+   "kind": "artist",
+   "key": "Radiohead"
+  },
+  {
+   "day": 20360,
+   "kind": "album",
+   "key": "air|moon safari"
+  }
+ ]
+}

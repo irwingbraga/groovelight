@@ -13,7 +13,7 @@ public static class Commands
     /// <summary>The navigation pane's pages in order, like the numbered sections of Music.</summary>
     public static readonly IReadOnlyList<(SidebarItem Item, ShortcutAction Action)> Pages =
     [
-        (SidebarItem.RecentlyAdded, ShortcutAction.RecentlyAdded), (SidebarItem.Artists, ShortcutAction.Artists), (SidebarItem.Albums, ShortcutAction.Albums),
+        (SidebarItem.Home, ShortcutAction.Home), (SidebarItem.RecentlyAdded, ShortcutAction.RecentlyAdded), (SidebarItem.Artists, ShortcutAction.Artists), (SidebarItem.Albums, ShortcutAction.Albums),
         (SidebarItem.Songs, ShortcutAction.Songs), (SidebarItem.Genres, ShortcutAction.Genres), (SidebarItem.Shelf, ShortcutAction.Shelf),
         (SidebarItem.AllPlaylists, ShortcutAction.AllPlaylists), (SidebarItem.LovedSongs, ShortcutAction.LovedSongs),
     ];

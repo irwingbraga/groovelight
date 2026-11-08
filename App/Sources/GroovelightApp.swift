@@ -270,7 +270,7 @@ struct PlayerCommands: Commands {
     }
 
     private static let pages: [(item: SidebarItem, action: ShortcutAction)] = [
-        (.recentlyAdded, .recentlyAdded), (.artists, .artists), (.albums, .albums), (.songs, .songs),
+        (.home, .home), (.recentlyAdded, .recentlyAdded), (.artists, .artists), (.albums, .albums), (.songs, .songs),
         (.genres, .genres), (.shelf, .shelf), (.allPlaylists, .allPlaylists), (.lovedSongs, .lovedSongs),
     ]
 

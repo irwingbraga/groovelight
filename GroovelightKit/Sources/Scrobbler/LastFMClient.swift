@@ -64,6 +64,28 @@ public struct LastFMTrack: Sendable, Equatable {
     }
 }
 
+/// A scrobble from the user's Last.fm history.
+public struct LastFMPlay: Sendable, Equatable {
+    public var artist: String
+    public var title: String
+    public var album: String
+    public var date: Date
+
+    public init(artist: String, title: String, album: String, date: Date) {
+        self.artist = artist
+        self.title = title
+        self.album = album
+        self.date = date
+    }
+}
+
+public struct LastFMHistoryPage: Sendable, Equatable {
+    public var plays: [LastFMPlay]
+    public var page: Int
+    public var totalPages: Int
+    public var total: Int
+}
+
 /// What Last.fm made of a batch of scrobbles.
 public struct ScrobbleResponse: Sendable, Equatable {
     public var accepted: Int
@@ -203,6 +225,32 @@ public struct LastFMClient: Sendable {
         guard (200..<300).contains(response.statusCode) else { throw LastFMError.http(response.statusCode) }
         guard let json else { throw LastFMError.invalidResponse }
         return json
+    }
+
+    /// One page of the user's scrobbles (`user.getRecentTracks`, newest first, up to 200 a page), between `from` and `to`.
+    /// The song playing now (no date yet) is left out.
+    public func recentTracks(user: String, from: Date?, to: Date, page: Int, limit: Int = 200) async throws -> LastFMHistoryPage {
+        var params = ["user": user, "page": String(page), "limit": String(limit), "to": String(Int(to.timeIntervalSince1970))]
+        if let from { params["from"] = String(Int(from.timeIntervalSince1970)) }
+        let json = try await call("user.getRecentTracks", params, post: false, needsSession: false)
+        return try Self.historyPage(json)
+    }
+
+    static func historyPage(_ json: [String: Any]) throws -> LastFMHistoryPage {
+        guard let recent = json["recenttracks"] as? [String: Any] else { throw LastFMError.invalidResponse }
+        let attributes = recent["@attr"] as? [String: Any]
+        // One track comes as an object, not a list.
+        let items = (recent["track"] as? [[String: Any]]) ?? ((recent["track"] as? [String: Any]).map { [$0] } ?? [])
+        let plays = items.compactMap { item -> LastFMPlay? in
+            guard let date = item["date"] as? [String: Any], let seconds = Double(String(describing: date["uts"] ?? "")),
+                  let title = item["name"] as? String else { return nil }
+            func text(_ key: String) -> String {
+                (item[key] as? [String: Any]).flatMap { ($0["#text"] ?? $0["name"]) as? String } ?? ""
+            }
+            return LastFMPlay(artist: text("artist"), title: title, album: text("album"), date: Date(timeIntervalSince1970: seconds))
+        }
+        return LastFMHistoryPage(plays: plays, page: int(attributes?["page"]), totalPages: int(attributes?["totalPages"]),
+                                 total: int(attributes?["total"]))
     }
 
     static func formEncoded(_ params: [String: String]) -> String {

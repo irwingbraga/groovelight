@@ -20,11 +20,19 @@ public sealed class LastFmStore : Support.Observable
     public const string NowPlayingKey = "lastfm.nowPlaying";
     public const string SyncLovesKey = "lastfm.syncLoves";
     public const string LastSentAtKey = "lastfm.lastSentAt";
+    public const string HistoryImportedAtKey = "lastfm.historyImportedAt";
 
     private readonly AppModel model;
     private readonly LastFmSender sender;
     private readonly string secretsFile;
     private readonly Support.Observation<int> pendingObservation;
+    private readonly Support.Observation<(int Plays, int Matched)> historyObservation;
+    private CancellationTokenSource? importing;
+    private LastFmHistoryImport.Progress? historyProgress;
+    private string? historyProblem;
+    private DateTime? historyImportedAt;
+    private (int Plays, int Matched) historyCounts;
+    private DateTime lastHistoryCheck = DateTime.MinValue;
     private Dictionary<string, string> secrets;
     private string apiKey;
     private string? username;
@@ -50,16 +58,27 @@ public sealed class LastFmStore : Support.Observable
         username = SessionKey is null ? null : preferences.String(UsernameKey);
         lastSentAt = preferences.Date(LastSentAtKey);
         pendingObservation = new Support.Observation<int>(model.Database, db => db.LastFmQueueCount(), count => PendingCount = count);
+        historyImportedAt = preferences.Date(HistoryImportedAtKey);
+        historyObservation = new Support.Observation<(int, int)>(model.Database, db => db.ListenCounts(Listen.Sources.LastFm), counts => HistoryCounts = counts);
 
         model.ItemStarted += Started;
         model.ItemFinished += Finished;
         model.LovedChanged += LovedChanged;
         if (model.Wireless is { } wireless) wireless.HistoryApplied += PlayedElsewhere;
 
-        // Retries what is waiting every few minutes (offline, Last.fm down), and soon after launch.
+        // Retries what is waiting every few minutes (offline, Last.fm down), and soon after launch. Once the history was
+        // imported, what is new on Last.fm (from other players) follows every 6 hours.
         var timer = model.Queue.CreateTimer();
         timer.Interval = TimeSpan.FromMinutes(5);
-        timer.Tick += (_, _) => SendSoon(0);
+        timer.Tick += (_, _) =>
+        {
+            SendSoon(0);
+            if (HistoryImportedAt is not null && DateTime.UtcNow - lastHistoryCheck > TimeSpan.FromHours(6))
+            {
+                lastHistoryCheck = DateTime.UtcNow;
+                ImportHistory();
+            }
+        };
         timer.Start();
         var first = model.Queue.CreateTimer();
         first.Interval = TimeSpan.FromSeconds(5);
@@ -77,6 +96,51 @@ public sealed class LastFmStore : Support.Observable
     /// <summary>What went wrong last (null after a successful send).</summary>
     public string? Problem { get => problem; private set => Set(ref problem, value); }
     public DateTime? LastSentAt { get => lastSentAt; private set => Set(ref lastSentAt, value); }
+
+    /// <summary>Bringing the user's Last.fm history into the listening log (for Home): progress while it runs.</summary>
+    public LastFmHistoryImport.Progress? HistoryProgress { get => historyProgress; private set => Set(ref historyProgress, value); }
+    public string? HistoryProblem { get => historyProblem; private set => Set(ref historyProblem, value); }
+    public DateTime? HistoryImportedAt { get => historyImportedAt; private set => Set(ref historyImportedAt, value); }
+    /// <summary>Last.fm plays in the log, and how many of them are songs in the library.</summary>
+    public (int Plays, int Matched) HistoryCounts { get => historyCounts; private set => Set(ref historyCounts, value); }
+    public bool IsImportingHistory => importing is not null;
+
+    /// <summary>Imports the plays on Last.fm not in the log yet, in the background (1 page of 200 a second).</summary>
+    public async void ImportHistory()
+    {
+        if (importing is not null || Client() is not { } client || Username is not { } user) return;
+        importing = new CancellationTokenSource();
+        OnPropertyChanged(nameof(IsImportingHistory));
+        HistoryProblem = null;
+        var importer = new LastFmHistoryImport(model.Database, client, user);
+        var token = importing.Token;
+        try
+        {
+            await Task.Run(() => importer.RunAsync(progress => model.Queue.TryEnqueue(() => HistoryProgress = progress), token), token);
+            HistoryImportedAt = DateTime.UtcNow;
+            model.Preferences.Set(HistoryImportedAtKey, HistoryImportedAt);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (LastFmException error)
+        {
+            HistoryProblem = error.Describe();
+        }
+        catch (Exception error) when (error is HttpRequestException or IOException or Microsoft.Data.Sqlite.SqliteException)
+        {
+            HistoryProblem = error.Message;
+        }
+        finally
+        {
+            importing.Dispose();
+            importing = null;
+            HistoryProgress = null;
+            OnPropertyChanged(nameof(IsImportingHistory));
+        }
+    }
+
+    public void CancelHistoryImport() => importing?.Cancel();
 
     /// <summary>The app's Last.fm API account: the key in the preferences, the secret encrypted.</summary>
     public string ApiKey

@@ -185,6 +185,21 @@ internal static class Migrations
         ("v12-deviceHistory", [
             """CREATE TABLE "deviceHistoryEvent" ("deviceId" TEXT NOT NULL, "eventId" TEXT NOT NULL, "appliedAt" DATETIME NOT NULL, "localPlaylistId" INTEGER, "playlistId" INTEGER, PRIMARY KEY ("deviceId", "eventId"))""",
         ]),
+        ("v13-listen", [
+            """CREATE TABLE "listen" ("id" INTEGER PRIMARY KEY AUTOINCREMENT, "trackId" INTEGER REFERENCES "track"("id") ON DELETE SET NULL, "startedAt" DATETIME NOT NULL, "listened" DOUBLE NOT NULL, "duration" DOUBLE NOT NULL, "counted" BOOLEAN NOT NULL, "skipped" BOOLEAN NOT NULL, "source" TEXT NOT NULL, "count" INTEGER NOT NULL DEFAULT 1, "artist" TEXT NOT NULL, "title" TEXT NOT NULL, "album" TEXT NOT NULL)""",
+            """CREATE INDEX "listen_on_startedAt" ON "listen"("startedAt")""",
+            """CREATE INDEX "listen_track_time" ON "listen"("trackId", "startedAt")""",
+            // Songs played before the log get one summary row with their total.
+            """
+            INSERT INTO listen (trackId, startedAt, listened, duration, counted, skipped, source, count, artist, title, album)
+            SELECT id, COALESCE(lastPlayedAt, dateAdded), duration, duration, 1, 0, 'summary', playCount,
+                   COALESCE(artist, ''), COALESCE(title, ''), COALESCE(album, '')
+            FROM track WHERE playCount > 0
+            """,
+        ]),
+        ("v14-dailyPick", [
+            """CREATE TABLE "dailyPick" ("day" INTEGER NOT NULL, "kind" TEXT NOT NULL, "key" TEXT NOT NULL, "reason" TEXT, PRIMARY KEY ("day", "kind"))""",
+        ]),
     ];
 
     public static IReadOnlyList<string> Identifiers => All.Select(migration => migration.Id).ToList();

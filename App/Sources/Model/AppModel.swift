@@ -9,6 +9,8 @@ import SwiftUI
 enum SidebarItem: Hashable {
     /// Search results for the toolbar search field (the sidebar's Search item focuses it).
     case search
+    /// Picks of the day and the listening dashboard.
+    case home
     case recentlyAdded
     case artists
     case albums
@@ -32,6 +34,8 @@ final class AppModel {
     /// The user's cassettes for Now Playing's cassette skin.
     let cassettes = CassetteStore(folder: CassetteStore.defaultFolder())
     let equalizer: EqualizerStore
+    /// Home's picks of the day.
+    let home: HomeStore
     let metadata: MetadataStore
     /// Set at the end of `init` (they need the model).
     private(set) var backup: BackupManager!
@@ -42,7 +46,7 @@ final class AppModel {
     /// Library folders that could not be opened at the last scan (an unplugged drive, a moved folder).
     var unavailableFolders: Set<String> = []
 
-    var selection: SidebarItem? = .albums {
+    var selection: SidebarItem? = .home {
         didSet {
             guard selection != oldValue else { return }
             path = []
@@ -159,6 +163,7 @@ final class AppModel {
         if let volume = UserDefaults.standard.object(forKey: Self.volumeKey) as? Float { player.volume = min(max(volume, 0), 1) }
         player.onVolumeChanged = { UserDefaults.standard.set($0, forKey: AppModel.volumeKey) }
         metadata = MetadataStore(database: database, artwork: artwork)
+        home = HomeStore(database: database)
 
         player.onItemStarted = { [weak self] item in
             guard let self else { return }
@@ -560,14 +565,10 @@ final class AppModel {
         albumPath = [album]
     }
 
-    /// Plays count when at least half the track (or 4 minutes) was heard; early skips count as skips.
+    /// Logs the listen: plays count when at least half the track (or 4 minutes) was heard, early stops count as skips.
     private func recordListen(item: PlayableItem, seconds: TimeInterval) {
-        let threshold = min(item.duration * 0.5, 240)
-        if seconds >= threshold, item.duration > 0 {
-            try? database.recordPlay(trackId: item.id)
-        } else if seconds < min(20, item.duration * 0.5) {
-            try? database.recordSkip(trackId: item.id)
-        }
+        guard seconds > 0 else { return }
+        try? database.recordListen(trackId: item.id, startedAt: .now.addingTimeInterval(-seconds), listened: seconds)
     }
 
     func toggleLoved(_ track: Track) {

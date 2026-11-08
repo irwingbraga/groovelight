@@ -44,6 +44,8 @@ public final class WirelessSyncServer: @unchecked Sendable {
         public var mayConnectAway: @Sendable (String) async -> Bool
         /// A song's lyrics (LRC or plain text), for a device showing a song it does not have (playing on the Mac).
         public var lyrics: @Sendable (Int64) async -> String?
+        /// Home for a device: the day's picks and the dashboard (`HomeSnapshot` JSON).
+        public var home: @Sendable (String) async throws -> Data
 
         public init(info: @escaping @Sendable () -> WirelessProtocol.Info,
                     pairRequested: @escaping @Sendable (WirelessProtocol.PairRequest, WirelessProtocol.Pairing) async -> Void,
@@ -66,7 +68,8 @@ public final class WirelessSyncServer: @unchecked Sendable {
                     mayControl: @escaping @Sendable (String) async -> Bool = { _ in false },
                     deviceName: @escaping @Sendable (String) async -> String? = { _ in nil },
                     mayConnectAway: @escaping @Sendable (String) async -> Bool = { _ in false },
-                    lyrics: @escaping @Sendable (Int64) async -> String? = { _ in nil }) {
+                    lyrics: @escaping @Sendable (Int64) async -> String? = { _ in nil },
+                    home: @escaping @Sendable (String) async throws -> Data = { _ in Data("{}".utf8) }) {
             self.info = info
             self.pairRequested = pairRequested
             self.pairStatus = pairStatus
@@ -87,6 +90,7 @@ public final class WirelessSyncServer: @unchecked Sendable {
             self.mayConnectAway = mayConnectAway
             self.deviceName = deviceName
             self.lyrics = lyrics
+            self.home = home
         }
     }
 
@@ -243,6 +247,9 @@ public final class WirelessSyncServer: @unchecked Sendable {
         case ("GET", 1, "catalog"):
             guard request.secure else { return .error(403, "HTTPS only") }
             return await catalog(deviceId: deviceId, request: request)
+        case ("GET", 1, "home"):
+            guard request.secure else { return .error(403, "HTTPS only") }
+            return await deflated(request) { try await self.backend.home(deviceId) }
         case ("GET", 3, "catalog") where parts[1] == "artwork":
             guard request.secure else { return .error(403, "HTTPS only") }
             guard let data = backend.cover(parts[2], 300) else { return .error(404, "no cover") }
@@ -435,8 +442,13 @@ public final class WirelessSyncServer: @unchecked Sendable {
     /// The catalog, deflated (raw DEFLATE, `X-GL-Encoding: deflate`), with its SHA-256 as the ETag: a device that has
     /// this version gets 304 and nothing else.
     private func catalog(deviceId: String, request: LocalHTTPServer.Request) async -> LocalHTTPServer.Response {
+        await deflated(request) { try await self.backend.catalog(deviceId) }
+    }
+
+    /// JSON deflated (raw DEFLATE, `X-GL-Encoding: deflate`), with its SHA-256 as the ETag: 304 when the device has it.
+    private func deflated(_ request: LocalHTTPServer.Request, _ make: () async throws -> Data) async -> LocalHTTPServer.Response {
         do {
-            let json = try await backend.catalog(deviceId)
+            let json = try await make()
             let tag = Self.sha256(json)
             if request.headers["if-none-match"] == tag { return LocalHTTPServer.Response(status: 304, headers: ["ETag": tag]) }
             let deflated = try (json as NSData).compressed(using: .zlib) as Data

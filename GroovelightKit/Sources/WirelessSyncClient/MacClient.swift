@@ -138,19 +138,32 @@ public final class MacClient: Sendable {
     /// The Mac's whole library and what this device's selection holds (`DeviceCatalog`), or nil when the version this
     /// device has (`tag`) is still current. Comes deflated, checked against its SHA-256.
     public func catalog(tag: String?) async throws -> (catalog: DeviceCatalog, tag: String)? {
-        var request = try makeRequest("GET", "/catalog", signed: true, timeout: 60)
+        guard let (json, newTag) = try await deflated("/catalog", tag: tag, what: "library") else { return nil }
+        return (try WirelessProtocol.decoder.decode(DeviceCatalog.self, from: json), newTag)
+    }
+
+    /// Home: the day's picks and the listening dashboard, or nil when the version this device has (`tag`) is current.
+    public func home(tag: String?) async throws -> (home: HomeSnapshot, tag: String)? {
+        guard let (json, newTag) = try await deflated("/home", tag: tag, what: "Home") else { return nil }
+        return (try WirelessProtocol.decoder.decode(HomeSnapshot.self, from: json), newTag)
+    }
+
+    /// JSON that comes deflated and checked against its SHA-256, with its ETag; nil when `tag` is still current.
+    private func deflated(_ path: String, tag: String?, what: String) async throws -> (Data, String)? {
+        var request = try makeRequest("GET", path, signed: true, timeout: 60)
         if let tag { request.setValue(tag, forHTTPHeaderField: "If-None-Match") }
         let (data, response) = try await session.data(for: request)
         let http = response as? HTTPURLResponse
         if http?.statusCode == 304 { return nil }
-        guard http?.statusCode == 200 else { throw MacError("The \(Host.word)'s library could not be read (\(http?.statusCode ?? 0))", status: http?.statusCode ?? 0) }
+        guard http?.statusCode == 200 else {
+            throw MacError("The \(Host.word)'s \(what) could not be read (\(http?.statusCode ?? 0))", status: http?.statusCode ?? 0)
+        }
         if let expected = http?.value(forHTTPHeaderField: WirelessProtocol.Header.sha256), Self.sha256(data) != expected {
             throw MacError("Arrived damaged")
         }
         let json = http?.value(forHTTPHeaderField: WirelessProtocol.Header.encoding) == "deflate"
             ? try (data as NSData).decompressed(using: .zlib) as Data : data
-        let catalog = try WirelessProtocol.decoder.decode(DeviceCatalog.self, from: json)
-        return (catalog, http?.value(forHTTPHeaderField: "ETag") ?? "")
+        return (json, http?.value(forHTTPHeaderField: "ETag") ?? "")
     }
 
     /// A cover of the Mac's library (300 pixels), for albums this device does not have.

@@ -8,7 +8,7 @@ namespace Groovelight.Model;
 public enum ShortcutAction
 {
     PlayPause, Next, Previous, SkipForward, SkipBack, VolumeUp, VolumeDown, Mute, Shuffle, CycleRepeat, Love, GoToCurrentSong,
-    Search, RecentlyAdded, Artists, Albums, Songs, Genres, Shelf, AllPlaylists, LovedSongs, Back,
+    Search, Home, RecentlyAdded, Artists, Albums, Songs, Genres, Shelf, AllPlaylists, LovedSongs, Back,
     NowPlaying, Lyrics, UpNext, Visualizer, Equalizer, MainWindow, BiggerCovers, SmallerCovers, DefaultCoverSize,
     NewPlaylist, NewSmartPlaylist, ImportMusic, AddFolder, FetchMissingInfo, BackUp,
 }
@@ -128,6 +128,7 @@ public sealed class ShortcutStore
         ShortcutAction.Love => "Love or Undo Love",
         ShortcutAction.GoToCurrentSong => "Go to Current Song",
         ShortcutAction.Search => "Search Library",
+        ShortcutAction.Home => "Home",
         ShortcutAction.RecentlyAdded => "Recently Added",
         ShortcutAction.AllPlaylists => "All Playlists",
         ShortcutAction.LovedSongs => "Loved Songs",
@@ -162,6 +163,7 @@ public sealed class ShortcutStore
         ShortcutAction.Love => StoredShortcut.Of("l", shift: true),
         ShortcutAction.GoToCurrentSong => StoredShortcut.Of("l"),
         ShortcutAction.Search => StoredShortcut.Of("f"),
+        ShortcutAction.Home => StoredShortcut.Of("h", shift: true),
         ShortcutAction.RecentlyAdded => StoredShortcut.Of("1"),
         ShortcutAction.Artists => StoredShortcut.Of("2"),
         ShortcutAction.Albums => StoredShortcut.Of("3"),

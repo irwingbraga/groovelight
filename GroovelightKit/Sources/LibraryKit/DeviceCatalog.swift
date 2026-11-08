@@ -354,6 +354,11 @@ extension LibraryDatabase {
                     changed[event.trackId] = loved
                 case .play, .skip:
                     guard try Self.firstTime(db, event, deviceId: deviceId) else { continue }
+                    var listen = Listen(track: track, startedAt: event.date, listened: Double(max(event.value, 0)),
+                                        source: Listen.Source.device(deviceId))
+                    listen.counted = event.kind == .play
+                    listen.skipped = event.kind == .skip
+                    try listen.insert(db)
                     if event.kind == .skip {
                         try db.execute(sql: "UPDATE track SET skipCount = skipCount + 1 WHERE id = ?", arguments: [event.trackId])
                     } else {

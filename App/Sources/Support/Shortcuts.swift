@@ -5,7 +5,7 @@ import SwiftUI
 /// A menu command with a keyboard shortcut the user can change in Settings, Shortcuts.
 enum ShortcutAction: String, CaseIterable, Identifiable, Codable {
     case playPause, next, previous, skipForward, skipBack, volumeUp, volumeDown, mute, shuffle, cycleRepeat, love, goToCurrentSong
-    case search, recentlyAdded, artists, albums, songs, genres, shelf, allPlaylists, lovedSongs, back
+    case search, home, recentlyAdded, artists, albums, songs, genres, shelf, allPlaylists, lovedSongs, back
     case nowPlaying, lyrics, upNext, visualizer, equalizer, mainWindow, biggerCovers, smallerCovers, defaultCoverSize
     case newPlaylist, newSmartPlaylist, importMusic, addFolder, fetchMissingInfo, backUp
 
@@ -20,7 +20,7 @@ enum ShortcutAction: String, CaseIterable, Identifiable, Codable {
         switch self {
         case .playPause, .next, .previous, .skipForward, .skipBack, .volumeUp, .volumeDown, .mute, .shuffle, .cycleRepeat, .love,
              .goToCurrentSong: .playback
-        case .search, .recentlyAdded, .artists, .albums, .songs, .genres, .shelf, .allPlaylists, .lovedSongs, .back: .navigation
+        case .search, .home, .recentlyAdded, .artists, .albums, .songs, .genres, .shelf, .allPlaylists, .lovedSongs, .back: .navigation
         case .nowPlaying, .lyrics, .upNext, .visualizer, .equalizer, .mainWindow, .biggerCovers, .smallerCovers, .defaultCoverSize: .windows
         case .newPlaylist, .newSmartPlaylist, .importMusic, .addFolder, .fetchMissingInfo, .backUp: .library
         }
@@ -41,6 +41,7 @@ enum ShortcutAction: String, CaseIterable, Identifiable, Codable {
         case .love: "Love or Undo Love"
         case .goToCurrentSong: "Go to Current Song"
         case .search: "Search Library"
+        case .home: "Home"
         case .recentlyAdded: "Recently Added"
         case .artists: "Artists"
         case .albums: "Albums"
@@ -83,6 +84,7 @@ enum ShortcutAction: String, CaseIterable, Identifiable, Codable {
         case .love: KeyboardShortcut("l", modifiers: [.command, .shift])
         case .goToCurrentSong: KeyboardShortcut("l")
         case .search: KeyboardShortcut("f")
+        case .home: KeyboardShortcut("h", modifiers: [.command, .shift])
         case .recentlyAdded: KeyboardShortcut("1")
         case .artists: KeyboardShortcut("2")
         case .albums: KeyboardShortcut("3")

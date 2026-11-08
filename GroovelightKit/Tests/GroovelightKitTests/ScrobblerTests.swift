@@ -139,3 +139,64 @@ private final class FakeLastFM: HTTPFetching, @unchecked Sendable {
         return (Data(body.utf8), HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!)
     }
 }
+
+struct LastFMHistoryTests {
+    @Test func matchesNamesSpelledDifferently() {
+        #expect(SongKey.key(artist: "Beyoncé feat. JAY-Z", title: "Crazy in Love (Remastered 2023)")
+                == SongKey.key(artist: "Beyonce", title: "Crazy In Love"))
+        #expect(SongKey.key(artist: "The Beatles", title: "Something - 2019 Mix") == SongKey.key(artist: "Beatles", title: "Something"))
+        #expect(SongKey.key(artist: "Simon & Garfunkel", title: "Mrs. Robinson") == SongKey.key(artist: "Simon and Garfunkel", title: "Mrs Robinson"))
+        #expect(SongKey.normalize("Stay With Me") == "stay with me")
+        #expect(SongKey.key(artist: "Radiohead", title: "Airbag") != SongKey.key(artist: "Radiohead", title: "Lucky"))
+    }
+
+    @Test func readsAPageOfHistory() throws {
+        let json = try JSONSerialization.jsonObject(with: Data("""
+            {"recenttracks": {"@attr": {"page": "2", "totalPages": "7", "total": "1300"}, "track": [
+              {"name": "Now", "artist": {"#text": "A"}, "album": {"#text": "B"}, "@attr": {"nowplaying": "true"}},
+              {"name": "Airbag", "artist": {"#text": "Radiohead"}, "album": {"#text": "OK Computer"}, "date": {"uts": "1700000000"}}
+            ]}}
+            """.utf8)) as! [String: Any]
+        let page = try LastFMClient.historyPage(json)
+        #expect(page.page == 2 && page.totalPages == 7 && page.total == 1300)
+        #expect(page.plays == [LastFMPlay(artist: "Radiohead", title: "Airbag", album: "OK Computer", date: Date(timeIntervalSince1970: 1_700_000_000))])
+    }
+
+    @Test func importsHistoryOldestFirstWithoutCountingOwnScrobblesTwice() async throws {
+        let database = try LibraryDatabaseTests.seeded()
+        let base = Date(timeIntervalSince1970: 1_800_000_000)
+        // Played here, then scrobbled by Groovelight: the same play.
+        try database.recordListen(trackId: 4, startedAt: base, listened: 180)
+        func item(_ artist: String, _ title: String, _ album: String, _ offset: Int) -> String {
+            ##"{"name": "\##(title)", "artist": {"#text": "\##(artist)"}, "album": {"#text": "\##(album)"}, "date": {"uts": "\##(Int(base.timeIntervalSince1970) + offset)"}}"##
+        }
+        let pages = [
+            1: [item("Radiohead", "Paranoid Android", "OK Computer", 30), item("Unknown Band", "Lost Song", "X", -500)],
+            2: [item("the beatles", "Something (Remastered)", "Abbey Road", -1000), item("Beatles", "Come Together", "Abbey Road", -2000)],
+        ]
+        let fake = FakeLastFM { params in
+            let number = Int(params["page"] ?? "1") ?? 1
+            let tracks = (pages[number] ?? []).joined(separator: ",")
+            return (200, #"{"recenttracks": {"@attr": {"page": "\#(number)", "totalPages": "2", "total": "4"}, "track": [\#(tracks)]}}"#)
+        }
+        var importer = LastFMHistoryImport(database: database, client: LastFMClient(credentials: .init(apiKey: "K", secret: "S"), fetcher: fake),
+                                           user: "ana")
+        importer.pause = .zero
+        importer.now = { base.addingTimeInterval(3600) }
+        let result = try await importer.run()
+        #expect(result.imported == 3 && result.matched == 2 && result.page == 2)
+        #expect(fake.calls.map { $0["page"] } == ["1", "2"])
+        #expect(fake.calls.allSatisfy { $0["method"] == "user.getRecentTracks" && $0["user"] == "ana" && $0["from"] == nil })
+
+        let imported = try database.listens().filter { $0.source == Listen.Source.lastfm }
+        #expect(imported.map(\.title) == ["Come Together", "Something (Remastered)", "Lost Song"])
+        #expect(imported.map(\.trackId) == [1, 2, nil])
+        #expect(imported[0].counted && imported[0].duration == 180)
+        // Play counts stay as they were: Last.fm plays are history, not new plays.
+        #expect(try await database.writer.read { try Track.fetchOne($0, key: 1) }?.playCount == 0)
+
+        // Next time: only what is newer.
+        _ = try await importer.run()
+        #expect(fake.calls.last?["from"] == String(Int(base.timeIntervalSince1970) - 500 + 1))
+    }
+}

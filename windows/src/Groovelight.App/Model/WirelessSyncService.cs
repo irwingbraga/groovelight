@@ -6,6 +6,7 @@ using System.Text.Json;
 using Groovelight.Audio;
 using Groovelight.Core;
 using Groovelight.Core.Devices;
+using Groovelight.Core.Discovery;
 using Groovelight.Core.Library;
 using Groovelight.Wireless;
 
@@ -420,6 +421,8 @@ public sealed class WirelessSyncService : Support.Observable, IWirelessBackend
 
     /// <summary>A device's history changed loves and counted plays (Last.fm listens).</summary>
     public event Action<DeviceHistoryChanges>? HistoryApplied;
+
+    public Task<byte[]> Home(string id) => Task.Run(() => WireJson.Encode(model.Database.HomeSnapshotFor()));
 
     public async Task<string?> Lyrics(long trackId)
     {

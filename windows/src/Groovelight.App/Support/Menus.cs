@@ -122,5 +122,6 @@ public static class Glyphs
     public const string Device = "", Phone = "", Eject = "", Sync = "", Check = "", Back = "";
     public const string FullScreen = "", BackToWindow = "", Visualizer = "", Equalizer = "", Cassette = "";
     public const string Mini = "", Smart = "", Link = "", Globe = "", Download = "", Warning = "";
+    public const string Home = "\uE80F";
     public const string Chevron = "", ChevronDown = "", Star = "", StarFilled = "", Library = "";
 }

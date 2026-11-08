@@ -71,6 +71,37 @@ public static class LastFmSettings
         panel.Children.Add(Option("Love and unlove songs on Last.fm too", LastFmStore.SyncLovesKey));
         panel.Children.Add(SettingsPage.Footer("A song is scrobbled when it is longer than 30 seconds and was played for half of its length or 4 minutes, whichever comes first. Scrobbles made offline, and songs played on paired phones, are sent later."));
 
+        var history = new StackPanel { Spacing = 4 };
+        panel.Children.Add(history);
+        void UpdateHistory()
+        {
+            history.Children.Clear();
+            if (!lastfm.IsConnected) return;
+            history.Children.Add(SettingsPage.Header("History"));
+            var culture = System.Globalization.CultureInfo.CurrentCulture;
+            var row = Ui.Row(12);
+            if (lastfm.HistoryProgress is { } progress)
+            {
+                row.Children.Add(new ProgressBar { Width = 120, Maximum = Math.Max(progress.TotalPages, 1), Value = progress.Page, VerticalAlignment = VerticalAlignment.Center });
+                row.Children.Add(Ui.Text($"{progress.Imported.ToString("N0", culture)} of {progress.Total.ToString("N0", culture)}", "SecondaryText"));
+                row.Children.Add(Ui.Button("Stop", lastfm.CancelHistoryImport));
+            }
+            else if (lastfm.IsImportingHistory)
+            {
+                row.Children.Add(new ProgressRing { IsActive = true, Width = 16, Height = 16 });
+            }
+            else
+            {
+                var (plays, matched) = lastfm.HistoryCounts;
+                if (plays > 0) row.Children.Add(Ui.Text($"{plays.ToString("N0", culture)} plays, {matched.ToString("N0", culture)} in your library", "SecondaryText"));
+                row.Children.Add(Ui.Button(lastfm.HistoryImportedAt is null ? "Import" : "Update", lastfm.ImportHistory));
+            }
+            history.Children.Add(new SettingsCard("Listening history", null, row));
+            if (lastfm.HistoryProblem is { } problem)
+                history.Children.Add(new InfoBar { IsOpen = true, IsClosable = false, Severity = InfoBarSeverity.Warning, Message = problem });
+            history.Children.Add(SettingsPage.Footer("Brings what you played anywhere with Last.fm into Home's picks, mixes and charts. It runs in the background, and new plays on Last.fm follow every few hours. Play counts in the library do not change."));
+        }
+
         panel.Children.Add(SettingsPage.Header("Status"));
         var status = new StackPanel { Spacing = 4 };
         panel.Children.Add(status);
@@ -90,14 +121,18 @@ public static class LastFmSettings
 
         string[] accountProperties = [nameof(LastFmStore.IsConnected), nameof(LastFmStore.IsConnecting), nameof(LastFmStore.Username)];
         string[] statusProperties = [nameof(LastFmStore.PendingCount), nameof(LastFmStore.IsSending), nameof(LastFmStore.LastSentAt), nameof(LastFmStore.Problem), nameof(LastFmStore.IsConnected)];
+        string[] historyProperties = [nameof(LastFmStore.HistoryProgress), nameof(LastFmStore.IsImportingHistory), nameof(LastFmStore.HistoryCounts),
+            nameof(LastFmStore.HistoryImportedAt), nameof(LastFmStore.HistoryProblem), nameof(LastFmStore.IsConnected)];
         PropertyChangedEventHandler changed = (_, args) => model.Queue.TryEnqueue(() =>
         {
             if (accountProperties.Contains(args.PropertyName)) UpdateAccount();
+            if (historyProperties.Contains(args.PropertyName)) UpdateHistory();
             if (statusProperties.Contains(args.PropertyName)) UpdateStatus();
         });
         lastfm.PropertyChanged += changed;
         panel.Unloaded += (_, _) => lastfm.PropertyChanged -= changed;
         UpdateAccount();
+        UpdateHistory();
         UpdateStatus();
         return panel;
     }

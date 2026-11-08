@@ -102,6 +102,21 @@ enum DebugTour {
                 if phase != "check" { NSApp.terminate(nil) }
                 return
             }
+            // `-GLDebugTourHold home` shows Home and saves snapshots of it (picks and the dashboard, a month and all time), in
+            // a window tall enough for the whole page.
+            if UserDefaults.standard.string(forKey: "GLDebugTourHold") == "home" {
+                model.selection = .home
+                if let window = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("main") == true }) {
+                    window.setFrame(NSRect(x: window.frame.minX, y: window.frame.minY, width: 1320, height: 2300), display: true)
+                }
+                for range in ["month", "all"] {
+                    UserDefaults.standard.set(range, forKey: "home.range")
+                    try? await Task.sleep(for: .seconds(4))
+                    await snapshot("home-\(range)", output)
+                }
+                try? "done".write(to: output.appendingPathComponent("DONE"), atomically: true, encoding: .utf8)
+                return
+            }
             // `-GLDebugTourHold artist` opens Radiohead's page and leaves it up, writing the window's frame (top-left
             // screen points) to WINDOW for a real screen capture of just the window (snapshots miss the color wash).
             if UserDefaults.standard.string(forKey: "GLDebugTourHold") == "artist" {

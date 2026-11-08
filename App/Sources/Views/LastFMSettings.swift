@@ -62,6 +62,41 @@ struct LastFMSettings: View {
                     .foregroundStyle(.secondary)
             }
 
+            if lastfm.isConnected {
+                Section {
+                    LabeledContent("Listening history") {
+                        HStack(spacing: 10) {
+                            if let progress = lastfm.historyProgress {
+                                ProgressView(value: Double(progress.page), total: Double(max(progress.totalPages, 1)))
+                                    .frame(width: 120)
+                                Text("\(progress.imported.formatted()) of \(progress.total.formatted())")
+                                    .monospacedDigit()
+                                    .foregroundStyle(.secondary)
+                                Button("Stop") { lastfm.cancelHistoryImport() }
+                            } else if lastfm.isImportingHistory {
+                                ProgressView().controlSize(.small)
+                            } else {
+                                if lastfm.historyCounts.plays > 0 {
+                                    Text("\(lastfm.historyCounts.plays.formatted()) plays, \(lastfm.historyCounts.matched.formatted()) in your library")
+                                        .monospacedDigit()
+                                        .foregroundStyle(.secondary)
+                                }
+                                Button(lastfm.historyImportedAt == nil ? "Import" : "Update") { lastfm.importHistory() }
+                            }
+                        }
+                    }
+                    if let problem = lastfm.historyProblem {
+                        Label(problem, systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                    }
+                } header: {
+                    Text("History")
+                } footer: {
+                    Text("Brings what you played anywhere with Last.fm into Home's picks, mixes and charts. It runs in the background, and new plays on Last.fm follow every few hours. Play counts in the library do not change.")
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             Section("Status") {
                 LabeledContent("Waiting to be sent") {
                     HStack(spacing: 10) {

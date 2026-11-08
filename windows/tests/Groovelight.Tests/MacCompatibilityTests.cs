@@ -65,7 +65,7 @@ public class MacCompatibilityTests
         using var fresh = LibraryDatabase.InMemory();
         Assert.Equal(mac, fresh.Read(Schema));
         Assert.Equal(["v1", "v2-metadata", "v3-lovedAt", "v4-playlistCover", "v5-albumInfo", "v6-artistInfo", "v7-creditIndex",
-                      "v8-cueTracks", "v9-watchState", "v10-lastfmQueue", "v11-loudness", "v12-deviceHistory"],
+                      "v8-cueTracks", "v9-watchState", "v10-lastfmQueue", "v11-loudness", "v12-deviceHistory", "v13-listen", "v14-dailyPick"],
                      fresh.Read(db => db.Column<string>("SELECT identifier FROM grdb_migrations ORDER BY rowid")));
         SqliteConnection.ClearAllPools();
         File.Delete(path);

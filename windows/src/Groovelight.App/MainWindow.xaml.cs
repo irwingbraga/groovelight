@@ -221,6 +221,7 @@ public sealed partial class MainWindow : Window
     private static PageView MakePage(SidebarItem item) => item.Kind switch
     {
         PageKind.Search => new SearchPage(),
+        PageKind.Home => new HomePage(),
         PageKind.RecentlyAdded => new AlbumsPage(recentlyAdded: true),
         PageKind.Artists => new ArtistsPage(),
         PageKind.Songs => new SongsPage(),

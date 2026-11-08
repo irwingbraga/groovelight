@@ -11,7 +11,7 @@ using Windows.ApplicationModel.DataTransfer;
 namespace Groovelight.Shell;
 
 /// <summary>
-/// The navigation pane's items (the Mac's sidebar): Search, Library, Explore, Devices while connected, and Playlists with
+/// The navigation pane's items (the Mac's sidebar): Search, Home, Library, Explore, Devices while connected, and Playlists with
 /// their covers. Songs dropped on Loved Songs are loved; on a playlist, added; on a device, synced to it.
 /// </summary>
 public sealed class NavigationPane
@@ -41,6 +41,7 @@ public sealed class NavigationPane
         fixedTop =
         [
             Item("Search", SidebarItem.Search, Glyphs.Search),
+            Item("Home", SidebarItem.Home, Glyphs.Home),
             new NavigationViewItemHeader { Content = "Library" },
             Item("Recently Added", SidebarItem.RecentlyAdded, Glyphs.Clock),
             Item("Artists", SidebarItem.Artists, Glyphs.Artist),

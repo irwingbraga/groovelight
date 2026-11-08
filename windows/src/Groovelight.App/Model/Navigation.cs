@@ -3,12 +3,13 @@ using Groovelight.Core.Library;
 namespace Groovelight.Model;
 
 /// <summary>The pages of the navigation pane (the Mac's sidebar items).</summary>
-public enum PageKind { Search, RecentlyAdded, Artists, Albums, Songs, Genres, Shelf, AllPlaylists, LovedSongs, Playlist, Device }
+public enum PageKind { Search, Home, RecentlyAdded, Artists, Albums, Songs, Genres, Shelf, AllPlaylists, LovedSongs, Playlist, Device }
 
 /// <summary>A navigation pane item: a page, a playlist (by id) or a device (by id).</summary>
 public sealed record SidebarItem(PageKind Kind, long PlaylistId = 0, string? DeviceId = null)
 {
     public static readonly SidebarItem Search = new(PageKind.Search);
+    public static readonly SidebarItem Home = new(PageKind.Home);
     public static readonly SidebarItem RecentlyAdded = new(PageKind.RecentlyAdded);
     public static readonly SidebarItem Artists = new(PageKind.Artists);
     public static readonly SidebarItem Albums = new(PageKind.Albums);

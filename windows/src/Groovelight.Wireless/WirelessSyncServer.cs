@@ -46,6 +46,8 @@ public interface IWirelessBackend
     Task<bool> MayConnectAway(string deviceId);
     /// <summary>A song's lyrics, for a device showing a song it does not have (playing on the computer).</summary>
     Task<string?> Lyrics(long trackId);
+    /// <summary>Home for a device: the day's picks and the dashboard (HomeSnapshot JSON).</summary>
+    Task<byte[]> Home(string deviceId) => Task.FromResult("{}"u8.ToArray());
 }
 
 /// <summary>
@@ -201,6 +203,8 @@ public sealed class WirelessSyncServer(IWirelessBackend backend)
             // The whole library and the device's requests (v2, over TLS only: they describe the library).
             case ("GET", 1, "catalog"):
                 return HttpsOnly() ?? await CatalogAsync(deviceId, request);
+            case ("GET", 1, "home"):
+                return HttpsOnly() ?? Deflated(await backend.Home(deviceId), request);
             case ("GET", 3, "catalog") when parts[1] == "artwork":
                 if (HttpsOnly() is { } refusal) return refusal;
                 return backend.Cover(parts[2], 300) is { } cover ? Jpeg(cover) : HttpResponse.Error(404, "no cover");
@@ -389,9 +393,11 @@ public sealed class WirelessSyncServer(IWirelessBackend backend)
     }
 
     /// <summary>The catalog, deflated (raw DEFLATE), with its SHA-256 as the ETag: a device that has this version gets 304.</summary>
-    private async Task<HttpResponse> CatalogAsync(string deviceId, HttpRequest request)
+    private async Task<HttpResponse> CatalogAsync(string deviceId, HttpRequest request) => Deflated(await backend.Catalog(deviceId), request);
+
+    /// <summary>JSON deflated (raw DEFLATE), with its SHA-256 as the ETag: 304 when the device has it.</summary>
+    private static HttpResponse Deflated(byte[] json, HttpRequest request)
     {
-        var json = await backend.Catalog(deviceId);
         var tag = WirelessProtocol.Sha256(json);
         if (request.Headers.GetValueOrDefault("if-none-match") == tag) return new HttpResponse { Status = 304, Headers = new() { ["ETag"] = tag } };
         using var output = new MemoryStream();
