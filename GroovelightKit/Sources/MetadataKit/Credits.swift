@@ -249,12 +249,18 @@ public enum CreditsBuilder {
 
 /// Album summaries from Wikipedia, found through the album's Wikidata item.
 public final class WikipediaClient: Sendable {
+    /// One pace for the whole app: Wikimedia answers bursts (an artist page, then the next) with 429, which the limited
+    /// requests wait out and try again.
+    public static let sharedLimiter = RateLimiter(interval: .milliseconds(250))
+
     private let fetcher: any HTTPFetching
     private let identity: ClientIdentity
+    private let limiter: RateLimiter
 
-    public init(fetcher: any HTTPFetching = URLSessionFetcher(), identity: ClientIdentity) {
+    public init(fetcher: any HTTPFetching = URLSessionFetcher(), identity: ClientIdentity, limiter: RateLimiter = WikipediaClient.sharedLimiter) {
         self.fetcher = fetcher
         self.identity = identity
+        self.limiter = limiter
     }
 
     /// Summary of the article linked to a Wikidata item, in the first of `languages` that has one.
@@ -269,7 +275,7 @@ public final class WikipediaClient: Sendable {
         let sites = languages.map { "\($0)wiki" }.joined(separator: "|")
         let data = try await fetcher.get(.build("https://www.wikidata.org/w/api.php", [
             "action": "wbgetentities", "ids": wikidataId, "props": "sitelinks", "sitefilter": sites, "format": "json",
-        ]), identity: identity)
+        ]), identity: identity, limiter: limiter)
         let sitelinks = try JSONDecoder().decode(Entities.self, from: data).entities[wikidataId]?.sitelinks ?? [:]
         for language in languages {
             guard let title = sitelinks["\(language)wiki"]?.title else { continue }
@@ -324,7 +330,7 @@ public final class WikipediaClient: Sendable {
             ?? title
         guard let url = URL(string: "https://\(language).wikipedia.org/api/rest_v1/page/summary/\(path)") else { return nil }
         do {
-            let data = try await fetcher.get(url, identity: identity)
+            let data = try await fetcher.get(url, identity: identity, limiter: limiter)
             let summary = try JSONDecoder().decode(Summary.self, from: data)
             guard summary.type != "disambiguation", let extract = summary.extract, !extract.isEmpty,
                   let page = summary.contentUrls.flatMap({ URL(string: $0.desktop.page) }) else { return nil }
@@ -358,14 +364,22 @@ public struct ArtistInfo: Codable, Hashable, Sendable {
     public var imageHash: String?
     /// Whether a photo was looked for (nil in info cached before photos).
     public var imageChecked: Bool?
+    /// Whether Wikipedia answered (with the article, or that there is none). Nil when it was not reached (before this
+    /// was kept, an error such as "too many requests" was saved as "no article"): looked up again.
+    public var aboutChecked: Bool?
 
-    public init(artistId: String?, about: AlbumAbout?, fetchedAt: Date, imageHash: String? = nil, imageChecked: Bool? = nil) {
+    public init(artistId: String?, about: AlbumAbout?, fetchedAt: Date, imageHash: String? = nil, imageChecked: Bool? = nil,
+                aboutChecked: Bool? = nil) {
         self.artistId = artistId
         self.about = about
         self.fetchedAt = fetchedAt
         self.imageHash = imageHash
         self.imageChecked = imageChecked
+        self.aboutChecked = aboutChecked
     }
 
     public var isEmpty: Bool { about == nil }
+
+    /// The artist was found but Wikipedia never answered: worth asking again now.
+    public var needsAbout: Bool { artistId != nil && about == nil && aboutChecked != true }
 }

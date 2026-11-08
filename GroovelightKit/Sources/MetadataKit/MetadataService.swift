@@ -76,9 +76,15 @@ public final class MetadataService: Sendable {
         guard let artistId else { return ArtistInfo(artistId: nil, about: nil, fetchedAt: .now) }
         var about: AlbumAbout?
         if let wikidata = try await musicBrainz.wikidataId(artistId: artistId) {
-            about = try? await wikipedia.summary(wikidataId: wikidata, languages: languages)
+            // No article, or one Wikipedia cannot summarize, is an answer; "too many requests" or no connection is not:
+            // it throws, nothing is kept, and the next look tries again.
+            do {
+                about = try await wikipedia.summary(wikidataId: wikidata, languages: languages)
+            } catch MetadataError.notFound {
+            } catch is DecodingError {
+            }
         }
-        return ArtistInfo(artistId: artistId, about: about, fetchedAt: .now)
+        return ArtistInfo(artistId: artistId, about: about, fetchedAt: .now, aboutChecked: true)
     }
 
     /// The release id shared by most of the songs, if any.

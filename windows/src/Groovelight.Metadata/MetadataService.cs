@@ -100,10 +100,12 @@ public sealed class MetadataService
         AlbumAbout? about = null;
         if (await MusicBrainz.WikidataIdAsync(artistId, cancellation) is { } wikidata)
         {
+            // No article, or one Wikipedia cannot summarize, is an answer; "too many requests" or no connection is not:
+            // it throws, nothing is kept, and the next look tries again.
             try { about = await Wikipedia.SummaryAsync(wikidata, languages, cancellation); }
-            catch (Exception error) when (error is MetadataException or HttpRequestException or System.Text.Json.JsonException) { }
+            catch (Exception error) when (error is MetadataException { Kind: MetadataErrorKind.NotFound } or System.Text.Json.JsonException) { }
         }
-        return new ArtistInfo { ArtistId = artistId, About = about, FetchedAt = DateTime.UtcNow };
+        return new ArtistInfo { ArtistId = artistId, About = about, FetchedAt = DateTime.UtcNow, AboutChecked = true };
     }
 
     /// <summary>The release id shared by most of the songs, if any.</summary>

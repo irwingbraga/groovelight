@@ -57,6 +57,9 @@ public sealed class RateLimiter(TimeSpan interval)
 /// <summary>Identifies the app to web services, as MusicBrainz and LRCLIB ask.</summary>
 public sealed record ClientIdentity(string Version, string Name = "Groovelight", string? Contact = null)
 {
+    /// <summary>The contact sent when the user set none: Wikimedia and MusicBrainz ask clients for a way to reach them.</summary>
+    public const string ProjectUrl = "https://github.com/irwingbraga/groovelight";
+
     public string UserAgent => string.IsNullOrEmpty(Contact) ? $"{Name}/{Version}" : $"{Name}/{Version} ( {Contact} )";
 }
 

@@ -56,6 +56,9 @@ public struct ClientIdentity: Sendable {
         self.contact = contact
     }
 
+    /// The contact sent when the user set none: Wikimedia and MusicBrainz ask clients for a way to reach them.
+    public static let projectURL = "https://github.com/irwingbraga/groovelight"
+
     public var userAgent: String {
         if let contact, !contact.isEmpty { return "\(name)/\(version) ( \(contact) )" }
         return "\(name)/\(version)"

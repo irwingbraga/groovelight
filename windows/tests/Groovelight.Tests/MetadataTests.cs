@@ -448,6 +448,31 @@ public class ArtistInfoTests
         Assert.DoesNotContain(stub.Requests, request => request.Url.AbsolutePath == "/ws/2/artist");
     }
 
+    /// <summary>
+    /// "Too many requests" from Wikipedia fails the lookup (nothing is kept, the next look tries again); an article that is
+    /// not there is an answer. Info saved before this, artist found but no article, is looked up again.
+    /// </summary>
+    [Fact]
+    public async Task TellsBusyWikipediaFromNoArticle()
+    {
+        Dictionary<string, (int, string)> Routes(int summary) => new()
+        {
+            ["/ws/2/release"] = (200, """{"releases":[{"id":"r1","title":"Nevermind","score":100,"artist-credit":[{"name":"Nirvana","artist":{"id":"nirvana-us","name":"Nirvana"}}]}]}"""),
+            ["/ws/2/artist/nirvana-us"] = (200, """{"id":"nirvana-us","name":"Nirvana","relations":[{"type":"wikidata","url":{"resource":"https://www.wikidata.org/wiki/Q11649"}}]}"""),
+            ["/w/api.php"] = (200, """{"entities":{"Q11649":{"sitelinks":{"enwiki":{"title":"Nirvana (band)"}}}}}"""),
+            ["/api/rest_v1/page/summary/Nirvana_(band)"] = (summary, "{}"),
+        };
+        var token = TestContext.Current.CancellationToken;
+        var busy = new MetadataService(new ClientIdentity("1"), new StubFetcher(Routes(429)));
+        var error = await Assert.ThrowsAsync<MetadataException>(() => busy.ArtistInfoAsync("Nirvana", ["Nevermind"], ["en"], token));
+        Assert.Equal(MetadataErrorKind.Http, error.Kind);
+        var missing = await new MetadataService(new ClientIdentity("1"), new StubFetcher(Routes(404))).ArtistInfoAsync("Nirvana", ["Nevermind"], ["en"], token);
+        Assert.Equal(("nirvana-us", (AlbumAbout?)null, (bool?)true, false), (missing.ArtistId, missing.About, missing.AboutChecked, missing.NeedsAbout));
+        var saved = ArtistInfo.Decode("""{"artistId":"nirvana-us","fetchedAt":815827845.6,"imageChecked":true}"""u8.ToArray())!;
+        Assert.True(saved.NeedsAbout);
+        Assert.False(new ArtistInfo { FetchedAt = DateTime.UtcNow }.NeedsAbout);
+    }
+
     [Fact]
     public void TidiesWikipediaSummaries()
     {

@@ -60,7 +60,7 @@ final class MetadataStore {
     private var identity: ClientIdentity {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
         let contact = UserDefaults.standard.string(forKey: Keys.contact)?.trimmingCharacters(in: .whitespaces)
-        return ClientIdentity(version: version, contact: contact)
+        return ClientIdentity(version: version, contact: contact?.isEmpty == false ? contact : ClientIdentity.projectURL)
     }
 
     var writesTags: Bool { UserDefaults.standard.bool(forKey: Keys.writeTags) }
@@ -122,9 +122,10 @@ final class MetadataStore {
         if !force, let cached = try? await database.writer.read({ try LibraryDatabase.artistInfo($0, name: name) }) {
             let info = try? JSONDecoder().decode(ArtistInfo.self, from: cached.data)
             let isMiss = info?.isEmpty ?? true
-            // Info found before photos were fetched gets one more lookup for the photo.
+            // Info found before photos were fetched gets one more lookup for the photo, and an artist whose Wikipedia
+            // lookup never finished (saved before errors were told apart from "no article") one more for the article.
             let needsPhoto = info.map { !$0.isEmpty && $0.imageChecked == nil } ?? false
-            if !needsPhoto, !isMiss || cached.fetchedAt > .now.addingTimeInterval(-30 * 24 * 3600) { return }
+            if !needsPhoto, info?.needsAbout != true, !isMiss || cached.fetchedAt > .now.addingTimeInterval(-30 * 24 * 3600) { return }
         }
         // Their albums in the library identify the artist exactly (names are ambiguous).
         let albums = (try? await database.writer.read { try LibraryDatabase.albums($0, sort: .year, artist: name) }) ?? []

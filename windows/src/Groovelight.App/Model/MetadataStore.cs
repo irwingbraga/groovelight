@@ -40,7 +40,8 @@ public sealed class MetadataStore : Support.Observable
         }
     }
 
-    private ClientIdentity Identity => new(typeof(MetadataStore).Assembly.GetName().Version?.ToString(3) ?? "0", Contact: Preferences.String(ContactKey)?.Trim());
+    private ClientIdentity Identity => new(typeof(MetadataStore).Assembly.GetName().Version?.ToString(3) ?? "0",
+        Contact: Preferences.String(ContactKey)?.Trim() is { Length: > 0 } contact ? contact : ClientIdentity.ProjectUrl);
 
     public bool WritesTags => Preferences.Bool(WriteTagsKey);
 
@@ -143,9 +144,10 @@ public sealed class MetadataStore : Support.Observable
         {
             var info = ArtistInfo.Decode(cached.Data);
             var isMiss = info?.IsEmpty ?? true;
-            // Info found before photos were fetched gets one more lookup for the photo.
+            // Info found before photos were fetched gets one more lookup for the photo, and an artist whose Wikipedia
+            // lookup never finished (saved before errors were told apart from "no article") one more for the article.
             var needsPhoto = info is { IsEmpty: false, ImageChecked: null };
-            if (!needsPhoto && (!isMiss || cached.FetchedAt > DateTime.UtcNow.AddDays(-30))) return;
+            if (!needsPhoto && info?.NeedsAbout != true && (!isMiss || cached.FetchedAt > DateTime.UtcNow.AddDays(-30))) return;
         }
         // Their albums in the library identify the artist exactly (names are ambiguous).
         var albums = await Task.Run(() => Database.Read(db => db.Albums(AlbumSort.Year, name)));

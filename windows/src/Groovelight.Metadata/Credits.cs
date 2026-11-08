@@ -121,8 +121,16 @@ public sealed record ArtistInfo
     public string? ImageHash { get; init; }
     /// <summary>Whether a photo was looked for (null in info cached before photos).</summary>
     public bool? ImageChecked { get; init; }
+    /// <summary>
+    /// Whether Wikipedia answered (with the article, or that there is none). Null when it was not reached (before this
+    /// was kept, an error such as "too many requests" was saved as "no article"): looked up again.
+    /// </summary>
+    public bool? AboutChecked { get; init; }
 
     [JsonIgnore] public bool IsEmpty => About is null;
+
+    /// <summary>The artist was found but Wikipedia never answered: worth asking again now.</summary>
+    [JsonIgnore] public bool NeedsAbout => ArtistId is not null && About is null && AboutChecked != true;
 
     public byte[] Encode() => SwiftJson.Encode(this);
 
@@ -256,14 +264,22 @@ public static class CreditsBuilder
 }
 
 /// <summary>Album and artist summaries from Wikipedia, found through their Wikidata items.</summary>
-public sealed partial class WikipediaClient(IHttpFetcher fetcher, ClientIdentity identity)
+public sealed partial class WikipediaClient(IHttpFetcher fetcher, ClientIdentity identity, RateLimiter? limiter = null)
 {
+    /// <summary>
+    /// One pace for the whole app: Wikimedia answers bursts (an artist page, then the next) with 429, which the limited
+    /// requests wait out and try again.
+    /// </summary>
+    public static readonly RateLimiter SharedLimiter = new(TimeSpan.FromMilliseconds(250));
+
+    private readonly RateLimiter limiter = limiter ?? SharedLimiter;
+
     /// <summary>Summary of the article linked to a Wikidata item, in the first of <paramref name="languages"/> that has one.</summary>
     public async Task<AlbumAbout?> SummaryAsync(string wikidataId, IReadOnlyList<string> languages, CancellationToken cancellation = default)
     {
         var sites = string.Join("|", languages.Select(language => $"{language}wiki"));
         var data = await fetcher.GetAsync(HttpFetching.Build("https://www.wikidata.org/w/api.php",
-            ("action", "wbgetentities"), ("ids", wikidataId), ("props", "sitelinks"), ("sitefilter", sites), ("format", "json")), identity, cancellation: cancellation);
+            ("action", "wbgetentities"), ("ids", wikidataId), ("props", "sitelinks"), ("sitefilter", sites), ("format", "json")), identity, limiter, cancellation: cancellation);
         using var document = JsonDocument.Parse(data);
         if (!document.RootElement.TryGetProperty("entities", out var entities) || !entities.TryGetProperty(wikidataId, out var entity)
             || !entity.TryGetProperty("sitelinks", out var sitelinks)) return null;
@@ -305,7 +321,7 @@ public sealed partial class WikipediaClient(IHttpFetcher fetcher, ClientIdentity
         var url = new Uri($"https://{language}.wikipedia.org/api/rest_v1/page/summary/{path}");
         try
         {
-            using var document = JsonDocument.Parse(await fetcher.GetAsync(url, identity, cancellation: cancellation));
+            using var document = JsonDocument.Parse(await fetcher.GetAsync(url, identity, limiter, cancellation: cancellation));
             var root = document.RootElement;
             string? Text(JsonElement element, string name) => element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
             if (Text(root, "type") == "disambiguation" || Text(root, "extract") is not { Length: > 0 } extract) return null;

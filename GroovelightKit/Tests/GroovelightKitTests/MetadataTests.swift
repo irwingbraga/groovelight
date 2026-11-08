@@ -659,6 +659,31 @@ struct ArtistInfoTests {
         #expect(!stub.requests.contains { $0.url!.path == "/ws/2/artist" }, "no name search needed")
     }
 
+    /// "Too many requests" from Wikipedia fails the lookup (nothing is kept, the next look tries again); an article that is
+    /// not there is an answer. Info saved before this, artist found but no article, is looked up again.
+    @Test func tellsBusyWikipediaFromNoArticle() async throws {
+        func service(summary status: Int) -> MetadataService {
+            let stub = StubFetcher([
+                "/ws/2/release": (200, #"{"releases":[{"id":"r1","title":"Nevermind","score":100,"artist-credit":[{"name":"Nirvana","artist":{"id":"nirvana-us","name":"Nirvana"}}]}]}"#),
+                "/ws/2/artist/nirvana-us": (200, #"{"id":"nirvana-us","name":"Nirvana","relations":[{"type":"wikidata","url":{"resource":"https://www.wikidata.org/wiki/Q11649"}}]}"#),
+                "/w/api.php": (200, #"{"entities":{"Q11649":{"sitelinks":{"enwiki":{"title":"Nirvana (band)"}}}}}"#),
+                "/api/rest_v1/page/summary/Nirvana_(band)": (status, "{}"),
+            ])
+            let identity = ClientIdentity(version: "1")
+            return MetadataService(musicBrainz: MusicBrainzClient(fetcher: stub, identity: identity, limiter: RateLimiter(interval: .zero)),
+                                   artwork: ArtworkClient(fetcher: stub, identity: identity), lyrics: LRCLibClient(fetcher: stub, identity: identity),
+                                   wikipedia: WikipediaClient(fetcher: stub, identity: identity, limiter: RateLimiter(interval: .zero)))
+        }
+        await #expect(throws: MetadataError.self) {
+            try await service(summary: 429).artistInfo(name: "Nirvana", albumTitles: ["Nevermind"], languages: ["en"])
+        }
+        let missing = try await service(summary: 404).artistInfo(name: "Nirvana", albumTitles: ["Nevermind"], languages: ["en"])
+        #expect(missing.artistId == "nirvana-us" && missing.about == nil && missing.aboutChecked == true && !missing.needsAbout)
+        let saved = try JSONDecoder().decode(ArtistInfo.self, from: Data(#"{"artistId":"nirvana-us","fetchedAt":815827845.6,"imageChecked":true}"#.utf8))
+        #expect(saved.needsAbout)
+        #expect(!ArtistInfo(artistId: nil, about: nil, fetchedAt: .now).needsAbout)
+    }
+
     @Test func tidiesWikipediaSummaries() {
         #expect(WikipediaClient.tidy("The members are Thom Yorke ; brothers Jonny and Colin Greenwood (bass); Ed O'Brien ; and Philip Selway.")
                 == "The members are Thom Yorke; brothers Jonny and Colin Greenwood (bass); Ed O'Brien; and Philip Selway.")
