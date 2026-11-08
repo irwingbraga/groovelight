@@ -51,7 +51,10 @@ public sealed partial class NowPlayingView : UserControl, IDisposable
     private readonly Button shuffle, previous, playPause, next, repeat, love, upNext;
     private readonly Slider volume = new() { Minimum = 0, Maximum = 100 };
     private readonly ContentControl side = new() { HorizontalContentAlignment = HorizontalAlignment.Stretch, VerticalContentAlignment = VerticalAlignment.Stretch };
-    private readonly StackPanel topButtons = new() { Orientation = Orientation.Horizontal, Spacing = 10, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 12, 16, 0) };
+    /// <summary>The window's title bar (tall): Now Playing covers it, but its band holds the window's buttons and drags the window.</summary>
+    private const double TitleBarHeight = 48;
+    // Under the title bar: in it, the window's minimize, maximize and close buttons cover them and clicks drag the window.
+    private readonly StackPanel topButtons = new() { Orientation = Orientation.Horizontal, Spacing = 10, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, TitleBarHeight + 4, 16, 0) };
     private readonly ContentControl deckHost = new() { HorizontalContentAlignment = HorizontalAlignment.Stretch, VerticalContentAlignment = VerticalAlignment.Stretch };
     private Track? track;
     private bool showVisualizer;
