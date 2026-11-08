@@ -39,7 +39,6 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -188,15 +187,11 @@ fun Visualizer(title: String, artist: String?, accent: Color, onClose: () -> Uni
     var frame by remember { mutableLongStateOf(0L) }
     var started by remember { mutableLongStateOf(0L) }
     var overlay by remember { mutableStateOf(true) }
-    val view = LocalView.current
     BackHandler(onBack = onClose)
+    KeepScreenOn()
     DisposableEffect(Unit) {
         AudioTap.start()
-        view.keepScreenOn = true
-        onDispose {
-            AudioTap.stop()
-            view.keepScreenOn = false
-        }
+        onDispose { AudioTap.stop() }
     }
     LaunchedEffect(Unit) {
         while (true) withFrameNanos { now ->

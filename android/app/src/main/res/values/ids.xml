@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- How many screens ask to keep the display on (KeepScreenOn), kept on the window's root view. -->
+    <item name="keep_screen_on_holds" type="id" />
+</resources>

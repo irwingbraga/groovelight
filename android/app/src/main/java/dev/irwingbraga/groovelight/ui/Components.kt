@@ -721,3 +721,23 @@ data class WindowShape(val short: Boolean = false, val narrow: Boolean = false) 
 }
 
 val LocalWindowShape = staticCompositionLocalOf { WindowShape() }
+
+/**
+ * Keeps the screen on while this is in the composition (lyrics being read, the visualizer). Counted per window, so two of
+ * them (the lyrics and the visualizer) hold it together and the last to leave lets the screen sleep again.
+ */
+@Composable
+fun KeepScreenOn() {
+    val view = androidx.compose.ui.platform.LocalView.current
+    androidx.compose.runtime.DisposableEffect(view) {
+        val root = view.rootView
+        val holds = (root.getTag(R.id.keep_screen_on_holds) as? Int ?: 0) + 1
+        root.setTag(R.id.keep_screen_on_holds, holds)
+        root.keepScreenOn = true
+        onDispose {
+            val left = ((root.getTag(R.id.keep_screen_on_holds) as? Int ?: 1) - 1).coerceAtLeast(0)
+            root.setTag(R.id.keep_screen_on_holds, left)
+            if (left == 0) root.keepScreenOn = false
+        }
+    }
+}

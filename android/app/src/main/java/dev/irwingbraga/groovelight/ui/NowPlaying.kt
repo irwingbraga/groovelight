@@ -848,9 +848,15 @@ private fun LyricsPanel(song: PlayerModel.NowPlaying, player: PlayerModel) {
         null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text("No lyrics for this song", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        is Lyrics.Plain -> Text(lyrics.text, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(vertical = 24.dp))
-        is Lyrics.Synced -> SyncedLyrics(lyrics, player)
+        is Lyrics.Plain -> {
+            KeepScreenOn()
+            Text(lyrics.text, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(vertical = 24.dp))
+        }
+        is Lyrics.Synced -> {
+            KeepScreenOn()
+            SyncedLyrics(lyrics, player)
+        }
     }
 }
 

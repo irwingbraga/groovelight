@@ -4,6 +4,7 @@ import LibraryKit
 import MetadataKit
 import PlayerCore
 import SwiftUI
+import UIKit
 
 /// What Now Playing shows beside (or, on a phone, instead of) the cover: the lyrics or what plays next.
 enum NowPlayingPanel: Hashable {
@@ -159,6 +160,7 @@ struct LyricsPanel: View {
                                    description: Text("Lyrics in the song's file, or found by the \(Host.word), show up here."))
         } else if item.lyrics.isSynced {
             SyncedLyricsView(lyrics: item.lyrics, fontSize: fontSize)
+                .keepsScreenAwake()
         } else {
             ScrollView {
                 Text(item.lyrics.plainText)
@@ -169,12 +171,37 @@ struct LyricsPanel: View {
             }
             .scrollIndicators(.never)
             .mask(Self.fade)
+            .keepsScreenAwake()
         }
     }
 
     static let fade = LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .white, location: 0.08),
                                              .init(color: .white, location: 0.92), .init(color: .clear, location: 1)],
                                      startPoint: .top, endPoint: .bottom)
+}
+
+/// Keeps the screen from dimming and locking while the view is on screen (lyrics being read or sung along to). Counted, so
+/// several (two windows on an iPad) hold it together and the last to go lets the screen sleep again.
+@MainActor
+enum ScreenAwake {
+    private static var holds = 0
+
+    static func hold() {
+        holds += 1
+        UIApplication.shared.isIdleTimerDisabled = true
+    }
+
+    static func release() {
+        holds = max(holds - 1, 0)
+        if holds == 0 { UIApplication.shared.isIdleTimerDisabled = false }
+    }
+}
+
+extension View {
+    func keepsScreenAwake() -> some View {
+        onAppear { ScreenAwake.hold() }
+            .onDisappear { ScreenAwake.release() }
+    }
 }
 
 private struct SyncedLyricsView: View {
