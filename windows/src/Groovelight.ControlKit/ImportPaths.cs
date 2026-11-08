@@ -56,7 +56,11 @@ public static class ImportPaths
         if (!OperatingSystem.IsWindows()) return path;
         try
         {
-            var full = Path.GetFullPath(Environment.ExpandEnvironmentVariables(path));
+            path = Environment.ExpandEnvironmentVariables(path);
+            // "D:" (or "D:Music") is relative to the current folder on that drive; people mean the drive itself.
+            if (path.Length >= 2 && path[1] == ':' && char.IsAsciiLetter(path[0]) && (path.Length == 2 || path[2] is not ('\\' or '/')))
+                path = path[..2] + "\\" + path[2..];
+            var full = Path.GetFullPath(path);
             FileSystemInfo item = Directory.Exists(full) ? new DirectoryInfo(full) : new FileInfo(full);
             return item.ResolveLinkTarget(returnFinalTarget: true)?.FullName ?? full;
         }
