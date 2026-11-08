@@ -247,7 +247,8 @@ jobs:
   windows:
     # Groovelight for Windows: a Velopack installer per architecture (Groovelight-win-Setup.exe for x64,
     # Groovelight-win-arm64-Setup.exe for ARM64), with the packages and releases.<channel>.json the installed app
-    # updates from, attached to the same release.
+    # updates from, and a portable single-file exe per architecture (Groovelight-<version>-win-x64-Portable.exe), all
+    # attached to the same release.
     needs: release
     runs-on: windows-latest
     timeout-minutes: 45
@@ -293,6 +294,22 @@ jobs:
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
 
+      - name: Build the portable apps
+        # One exe with everything in it (the .NET and Windows App SDK runtimes, FFmpeg, the assets), unpacked to a
+        # temporary folder when it starts. It runs from anywhere without installing; it does not update itself and has no
+        # groovelight command (both come with the installer).
+        run: |
+          New-Item -ItemType Directory -Force portable | Out-Null
+          foreach ($arch in @('x64', 'arm64')) {
+            $runtime = "win-$arch"
+            $platform = if ($arch -eq 'x64') { 'x64' } else { 'ARM64' }
+            dotnet publish src/Groovelight.App -c Release -r $runtime -p:Platform=$platform -p:Version=$env:VERSION `
+              -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=none `
+              -o "portable/$runtime"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            Copy-Item "portable/$runtime/Groovelight.exe" "portable/Groovelight-$env:VERSION-$runtime-Portable.exe"
+          }
+
       - name: Keep the installers
         uses: actions/upload-artifact@v4
         with:
@@ -300,6 +317,7 @@ jobs:
           path: |
             windows/releases/win-x64/*-Setup.exe
             windows/releases/win-arm64/*-Setup.exe
+            windows/portable/*-Portable.exe
 
       - name: Attach to the release
         if: ${{ github.ref_type == 'tag' || inputs.publish }}
@@ -312,3 +330,4 @@ jobs:
               --tag "v$env:VERSION" --merge --channel $channel -o "releases/$runtime"
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
+          gh release upload "v$env:VERSION" (Get-ChildItem portable/*-Portable.exe).FullName --clobber --repo "${{ github.repository }}"
