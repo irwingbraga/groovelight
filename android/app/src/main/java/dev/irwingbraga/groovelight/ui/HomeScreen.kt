@@ -207,7 +207,7 @@ private fun PickCard(card: HomeSnapshot.Card, alternatives: Boolean, modifier: M
             actions.player.playOnMac(card.trackIds, 0, shuffle)
         } else scope.launch {
             val tracks = actions.library.tracksWithIds(here)
-            if (tracks.isNotEmpty()) actions.player.play(actions.library.mediaItems(tracks, kindTitle(card.kind)), 0, if (shuffle) true else null)
+            if (tracks.isNotEmpty()) actions.player.play(actions.library.mediaItems(tracks, kindTitle(card.kind)), 0, shuffle)
         }
         Unit
     }

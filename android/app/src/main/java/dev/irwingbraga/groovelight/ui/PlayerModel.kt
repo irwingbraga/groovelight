@@ -295,29 +295,25 @@ class PlayerModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Plays `items` from `start`, replacing the queue. `shuffle` true plays them shuffled (from a random song), false in
-     * order, and null keeps the current mode (shuffled from `start` when shuffle is on, as tapping a song does).
+     * Plays `items` from `start`, replacing the queue. `shuffle` true plays them shuffled (from a random song); false, as
+     * tapping a song does, plays them in order from `start` and turns shuffle off, as music apps do: a new album or
+     * playlist does not inherit the last one's shuffle.
      */
-    fun play(items: List<MediaItem>, start: Int, shuffle: Boolean? = null) {
+    fun play(items: List<MediaItem>, start: Int, shuffle: Boolean = false) {
         if (items.isEmpty()) return
         if (isRemote) {
             val ids = items.map { it.mediaId.toLongOrNull() }
             val known = ids.filterNotNull()
             val first = ids.take(start.coerceIn(0, ids.size)).count { it != null }
-            remote.send(RemoteCommand.play(known, first.coerceAtMost(known.lastIndex.coerceAtLeast(0)), 0.0, shuffle == true))
+            remote.send(RemoteCommand.play(known, first.coerceAtMost(known.lastIndex.coerceAtLeast(0)), 0.0, shuffle))
             return
         }
         val player = controller ?: return
-        val shuffled = shuffle ?: shuffling.value
         val ordered = items.mapIndexed { index, item -> withOrder(item, index.toDouble()) }
-        val queue = when {
-            !shuffled -> ordered
-            shuffle == true -> ordered.shuffled()
-            else -> listOf(ordered[start]) + (ordered.take(start) + ordered.drop(start + 1)).shuffled()
-        }
-        setShuffling(shuffled)
+        val queue = if (shuffle) ordered.shuffled() else ordered
+        setShuffling(shuffle)
         player.shuffleModeEnabled = false
-        player.setMediaItems(queue, if (shuffled) 0 else start, 0)
+        player.setMediaItems(queue, if (shuffle) 0 else start, 0)
         player.prepare()
         player.play()
     }

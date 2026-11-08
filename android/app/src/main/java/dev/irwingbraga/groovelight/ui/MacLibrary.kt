@@ -340,7 +340,7 @@ private fun CatalogSongRow(track: CatalogTrack, album: CatalogAlbum?, showCover:
                 // Here: played from the device's copy, with the rest of the album that is here.
                 val local = actions.library.tracksOfAlbum(track.albumKey).first()
                 val start = local.indexOfFirst { it.id == track.id }.coerceAtLeast(0)
-                actions.player.play(actions.library.mediaItems(local, "Album · ${album?.title ?: ""}"), start, null)
+                actions.player.play(actions.library.mediaItems(local, "Album · ${album?.title ?: ""}"), start, false)
             } else actions.notify("Add it to this device to play it")
         }, onLongClick = if (track.id in holdings.trackIds) ({
             scope.launch {

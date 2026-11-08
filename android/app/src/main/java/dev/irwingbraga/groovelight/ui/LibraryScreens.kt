@@ -334,7 +334,7 @@ private fun SongsSection() {
     val list = rememberLazyListState()
     LaunchedEffect(Unit) { actions.library.songOrder.drop(1).collect { list.scrollToItem(0) } }
     val all = tracks.orEmpty()
-    val play = { start: Int, shuffle: Boolean? -> actions.player.play(actions.library.mediaItems(all, "Songs"), start, shuffle) }
+    val play = { start: Int, shuffle: Boolean -> actions.player.play(actions.library.mediaItems(all, "Songs"), start, shuffle) }
     // Sorted by name, the A to Z index; by date added, the fast scroller.
     val indexed = order != LibraryModel.SongOrder.RECENT && all.size >= ALPHABET_INDEX_MINIMUM
     val starts = remember(all, order, albums) {
@@ -353,7 +353,7 @@ private fun SongsSection() {
                 PlayButtons(onPlay = { play(0, false) }, onShuffle = { play(0, true) }, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
             }
             itemsIndexed(all, key = { _, track -> track.id }) { index, track ->
-                SongRow(track, listOfNotNull(track.artist, albums[track.albumKey]?.title).joinToString(" · "), onClick = { play(index, null) })
+                SongRow(track, listOfNotNull(track.artist, albums[track.albumKey]?.title).joinToString(" · "), onClick = { play(index, false) })
             }
         }
         val edges = Modifier.align(Alignment.TopEnd).padding(top = LocalTopInset.current, bottom = LocalBottomInset.current)
@@ -531,7 +531,7 @@ fun AlbumPage(key: String) {
     val current = album ?: known[key] ?: return PageLoading()
     val songs = tracks.orEmpty()
     val source = "Album · ${current.title}"
-    val play = { start: Int, shuffle: Boolean? -> actions.player.play(actions.library.mediaItems(songs, source), start, shuffle) }
+    val play = { start: Int, shuffle: Boolean -> actions.player.play(actions.library.mediaItems(songs, source), start, shuffle) }
     val discs = remember(songs) { songs.groupBy { it.discNumber ?: 1 } }
     val list = rememberLazyListState()
     val scrolled by remember { derivedStateOf { list.firstVisibleItemIndex > 0 } }
@@ -569,7 +569,7 @@ fun AlbumPage(key: String) {
                     SongRow(
                         track,
                         supporting = track.artist.takeIf { it != current.artist },
-                        onClick = { play(songs.indexOf(track), null) },
+                        onClick = { play(songs.indexOf(track), false) },
                         leading = SongLeading.Number(track.trackNumber?.toString() ?: ""),
                         showDuration = true,
                         showAlbumLink = false,
@@ -651,7 +651,7 @@ fun PersonPage(name: String) {
                 itemsIndexed(person.songs, key = { _, it -> "song:${it.first.id}" }) { index, (track, roles) ->
                     SongRow(track, listOfNotNull(roles.joinToString(", ") { it.replaceFirstChar(Char::uppercase) }.ifEmpty { null },
                         albums[track.albumKey]?.title).joinToString(" · "),
-                        onClick = { actions.player.play(actions.library.mediaItems(songs, name), index, null) })
+                        onClick = { actions.player.play(actions.library.mediaItems(songs, name), index, false) })
                 }
             }
         }
@@ -721,7 +721,7 @@ fun PlaylistPage(id: Long?) {
     val albums by actions.library.albumsByKey.collectAsStateWithLifecycle()
     val songs = tracks ?: return PageLoading()
     val name = if (id == null) "Loved Songs" else playlist?.name ?: ""
-    val play = { start: Int, shuffle: Boolean? ->
+    val play = { start: Int, shuffle: Boolean ->
         actions.player.play(actions.library.mediaItems(songs, if (id == null) name else "Playlist · $name"), start, shuffle)
     }
     val list = rememberLazyListState()
@@ -765,7 +765,7 @@ fun PlaylistPage(id: Long?) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(32.dp))
             }
             itemsIndexed(songs, key = { index, track -> "$index:${track.id}" }) { index, track ->
-                SongRow(track, listOfNotNull(track.artist, albums[track.albumKey]?.title).joinToString(" · "), onClick = { play(index, null) },
+                SongRow(track, listOfNotNull(track.artist, albums[track.albumKey]?.title).joinToString(" · "), onClick = { play(index, false) },
                     playlistId = id?.takeIf { playlist?.isSmart == false })
             }
         }

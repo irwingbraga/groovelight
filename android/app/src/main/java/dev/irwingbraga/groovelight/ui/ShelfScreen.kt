@@ -294,7 +294,7 @@ private fun ShelfBack(album: Album) {
             itemsIndexed(tracks, key = { _, track -> track.id }) { index, track ->
                 val playing = nowPlaying?.id == track.id
                 Row(Modifier.fillMaxWidth().clickable {
-                    actions.player.play(actions.library.mediaItems(tracks, "Album · ${album.title}"), index, null)
+                    actions.player.play(actions.library.mediaItems(tracks, "Album · ${album.title}"), index, false)
                 }.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.width(24.dp)) {
                         if (playing) PlayingBars(nowPlaying?.isPlaying == true, Modifier.size(14.dp))
