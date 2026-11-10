@@ -573,7 +573,7 @@ final class AppModel {
     /// Logs the listen: plays count when at least half the track (or 4 minutes) was heard, early stops count as skips.
     private func recordListen(item: PlayableItem, seconds: TimeInterval) {
         guard seconds > 0 else { return }
-        try? database.recordListen(trackId: item.id, startedAt: .now.addingTimeInterval(-seconds), listened: seconds)
+        _ = try? database.recordListen(trackId: item.id, startedAt: .now.addingTimeInterval(-seconds), listened: seconds)
     }
 
     func toggleLoved(_ track: Track) {
