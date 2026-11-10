@@ -72,10 +72,15 @@ final class AppModel {
         get { path.compactMap { if case let .album(album) = $0 { album } else { nil } } }
         set { path = newValue.map(Route.album) }
     }
-    /// Artist selected on the Artists page (kept here so other pages can open an artist).
-    var selectedArtist: String?
-    /// Genre selected on the Genres page.
-    var selectedGenre: String?
+    /// Artist selected on the Artists page (kept here so other pages can open an artist). Choosing one, even the same
+    /// one again, closes the album pages opened over it, as in Music.
+    var selectedArtist: String? {
+        didSet { if selection == .artists, !path.isEmpty { path = [] } }
+    }
+    /// Genre selected on the Genres page; choosing one closes the pages opened over it.
+    var selectedGenre: String? {
+        didSet { if selection == .genres, !path.isEmpty { path = [] } }
+    }
     /// Smart playlist editor sheet request (nil playlist creates a new one).
     var smartPlaylistEditor: SmartEditorRequest?
 

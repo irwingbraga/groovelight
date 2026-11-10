@@ -396,11 +396,14 @@ struct SpanningPlayerBar: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        if model.hasListColumn, let list = span.listFrame, let page = span.pageFrame, page.maxX > list.minX {
+        if model.hasListColumn, let list = span.listFrame, let page = span.pageFrame {
+            // A pushed page (an album) reports its frame from its own origin (x 0), not the window's: the page always
+            // starts after the list column, so only its width and bottom are taken from it.
+            let pageMinX = page.minX >= list.maxX ? page.minX : list.maxX
             GeometryReader { proxy in
                 let origin = proxy.frame(in: .global).origin
                 FloatingPlayerBar()
-                    .frame(width: page.maxX - list.minX)
+                    .frame(width: pageMinX + page.width - list.minX)
                     .offset(x: list.minX - origin.x, y: page.maxY - origin.y - FloatingPlayerBar.height)
             }
         }
