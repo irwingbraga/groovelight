@@ -232,8 +232,17 @@ final class SyncStore {
 
     // MARK: - Syncing
 
+    /// Asked for while a sync was running (albums requested one after another): one more runs when it ends, for what
+    /// it did not have in its plan.
+    @ObservationIgnored private var syncAgain = false
+
     func syncNow() {
-        guard !isSyncing, let mac, let key = PairingKeychain.key(macId: mac.id) else { return }
+        if isSyncing {
+            syncAgain = true
+            return
+        }
+        guard let mac, let key = PairingKeychain.key(macId: mac.id) else { return }
+        syncAgain = false
         phase = .syncing(done: 0, total: 0, current: "Looking for \(mac.name)…")
         defaults.set(true, forKey: "sync.unfinished")
         holdBackgroundTime()
@@ -257,6 +266,11 @@ final class SyncStore {
                 }
                 Self.log.info("Sync finished: \(outcome.summary, privacy: .public) (\(outcome.songs) songs)")
                 self?.finish(outcome.summary)
+                if self?.syncAgain == true {
+                    self?.releaseBackgroundTime()
+                    self?.syncNow()
+                    return
+                }
             } catch is CancellationError {
                 self?.phase = .idle
                 self?.defaults.set(false, forKey: "sync.unfinished")

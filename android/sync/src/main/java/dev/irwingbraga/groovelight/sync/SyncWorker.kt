@@ -32,11 +32,26 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
         private const val NOTIFICATION = 1
         private const val PERIODIC = "periodic"
 
+        /** Whether a sync runs in this process, and whether one more was asked for meanwhile (guarded by itself). */
+        private val gate = Any()
+        private var running = false
+        private var again = false
+
+        /**
+         * Syncs now. Asked for while a sync runs (albums requested one after another), it runs once more when that one
+         * ends, for what was not in its plan; otherwise it is queued after any sync still finishing.
+         */
         fun syncNow(context: Context) {
+            synchronized(gate) {
+                if (running) {
+                    again = true
+                    return
+                }
+            }
             val request = OneTimeWorkRequestBuilder<SyncWorker>()
                 .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
                 .build()
-            WorkManager.getInstance(context).enqueueUniqueWork(NOW, ExistingWorkPolicy.KEEP, request)
+            WorkManager.getInstance(context).enqueueUniqueWork(NOW, ExistingWorkPolicy.APPEND_OR_REPLACE, request)
         }
 
         /** Turns the automatic sync on or off (on Wi-Fi only, and only while charging if asked). */
@@ -75,14 +90,31 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
             }.getOrDefault(false)
             if (!due) return Result.success()
         }
+        // One sync at a time: the other one (the automatic one, or the button's) runs this one's again when it ends.
+        synchronized(gate) {
+            if (running) {
+                again = true
+                return Result.success()
+            }
+            running = true
+            again = false
+        }
         setForeground(foregroundInfo("Getting ready…", 0, 0))
         return try {
-            val summary = engine.run { progress ->
-                setProgressAsync(workDataOf("done" to progress.done, "total" to progress.total, "current" to progress.current))
-                setForegroundAsync(foregroundInfo(progress.current, progress.done, progress.total))
+            var summary: String
+            while (true) {
+                summary = engine.run { progress ->
+                    setProgressAsync(workDataOf("done" to progress.done, "total" to progress.total, "current" to progress.current))
+                    setForegroundAsync(foregroundInfo(progress.current, progress.done, progress.total))
+                }
+                val more = synchronized(gate) {
+                    if (again) { again = false; true } else { running = false; false }
+                }
+                if (!more) break
             }
             Result.success(workDataOf("summary" to summary))
         } catch (error: Exception) {
+            synchronized(gate) { running = false }
             prefs.lastResult = error.message ?: "Sync failed"
             if (runAttemptCount < 2 && !inputData.getBoolean(PERIODIC, false)) Result.retry()
             else Result.failure(workDataOf("summary" to (error.message ?: "Sync failed")))
