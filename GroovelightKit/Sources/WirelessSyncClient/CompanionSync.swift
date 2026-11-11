@@ -4,8 +4,8 @@ import WirelessSync
 
 /// One sync of a device where Groovelight plays the music (Groovelight for iOS): tells the Mac what the music folder
 /// holds, gets the plan, removes and downloads files (each checked against the Mac's SHA-256), keeps the manifest
-/// (`.groovelight-device.json`, the file Groovelight writes on memory cards) up to date as it goes, then imports the
-/// library snapshot and fetches the covers it needs.
+/// (`.groovelight-device.json`, the file Groovelight writes on memory cards) up to date as it goes. The library snapshot
+/// comes first and is imported again as songs arrive, so each one can be played while the rest download.
 public struct CompanionSync: Sendable {
     public struct Progress: Sendable {
         public var done: Int
@@ -94,15 +94,43 @@ public struct CompanionSync: Sendable {
         manifest.profile = plan.profile
         try manifest.write(to: musicFolder)
 
+        // The library first: the songs already here (without the ones just removed) right away, then the ones that
+        // arrive, every few seconds, so they can be played before the sync ends.
+        let total = plan.writes.count
+        progress(Progress(done: 0, total: total, current: "Getting the library…"))
+        let snapshot = try await librarySnapshot(session: plan.session, token: token)
+        var coversAsked = Set<String>()
+        _ = try await importLibrary(snapshot, session: plan.session, token: token, coversAsked: &coversAsked) { isHere($0) }
+        let refresher = Task { [self, coversAsked] in
+            var coversAsked = coversAsked
+            var imported = -1
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(8))
+                guard !Task.isCancelled else { break }
+                let here = snapshot.songs.filter { isHere($0) }.count
+                guard here != imported else { continue }
+                imported = here
+                _ = try? await importLibrary(snapshot, session: plan.session, token: token, coversAsked: &coversAsked) { isHere($0) }
+            }
+        }
+
         // Each file goes into the manifest as it arrives (see `FileDownloads`).
         var failed: [String] = []
         let writes = plan.writes
         let downloads = downloads ?? FileDownloads(configuration: .ephemeral, musicFolder: musicFolder)
-        let total = plan.writes.count
         progress(Progress(done: 0, total: total, current: writes.first.map { ($0.path as NSString).lastPathComponent } ?? ""))
-        let outcomes = try await downloads.download(writes, client: client, session: plan.session, token: token) { done, name in
-            progress(Progress(done: done, total: total, current: name))
+        let outcomes: [String: FileDownloads.Outcome]
+        do {
+            outcomes = try await downloads.download(writes, client: client, session: plan.session, token: token) { done, name in
+                progress(Progress(done: done, total: total, current: name))
+            }
+        } catch {
+            refresher.cancel()
+            await refresher.value
+            throw error
         }
+        refresher.cancel()
+        await refresher.value
         var written = 0
         for write in writes {
             switch outcomes[write.path] {
@@ -117,7 +145,9 @@ public struct CompanionSync: Sendable {
 
         progress(Progress(done: plan.writes.count, total: plan.writes.count, current: "Updating the library…"))
         let failedPaths = Set(failed.map { String($0.prefix { $0 != ":" }) })
-        let (songs, missingCovers) = try await updateLibrary(session: plan.session, token: token, leavingOut: failedPaths)
+        var allCovers = Set<String>()
+        let (songs, missingCovers) = try await importLibrary(snapshot, session: plan.session, token: token, coversAsked: &allCovers,
+                                                             final: true) { !failedPaths.contains($0.path) && isHere($0) }
 
         progress(Progress(done: plan.writes.count, total: plan.writes.count, current: "Finishing…"))
         let result = WirelessProtocol.SyncResult(written: written, deleted: plan.deletions.count, failed: failed,
@@ -126,28 +156,39 @@ public struct CompanionSync: Sendable {
         return Outcome(written: written, deleted: plan.deletions.count, failed: failed, songs: songs, missingCovers: missingCovers)
     }
 
-    /// Imports the plan's snapshot (songs that could not be written left out) and fetches the covers and artist photos
-    /// it needs. Returns how many songs the library has and how many albums are left without a cover.
-    private func updateLibrary(session: String, token: String, leavingOut failedPaths: Set<String>) async throws -> (Int, Int) {
+    /// The library snapshot for the songs the device holds once this sync is done.
+    private func librarySnapshot(session: String, token: String) async throws -> DeviceSnapshot {
         let data = try await client.snapshot(session: session, token: token)
-        var snapshot = try WirelessProtocol.decoder.decode(DeviceSnapshot.self, from: data)
-        if !failedPaths.isEmpty {
-            snapshot.songs.removeAll { failedPaths.contains($0.path) }
-            let keys = Set(snapshot.songs.map(\.albumKey))
-            snapshot.albums.removeAll { !keys.contains($0.key) }
-        }
+        return try WirelessProtocol.decoder.decode(DeviceSnapshot.self, from: data)
+    }
+
+    /// Whether a song of the snapshot is in the music folder (downloads put a file in place only once it is whole).
+    private func isHere(_ song: DeviceSnapshot.Song) -> Bool {
+        FileManager.default.fileExists(atPath: musicFolder.appendingPathComponent(song.path).path)
+    }
+
+    /// Imports the snapshot's songs that `keep` takes (and their albums), fetching the covers and artist photos they
+    /// need; covers already asked for in `coversAsked` are not asked again until the `final` import, which also lets go
+    /// of covers nothing uses. Returns how many songs the library has and how many albums are left without a cover.
+    private func importLibrary(_ full: DeviceSnapshot, session: String, token: String, coversAsked: inout Set<String>, final: Bool = false,
+                               keep: (DeviceSnapshot.Song) -> Bool) async throws -> (Int, Int) {
+        var snapshot = full
+        snapshot.songs.removeAll { !keep($0) }
+        let keys = Set(snapshot.songs.map(\.albumKey))
+        snapshot.albums.removeAll { !keys.contains($0.key) }
         var hashes = Set(snapshot.songs.compactMap(\.artworkHash) + snapshot.albums.compactMap(\.artworkHash))
         hashes.formUnion(snapshot.artists?.map(\.artworkHash) ?? [])
         hashes.formUnion(snapshot.playlists.compactMap { $0.cover?.imageHash })
-        for hash in hashes where !artwork.has(hash) {
+        for hash in hashes where !artwork.has(hash) && (final || !coversAsked.contains(hash)) {
             try Task.checkCancellation()
+            coversAsked.insert(hash)
             // Every cover comes with its SHA-256: an empty or damaged one is not kept (the next sync asks again).
             if let image = try? await client.artwork(session: session, token: token, hash: hash), !image.isEmpty {
                 artwork.store(image, as: hash)
             }
         }
         try library.importSnapshot(snapshot, musicFolder: musicFolder)
-        artwork.prune(keeping: hashes)
+        if final { artwork.prune(keeping: hashes) }
         let missing = snapshot.albums.filter { album in album.artworkHash.map { !artwork.has($0) } ?? true }.count
         return (snapshot.songs.count, missing)
     }

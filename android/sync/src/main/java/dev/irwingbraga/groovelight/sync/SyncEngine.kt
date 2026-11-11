@@ -145,6 +145,23 @@ class SyncEngine(private val context: Context, private val prefs: Prefs) {
         manifest.put("profile", plan.opt("profile"))
         save(folder, manifest)
 
+        // Player mode: the library first, with the songs already here (without the ones just removed), then again every
+        // few seconds as songs arrive, so each one can be played before the sync ends.
+        val library = if (player && token != null) {
+            progress(Progress(0, writes.length(), "Getting the library…"))
+            val (data, hash) = client.snapshot(session, token)
+            if (hash != null && sha256(data) != hash) throw MacError("The library from the ${Host.word} arrived damaged: sync again")
+            Snapshot.read(data.inputStream())
+        } else null
+        val coversAsked = mutableSetOf<String>()
+        var imported = 0L
+        suspend fun importArrived() {
+            if (library == null || token == null) return
+            runCatching { importLibrary(client, session, token, library, entries.keys().asSequence().toSet(), coversAsked, tree, final = false) }
+            imported = System.currentTimeMillis()
+        }
+        importArrived()
+
         var written = 0
         for (i in 0 until writes.length()) {
             val write = writes.getJSONObject(i)
@@ -162,6 +179,7 @@ class SyncEngine(private val context: Context, private val prefs: Prefs) {
                 touched += path
                 written++
                 if (written % 25 == 0) save(folder, manifest)
+                if (System.currentTimeMillis() - imported > 8_000) importArrived()
             } catch (error: IOException) {
                 failed += "$path: ${error.message}"
             }
@@ -170,9 +188,11 @@ class SyncEngine(private val context: Context, private val prefs: Prefs) {
         save(folder, manifest)
         // Player mode: the library from the Mac, for the songs now in the folder (other players need no media scan,
         // but it keeps the folder browsable in Files and player apps if the user switches).
-        if (player && token != null) {
+        if (library != null && token != null) {
             progress(Progress(writes.length(), writes.length(), "Updating the library…"))
-            missingCovers = updateLibrary(client, session, token, failedPaths = failed.map { it.substringBefore(": ") }.toSet(), tree = tree)
+            val failedPaths = failed.map { it.substringBefore(": ") }.toSet()
+            val here = entries.keys().asSequence().filter { it !in failedPaths }.toSet()
+            missingCovers = importLibrary(client, session, token, library, here, mutableSetOf(), tree, final = true)
         }
         // The Mac's whole library, for browsing it here (only when it changed).
         if (player && prefs.tlsPort != 0) runCatching { Transfers.refreshCatalog(context, client, prefs) }
@@ -199,33 +219,33 @@ class SyncEngine(private val context: Context, private val prefs: Prefs) {
     }
 
     /**
-     * Imports the plan's library snapshot and fetches the covers it needs (both checked against their SHA-256, and covers
-     * against Android's decoder). Albums whose cover the Mac could not send get the one embedded in their songs, as
-     * other players show. Returns how many albums are left without a cover.
+     * Imports the songs of the plan's library snapshot that are in the folder (`here`, paths in it) and their albums,
+     * fetching the covers they need (checked against their SHA-256 and Android's decoder); covers already in
+     * [coversAsked] are not asked again. The `final` import also replaces kept covers Android cannot show, gives albums
+     * whose cover the Mac could not send the one embedded in their songs, as other players show, and lets go of covers
+     * nothing uses. Returns how many albums are left without a cover.
      */
-    private suspend fun updateLibrary(client: MacClient, session: String, token: String, failedPaths: Set<String>, tree: Uri): Int {
-        val (data, hash) = client.snapshot(session, token)
-        if (hash != null && sha256(data) != hash) throw MacError("The library from the ${Host.word} arrived damaged: sync again")
-        val full = Snapshot.read(data.inputStream())
-        // Songs that could not be written are left out (their playlist entries too).
-        val tracks = full.tracks.filter { it.path !in failedPaths }
+    private suspend fun importLibrary(client: MacClient, session: String, token: String, full: Snapshot, here: Set<String>,
+                                      coversAsked: MutableSet<String>, tree: Uri, final: Boolean): Int {
+        val tracks = full.tracks.filter { it.path in here }
         val ids = tracks.map { it.id }.toSet()
         val keys = tracks.map { it.albumKey }.toSet()
         var snapshot = full.copy(albums = full.albums.filter { it.key in keys }, tracks = tracks, items = full.items.filter { it.trackId in ids },
             credits = full.credits.filter { it.albumKey in keys && (it.trackId == null || it.trackId in ids) })
         val artwork = ArtworkStore(context)
         // Covers kept from before that Android cannot show (CMYK ones older Macs sent) are fetched again.
-        for (cover in snapshot.artworkHashes.filter { artwork.has(it) && !Covers.decodes(artwork.file(it)) }) artwork.file(cover).delete()
-        for (cover in snapshot.artworkHashes.filter { !artwork.has(it) }) {
+        if (final) for (cover in snapshot.artworkHashes.filter { artwork.has(it) && !Covers.decodes(artwork.file(it)) }) artwork.file(cover).delete()
+        for (cover in snapshot.artworkHashes.filter { !artwork.has(it) && (final || it !in coversAsked) }) {
+            coversAsked += cover
             runCatching {
                 val (image, imageHash) = client.artwork(session, token, cover)
                 // Every cover comes with its SHA-256: an empty or damaged one is not kept (the next sync asks again).
                 if (image.isNotEmpty() && imageHash != null && sha256(image) == imageHash && Covers.decodes(image)) artwork.save(cover, image)
             }
         }
-        snapshot = Covers.fillFromFiles(context, snapshot, artwork, tree)
+        if (final) snapshot = Covers.fillFromFiles(context, snapshot, artwork, tree)
         snapshot.importInto(LibraryDatabase.get(context))
-        artwork.prune(keeping = snapshot.artworkHashes)
+        if (final) artwork.prune(keeping = snapshot.artworkHashes)
         return snapshot.albums.count { album -> album.artworkHash?.let(artwork::has) != true }
     }
 
