@@ -177,7 +177,7 @@ Everything below is on the Mac and on Windows unless it says otherwise; the phon
   - **Back to the Mac:** plays (scrobbled to Last.fm with their times), skips, loves, ratings and playlist edits made on the phone.
   - **Play On:** play on the Mac, or on another phone with Groovelight open, from the phone: start, pause, skip, seek and set the volume there, hand the music over between them, and play anything of the Mac's library on the Mac, on the phone or not.
   - **Home:** the picks of the day and Your Listening, from the computer, as the first tab, with Play here or on the computer, and Bring Here for picks not on the phone.
-  - **Foldables and tablets:** unfolded or on a tablet, a sidebar as on the iPad, Now Playing with the lyrics or Up Next beside the cover, and a player bar docked along the bottom; folded, Now Playing fits the short cover screen.
+  - **Foldables and tablets:** unfolded or on a tablet, a sidebar as on the iPad, Now Playing with the lyrics or Up Next beside the cover, album pages as an open sleeve (the cover, titles and Play on one side, the songs on the other), and a player bar docked along the bottom; folded, Now Playing fits the short cover screen.
   - Home screen widgets, a Quick Settings tile, Android Auto and voice search ("play ... on Groovelight").
 - **Groovelight for iPhone and iPad** (in development): the same companion for iOS and iPadOS 26, with the Mac's layout on the iPad (sidebar, player bar), Home, the vintage looks, the Shelf, the EQ and the visualizers.
 

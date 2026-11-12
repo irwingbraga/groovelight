@@ -312,47 +312,36 @@ struct LovedSongs: View {
 // MARK: - Pages
 
 /// An album: its cover, play and shuffle, and its songs by disc.
+/// An album. On a phone (and the Duo's outer display): the cover large over its own colors, blurred, then the songs
+/// by disc. Where there is room (the Duo's inner display, an iPad): two sides, as an open LP sleeve, the cover, titles
+/// and Play still on one and the songs scrolling on the other (on iOS 27.1, each on one side of the Duo's fold).
 struct AlbumDetail: View {
     @Environment(AppModel.self) private var model
     let albumKey: String
     @State private var isRemoving = false
     @State private var showsArtist = false
+    @State private var isWide = false
 
     var body: some View {
         let tracks = model.library.read { try LibraryDatabase.tracks($0, albumKey: albumKey) } ?? []
         let album = model.library.contents.albums.first { $0.albumKey == albumKey }
-        List {
-            Section {
-                VStack(spacing: 12) {
-                    Cover(hash: album?.artworkHash, corner: 12, large: true)
-                        .frame(maxWidth: 300)
-                        .shadow(radius: 12, y: 6)
-                    VStack(spacing: 2) {
-                        Text(album?.title ?? "").font(.title2.bold()).multilineTextAlignment(.center)
-                        if let album {
-                            // A button (a link in a list row takes the whole row).
-                            Button { showsArtist = true } label: { Text(album.artist).font(.title3) }
-                                .buttonStyle(.plain)
-                                .foregroundStyle(Color.accentColor)
-                        }
-                        Text(Self.details(album, tracks: tracks)).font(.caption).foregroundStyle(.secondary)
-                        AlbumQualitySummary(specs: tracks.map(\.audioSpec)).padding(.top, 2)
+        Group {
+            if isWide {
+                wide(album, tracks: tracks)
+            } else {
+                songs(tracks, album: album) {
+                    Section {
+                        header(album, tracks: tracks, centered: true)
+                            .padding(.top, 8)
+                            .padding(.bottom, 4)
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
                     }
-                    PlayShuffleButtons(tracks: tracks)
                 }
-                .frame(maxWidth: .infinity)
-                .listRowSeparator(.hidden)
-            }
-            ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
-                Button { model.play(tracks, startAt: index) } label: {
-                    SongRow(track: track, showsNumber: true, isCurrent: model.currentSongId == track.id)
-                }
-                .buttonStyle(.plain)
-                .draggable(SongsTransfer(ids: track.id.map { [$0] } ?? []))
-                .contextMenu { SongMenu(track: track) }
             }
         }
-        .listStyle(.plain)
+        .background { AlbumBackdrop(hash: album?.artworkHash, isWide: isWide) }
+        .onGeometryChange(for: Bool.self) { $0.size.width >= 600 && $0.size.height >= 480 } action: { isWide = $0 }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
@@ -381,12 +370,153 @@ struct AlbumDetail: View {
         }
     }
 
+    /// The sleeve's side and the songs' side. On iOS 27.1 an arrangement view keeps each on one side of the fold.
+    @ViewBuilder private func wide(_ album: AlbumSummary?, tracks: [Track]) -> some View {
+        let sleeve = AlbumSleeve { width in
+            header(album, tracks: tracks, centered: false, coverSide: width)
+        }
+        let list = songs(tracks, album: album) { EmptyView() }
+        if #available(iOS 27.1, *) {
+            ArrangementView { sleeve } secondary: { list }
+                .arrangementViewStyle(.split.axes(.horizontal))
+        } else {
+            HStack(spacing: 0) {
+                sleeve.frame(maxWidth: .infinity)
+                list.frame(maxWidth: .infinity)
+            }
+        }
+    }
+
+    /// The cover, the titles, the details and Play and Shuffle: centered under the cover on a phone, aligned to the
+    /// cover's edge on the sleeve's side (`coverSide` is the cover's size there).
+    private func header(_ album: AlbumSummary?, tracks: [Track], centered: Bool, coverSide: CGFloat? = nil) -> some View {
+        VStack(alignment: centered ? .center : .leading, spacing: centered ? 16 : 18) {
+            Cover(hash: album?.artworkHash, corner: 14, large: true)
+                .frame(width: coverSide, height: coverSide)
+                .frame(maxWidth: centered ? 330 : nil)
+                .padding(.horizontal, centered ? 24 : 0)
+                .shadow(color: .black.opacity(0.35), radius: 24, y: 12)
+            VStack(alignment: centered ? .center : .leading, spacing: 4) {
+                Text(album?.title ?? "")
+                    .font(centered ? .title2.bold() : .largeTitle.bold())
+                    .multilineTextAlignment(centered ? .center : .leading)
+                    .lineLimit(3)
+                if let album {
+                    // A button (a link in a list row takes the whole row).
+                    Button { showsArtist = true } label: { Text(album.artist).font(centered ? .title3 : .title2) }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(Color.accentColor)
+                        .disabled(album.artist.isEmpty)
+                }
+                Text(Self.details(album, tracks: tracks)).font(.subheadline).foregroundStyle(.secondary)
+                AlbumQualitySummary(specs: tracks.map(\.audioSpec)).padding(.top, 2)
+            }
+            PlayShuffleButtons(tracks: tracks)
+            if !centered, !tracks.isEmpty {
+                Text(Self.summary(tracks)).font(.footnote).foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: centered ? .center : .leading)
+    }
+
+    /// The songs by disc ("Disc 2" only when there are several), with `top` before them and the count and length after.
+    private func songs<Top: View>(_ tracks: [Track], album: AlbumSummary?, @ViewBuilder top: () -> Top) -> some View {
+        let discs = Dictionary(grouping: tracks) { $0.discNumber ?? 1 }.sorted { $0.key < $1.key }
+        return List {
+            top()
+            ForEach(discs, id: \.key) { disc, discTracks in
+                Section {
+                    ForEach(discTracks, id: \.id) { track in
+                        Button { model.play(tracks, startAt: tracks.firstIndex { $0.id == track.id } ?? 0) } label: {
+                            SongRow(track: track, showsNumber: true, isCurrent: model.currentSongId == track.id)
+                        }
+                        .buttonStyle(.plain)
+                        .listRowBackground(Color.clear)
+                        .draggable(SongsTransfer(ids: track.id.map { [$0] } ?? []))
+                        .contextMenu { SongMenu(track: track) }
+                    }
+                } header: {
+                    if discs.count > 1 {
+                        Label("Disc \(disc)", systemImage: "opticaldisc").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+                    }
+                }
+            }
+            if !tracks.isEmpty, !isWide {
+                Text(Self.summary(tracks))
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+            }
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+    }
+
     /// "Rock · 1969" (the format is on the quality line under it).
     static func details(_ album: AlbumSummary?, tracks: [Track]) -> String {
         var parts: [String] = []
         if let genre = album?.genre { parts.append(genre) }
         if let year = album?.year { parts.append(String(year)) }
         return parts.joined(separator: " · ")
+    }
+
+    /// "12 songs, 48 minutes".
+    static func summary(_ tracks: [Track]) -> String {
+        let length = Duration.seconds(tracks.reduce(0) { $0 + $1.duration })
+            .formatted(.units(allowed: [.hours, .minutes], width: .wide))
+        return "\(tracks.count) \(tracks.count == 1 ? "song" : "songs"), \(length)"
+    }
+}
+
+/// The sleeve's side of a wide album page: its content as large as the side allows (the cover square, with room for
+/// the titles and buttons under it), centered up and down, scrolling only when the side is too short.
+private struct AlbumSleeve<Content: View>: View {
+    @ViewBuilder var content: (_ coverSide: CGFloat) -> Content
+
+    var body: some View {
+        GeometryReader { proxy in
+            let inset: CGFloat = 40
+            // About 260 points of titles, details and buttons go under the cover.
+            let side = max(160, min(proxy.size.width - inset * 2, proxy.size.height - 300, 560))
+            ScrollView {
+                content(side)
+                    .frame(width: side)
+                    .padding(inset)
+                    .frame(minWidth: proxy.size.width, minHeight: proxy.size.height)
+            }
+            .scrollBounceBehavior(.basedOnSize)
+            // The cover's shadow reaches past the side's edge.
+            .scrollClipDisabled()
+        }
+    }
+}
+
+/// An album page's backdrop: its cover, very large and blurred, fading into the page under the cover on a phone, or
+/// behind the sleeve's side and fading toward the songs where the page is wide.
+struct AlbumBackdrop: View {
+    var hash: String?
+    var isWide: Bool
+
+    var body: some View {
+        GeometryReader { proxy in
+            let side = max(proxy.size.width, proxy.size.height)
+            Cover(hash: hash, corner: 0)
+                .frame(width: side, height: side)
+                .position(x: proxy.size.width / 2, y: isWide ? proxy.size.height / 2 : side * 0.25)
+                .blur(radius: 80)
+                .opacity(0.55)
+                .overlay {
+                    LinearGradient(stops: [.init(color: .clear, location: 0),
+                                           .init(color: Color(.systemBackground).opacity(isWide ? 0.75 : 1), location: isWide ? 1 : 0.6)],
+                                   startPoint: isWide ? .leading : .top, endPoint: isWide ? .trailing : .bottom)
+                }
+        }
+        .background(Color(.systemBackground))
+        .clipped()
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }
 

@@ -85,6 +85,18 @@ import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import java.io.File
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.draw.BlurredEdgeTreatment
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
 
 /** Back from a page (given by the shell's navigation). */
 val LocalBack = staticCompositionLocalOf<() -> Unit> { {} }
@@ -454,6 +466,8 @@ private fun PageHeader(
     onShuffle: (() -> Unit)? = null,
     // An artist's or a person's photo is round: so is its shadow.
     round: Boolean = false,
+    // An album's page: a larger cover with a deeper shadow.
+    large: Boolean = false,
 ) {
     // A short window (landscape, split screen): the cover beside the titles, so the songs show at once.
     if (LocalWindowShape.current.short) {
@@ -478,8 +492,9 @@ private fun PageHeader(
         Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(top = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        cover(Modifier.widthIn(max = 260.dp).fillMaxWidth(0.7f).shadow(16.dp, if (round) CircleShape else RoundedCornerShape(10.dp)))
-        Spacer(Modifier.height(20.dp))
+        if (large) cover(Modifier.padding(top = 8.dp).widthIn(max = 340.dp).fillMaxWidth(0.8f).shadow(24.dp, RoundedCornerShape(14.dp)))
+        else cover(Modifier.widthIn(max = 260.dp).fillMaxWidth(0.7f).shadow(16.dp, if (round) CircleShape else RoundedCornerShape(10.dp)))
+        Spacer(Modifier.height(if (large) 24.dp else 20.dp))
         Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center,
             modifier = Modifier.semantics { heading() })
         subtitle?.let {
@@ -519,6 +534,11 @@ private fun PageLoading() {
     }
 }
 
+/**
+ * An album. On a phone (and folded): the cover large over its own colors, blurred, then the songs by disc. Where there
+ * is room (a foldable open, a tablet): two sides, as an open LP sleeve, the cover, titles and Play still on one and the
+ * songs and credits scrolling on the other.
+ */
 @Composable
 fun AlbumPage(key: String) {
     val actions = LocalActions.current
@@ -534,12 +554,47 @@ fun AlbumPage(key: String) {
     val play = { start: Int, shuffle: Boolean -> actions.player.play(actions.library.mediaItems(songs, source), start, shuffle) }
     val discs = remember(songs) { songs.groupBy { it.discNumber ?: 1 } }
     val list = rememberLazyListState()
-    val scrolled by remember { derivedStateOf { list.firstVisibleItemIndex > 0 } }
+    val scrolled by remember { derivedStateOf { list.firstVisibleItemIndex > 0 || list.firstVisibleItemScrollOffset > 0 } }
     val coverFile = actions.library.cover(current.artworkHash)
     val people = remember(credits) { albumCredits(credits) }
     val producers = remember(people) { people.filter { (_, roles) -> roles.any { it == "producer" || it == "co-producer" } }.take(3).map { it.first } }
     val scope = rememberCoroutineScope()
-    GlassTop(modifier = Modifier.background(coverWash(coverFile)), glassVisible = scrolled, bar = {
+    val details = listOfNotNull(songs.firstNotNullOfOrNull { it.genre }, current.year?.toString()).joinToString(" · ").ifEmpty { null }
+    val credit = producers.takeIf { it.isNotEmpty() }?.let { "Produced by " + joinNames(it) }
+    val onArtist = if (current.isCompilation) null else ({ actions.open(Route.ArtistPage(current.artist)) })
+    val onCredit = { scope.launch { list.animateScrollToItem(list.layoutInfo.totalItemsCount - 1) }; Unit }
+    // The songs by disc ("Disc 2" only when there are several), the count and length, and the credits.
+    val songItems: androidx.compose.foundation.lazy.LazyListScope.(Boolean) -> Unit = { wide ->
+        discs.forEach { (disc, discTracks) ->
+            if (discs.size > 1) item(key = "disc$disc") { SectionTitle("Disc $disc") }
+            items(discTracks, key = { it.id }) { track ->
+                SongRow(
+                    track,
+                    supporting = track.artist.takeIf { it != current.artist },
+                    onClick = { play(songs.indexOf(track), false) },
+                    leading = SongLeading.Number(track.trackNumber?.toString() ?: ""),
+                    showDuration = true,
+                    showAlbumLink = false,
+                )
+            }
+        }
+        if (tracks != null && !wide) item(key = "footer") {
+            Text(songsSummary(songs), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(16.dp))
+        }
+        if (people.isNotEmpty()) {
+            item(key = "credits") { SectionTitle("Credits") }
+            items(people, key = { "credit:${it.first}" }) { (name, roles) ->
+                ListItem(
+                    headlineContent = { Text(name) },
+                    supportingContent = { Text(roles.joinToString(", ") { role -> role.replaceFirstChar(Char::uppercase) }) },
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    modifier = Modifier.clickable(onClickLabel = "Show $name's credits") { actions.open(Route.PersonPage(name)) },
+                )
+            }
+        }
+    }
+    GlassTop(glassVisible = scrolled, bar = {
         PageBar(current.title, scrolled) {
             var menu by remember { mutableStateOf(false) }
             Box {
@@ -549,47 +604,105 @@ fun AlbumPage(key: String) {
             }
         }
     }) {
-        LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(top = LocalTopInset.current, bottom = 24.dp + LocalBottomInset.current)) {
-            item(key = "header") {
-                PageHeader(
-                    cover = { Cover(coverFile, Modifier.sharedCover("album:$key").then(it), corner = 10.dp) },
-                    title = current.title,
-                    subtitle = current.artist,
-                    onSubtitle = if (current.isCompilation) null else ({ actions.open(Route.ArtistPage(current.artist)) }),
-                    details = listOfNotNull(songs.firstNotNullOfOrNull { it.genre }, current.year?.toString()).joinToString(" · ").ifEmpty { null },
-                    badge = quality(songs),
-                    credit = producers.takeIf { it.isNotEmpty() }?.let { "Produced by " + joinNames(it) },
-                    onCredit = { scope.launch { list.animateScrollToItem(list.layoutInfo.totalItemsCount - 1) } },
-                    onPlay = { play(0, false) }, onShuffle = { play(0, true) },
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            val wide = maxWidth >= 600.dp && maxHeight >= 480.dp
+            AlbumBackdrop(coverFile, wide)
+            if (wide) {
+                Row(Modifier.fillMaxSize()) {
+                    AlbumSleeve(Modifier.weight(1f).fillMaxHeight()) { side ->
+                        Column(Modifier.width(side)) {
+                            Cover(coverFile, Modifier.sharedCover("album:$key").size(side).shadow(24.dp, RoundedCornerShape(14.dp)), corner = 14.dp)
+                            Spacer(Modifier.height(24.dp))
+                            Text(current.title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, maxLines = 3,
+                                overflow = TextOverflow.Ellipsis, modifier = Modifier.semantics { heading() })
+                            Text(current.artist, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary,
+                                maxLines = 2, overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(top = 2.dp).clip(RoundedCornerShape(4.dp)).clickable(enabled = onArtist != null) { onArtist?.invoke() })
+                            Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                details?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                                quality(songs)?.let { QualityBadge(it) }
+                            }
+                            credit?.let {
+                                Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.padding(top = 4.dp).clip(RoundedCornerShape(4.dp)).clickable(onClickLabel = "Show the credits") { onCredit() })
+                            }
+                            Spacer(Modifier.height(20.dp))
+                            PlayButtons({ play(0, false) }, { play(0, true) })
+                            if (tracks != null) {
+                                Text(songsSummary(songs), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(top = 12.dp))
+                            }
+                        }
+                    }
+                    LazyColumn(Modifier.weight(1f).fillMaxHeight(), state = list,
+                        contentPadding = PaddingValues(top = 8.dp + LocalTopInset.current, bottom = 24.dp + LocalBottomInset.current, end = 8.dp)) {
+                        songItems(true)
+                    }
+                }
+            } else {
+                LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(top = LocalTopInset.current, bottom = 24.dp + LocalBottomInset.current)) {
+                    item(key = "header") {
+                        PageHeader(
+                            cover = { Cover(coverFile, Modifier.sharedCover("album:$key").then(it), corner = 14.dp) },
+                            title = current.title,
+                            subtitle = current.artist,
+                            onSubtitle = onArtist,
+                            details = details,
+                            badge = quality(songs),
+                            credit = credit,
+                            onCredit = onCredit,
+                            onPlay = { play(0, false) }, onShuffle = { play(0, true) },
+                            large = true,
+                        )
+                    }
+                    songItems(false)
+                }
+            }
+        }
+    }
+}
+
+/**
+ * The sleeve's side of a wide album page: its content as large as the side allows (the cover square, with room for
+ * the titles and buttons under it), centered up and down, scrolling only when the side is too short.
+ */
+@Composable
+private fun AlbumSleeve(modifier: Modifier, content: @Composable (side: Dp) -> Unit) {
+    val top = LocalTopInset.current
+    val bottom = LocalBottomInset.current
+    BoxWithConstraints(modifier) {
+        val inset = 40.dp
+        // About 300 dp of titles, details and buttons go under the cover.
+        val side = minOf(maxWidth - inset * 2, maxHeight - top - bottom - 300.dp, 560.dp).coerceAtLeast(160.dp)
+        val height = maxHeight
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+            Box(Modifier.fillMaxWidth().heightIn(min = height).padding(top = top, bottom = bottom).padding(inset), contentAlignment = Alignment.Center) {
+                content(side)
+            }
+        }
+    }
+}
+
+/**
+ * An album page's backdrop: its cover, very large and blurred, fading into the page under the cover on a phone, or
+ * behind the sleeve's side and fading toward the songs where the page is wide.
+ */
+@Composable
+private fun AlbumBackdrop(cover: File?, wide: Boolean) {
+    val page = MaterialTheme.colorScheme.surface
+    Box(Modifier.fillMaxSize().background(page)) {
+        if (cover != null) {
+            val area = if (wide) Modifier.fillMaxSize() else Modifier.fillMaxWidth().height(560.dp)
+            Box(area) {
+                AsyncImage(
+                    model = ImageRequest.Builder(LocalContext.current).data(cover).memoryCacheKey(cover.path).placeholderMemoryCacheKey(cover.path).build(),
+                    contentDescription = null, contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize().blur(80.dp, BlurredEdgeTreatment.Rectangle).graphicsLayer { alpha = 0.55f },
                 )
-            }
-            discs.forEach { (disc, discTracks) ->
-                if (discs.size > 1) item(key = "disc$disc") { SectionTitle("Disc $disc") }
-                items(discTracks, key = { it.id }) { track ->
-                    SongRow(
-                        track,
-                        supporting = track.artist.takeIf { it != current.artist },
-                        onClick = { play(songs.indexOf(track), false) },
-                        leading = SongLeading.Number(track.trackNumber?.toString() ?: ""),
-                        showDuration = true,
-                        showAlbumLink = false,
-                    )
-                }
-            }
-            if (tracks != null) item(key = "footer") {
-                Text(songsSummary(songs), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(16.dp))
-            }
-            if (people.isNotEmpty()) {
-                item(key = "credits") { SectionTitle("Credits") }
-                items(people, key = { "credit:${it.first}" }) { (name, roles) ->
-                    ListItem(
-                        headlineContent = { Text(name) },
-                        supportingContent = { Text(roles.joinToString(", ") { role -> role.replaceFirstChar(Char::uppercase) }) },
-                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                        modifier = Modifier.clickable(onClickLabel = "Show $name's credits") { actions.open(Route.PersonPage(name)) },
-                    )
-                }
+                Box(Modifier.fillMaxSize().background(
+                    if (wide) Brush.horizontalGradient(0f to Color.Transparent, 1f to page.copy(alpha = 0.8f))
+                    else Brush.verticalGradient(0f to Color.Transparent, 1f to page)))
             }
         }
     }
