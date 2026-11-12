@@ -748,6 +748,16 @@ struct BackupTests {
         let read = try LibraryBackup.manifest(of: backup)
         #expect(read.trackCount == manifest.trackCount && read.folders == manifest.folders && abs(read.createdAt.timeIntervalSince(manifest.createdAt)) < 1)
 
+        // Copied file by file (to a NAS), reporting each file, and the same package.
+        let copied = directory.appendingPathComponent("Copied.\(LibraryBackup.fileExtension)")
+        nonisolated(unsafe) var steps: [(Int, Int)] = []
+        _ = try LibraryBackup.write(database: database, artworkDirectory: artworkDir, preferences: preferences,
+                                    appVersion: "1.0", to: copied) { steps.append(($0, $1)) }
+        let total = try #require(steps.last?.1)
+        #expect(steps.first?.0 == 0 && steps.last?.0 == total && steps.count == total + 1)
+        #expect(total == 3 + manifest.artworkCount)
+        #expect(try LibraryBackup.manifest(of: copied).trackCount == manifest.trackCount)
+
         // A different, empty library on a "new Mac" with the music in another folder.
         let newMac = directory.appendingPathComponent("NewMac")
         try FileManager.default.createDirectory(at: newMac, withIntermediateDirectories: true)
@@ -771,6 +781,54 @@ struct BackupTests {
         #expect(after.path.contains("/NewMac/Música/"))
         #expect(try await restoredDB.writer.read { try LibraryDatabase.playlists($0) }.first?.coverStyle?.showsTitle == true)
         #expect(try await restoredDB.writer.read { try LibraryDatabase.albumInfo($0, albumKey: tracks[0].albumKey) } != nil)
+    }
+
+    @Test func backupsOnANASShareTheirCovers() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("groovelight-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        _ = try ScannerIntegrationTests.makeFixtures(in: directory.appendingPathComponent("Music"))
+        let artworkDir = directory.appendingPathComponent("Artwork")
+        let database = try LibraryDatabase(url: directory.appendingPathComponent("Library.sqlite"))
+        let artwork = try ArtworkCache(directory: artworkDir)
+        let root = try database.addRoot(path: directory.appendingPathComponent("Music").path, bookmark: Data())
+        _ = try await LibraryScanner(database: database, artwork: artwork).scan(root: root)
+        let cover = try #require(artwork.store(ScannerIntegrationTests.pngData()))
+        let preferences = try PropertyListSerialization.data(fromPropertyList: [String: Any](), format: .xml, options: 0)
+        let destination = BackupDestination(url: directory.appendingPathComponent("NAS"))
+
+        func backUp(at date: Date) throws -> (url: URL, steps: Int) {
+            nonisolated(unsafe) var total = 0
+            let url = try destination.backUp(date: date, keep: 2) { partial in
+                _ = try LibraryBackup.write(database: database, artworkDirectory: artworkDir, preferences: preferences, appVersion: "1.0",
+                                            to: partial, sharedArtwork: destination.sharedArtwork) { total = $1 }
+            }
+            return (url, total)
+        }
+
+        // The first copies the originals only, beside the backup; the next one copies no cover again.
+        let first = try backUp(at: Date(timeIntervalSince1970: 1_000_000))
+        let shared = try FileManager.default.contentsOfDirectory(atPath: destination.sharedArtwork.path).sorted()
+        let originals = try FileManager.default.contentsOfDirectory(atPath: artworkDir.path).filter { $0.hasSuffix(".img") }.sorted()
+        #expect(shared == originals && shared.contains("\(cover).img"))
+        #expect(first.steps == 3 + originals.count)
+        #expect(!FileManager.default.fileExists(atPath: first.url.appendingPathComponent("Artwork").path))
+        #expect(try LibraryBackup.manifest(of: first.url).artworkFiles == originals)
+        let second = try backUp(at: Date(timeIntervalSince1970: 2_000_000))
+        #expect(second.steps == 3)
+
+        // Restored with the thumbnails made again.
+        let restored = directory.appendingPathComponent("Restored")
+        _ = try LibraryBackup.restore(from: second.url, into: try LibraryDatabase(url: directory.appendingPathComponent("New.sqlite")), artworkDirectory: restored)
+        let cache = try ArtworkCache(directory: restored)
+        #expect(cache.has(cover) && FileManager.default.fileExists(atPath: cache.url(for: cover, size: .large).path))
+
+        // A cover gone from the library is removed once no backup kept uses it.
+        try FileManager.default.removeItem(at: artwork.url(for: cover, size: nil))
+        _ = try backUp(at: Date(timeIntervalSince1970: 3_000_000))
+        #expect(FileManager.default.fileExists(atPath: destination.sharedArtwork.appendingPathComponent("\(cover).img").path))
+        _ = try backUp(at: Date(timeIntervalSince1970: 4_000_000))
+        #expect(!FileManager.default.fileExists(atPath: destination.sharedArtwork.appendingPathComponent("\(cover).img").path))
+        #expect(BackupDestination.backups(in: destination.dataFolder).count == 2)
     }
 
     @Test func movedFilesKeepTheirHistory() async throws {

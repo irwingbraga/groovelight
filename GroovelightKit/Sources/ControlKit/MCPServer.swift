@@ -158,6 +158,8 @@ public final class MCPServer {
             case "now_playing": return try snapshot(.nowPlaying, progress)
             case "todays_picks": return try snapshot(.today, progress)
             case "listening_stats": return try snapshot(.listeningStats(range: arguments["range"]?.stringValue ?? "month"), progress)
+            case "backup_status": return try snapshot(.backupStatus, progress)
+            case "back_up_now": return try run(.backUp(BackupOptions(dataOnly: arguments["data_only"]?.boolValue ?? false)), progress)
             default: return Self.toolError("Unknown tool: \(name)")
             }
         } catch {
@@ -261,6 +263,9 @@ public final class MCPServer {
         todays_picks gives Song, Album and Artist of the Day (as the app's Home shows them, the same all day) with \
         their song ids for play; listening_stats summarizes what the user listened to (time, plays, top songs, \
         albums, artists, genres) over a week, a month, a year or all time.
+
+        backup_status tells where automatic backups go (a NAS folder, another disk), when the last and next ones \
+        are, and what the last music backup copied; back_up_now starts one.
         """
 
     static let tools: [JSONValue] = {
@@ -372,7 +377,16 @@ public final class MCPServer {
            "description": "What the user listened to over a range: listening time, plays, songs, songs new to them, their streak of days, top songs, albums and artists, genres, decades, plays by hour and weekday, and where (this computer, phones, Last.fm).",
            "inputSchema": {"type": "object", "properties": {
              "range": {"type": "string", "enum": ["week", "month", "year", "all"], "description": "The last 7 days, 30 days, 12 months, or all time (default month)."}}},
-           "annotations": {"readOnlyHint": true}}
+           "annotations": {"readOnlyHint": true}},
+          {"name": "backup_status", "title": "Backup status",
+           "description": "Automatic backups: the folder they go to (a NAS share or another disk) and whether it is reachable, the last and next backup, the last error, and the music mirror's last run (files copied, moved, set aside, folders skipped).",
+           "inputSchema": {"type": "object", "properties": {}},
+           "annotations": {"readOnlyHint": true}},
+          {"name": "back_up_now", "title": "Back up now",
+           "description": "Backs up the library data now, then copies new and changed music to the backup folder when the music backup is on. Files are never deleted from the backup: ones gone from the library are set aside.",
+           "inputSchema": {"type": "object", "properties": {
+             "data_only": {"type": "boolean", "description": "Only the library data, not the music (default false)."}}},
+           "annotations": {"readOnlyHint": false, "destructiveHint": false, "idempotentHint": true}}
         ]
         """#
         return (try? JSONDecoder().decode([JSONValue].self, from: Data(json.utf8))) ?? []

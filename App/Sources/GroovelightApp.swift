@@ -297,6 +297,15 @@ extension OpenWindowAction {
 
 /// Files opened with the app (Finder's Open With, the Dock icon, the command line tool) go to the import.
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    /// A backup, restore or copy running asks first (not when the Mac logs out, restarts or shuts down).
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        let reason = NSAppleEventManager.shared().currentAppleEvent?.attributeDescriptor(forKeyword: kAEQuitReason)?.enumCodeValue
+        if let reason, [kAELogOut, kAEReallyLogOut, kAEShowRestartDialog, kAERestart, kAEShowShutdownDialog, kAEShutDown].contains(reason) {
+            return .terminateNow
+        }
+        return MainActor.assumeIsolated { AppModel.current?.backup.shouldQuit() ?? .terminateNow }
+    }
+
     func application(_ application: NSApplication, open urls: [URL]) {
         MainActor.assumeIsolated {
             guard let model = AppModel.current else { return }

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Backups while Groovelight is closed (Settings, Backups): each hour of the night window, the command line tool asks
+     the app for a backup if one is due, opening it hidden when it is closed. A Mac asleep then runs it when it wakes. -->
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>dev.irwingbraga.groovelight.backup</string>
+	<key>BundleProgram</key>
+	<string>Contents/Helpers/groovelight</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>groovelight</string>
+		<string>backup</string>
+		<string>scheduled</string>
+	</array>
+	<key>AssociatedBundleIdentifiers</key>
+	<array>
+		<string>dev.irwingbraga.groovelight</string>
+	</array>
+	<key>ProcessType</key>
+	<string>Background</string>
+	<key>StartCalendarInterval</key>
+	<array>
+		<dict><key>Hour</key><integer>2</integer><key>Minute</key><integer>10</integer></dict>
+		<dict><key>Hour</key><integer>3</integer><key>Minute</key><integer>10</integer></dict>
+		<dict><key>Hour</key><integer>4</integer><key>Minute</key><integer>10</integer></dict>
+		<dict><key>Hour</key><integer>5</integer><key>Minute</key><integer>10</integer></dict>
+	</array>
+</dict>
+</plist>

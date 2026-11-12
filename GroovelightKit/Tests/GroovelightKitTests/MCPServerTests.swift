@@ -41,7 +41,7 @@ struct MCPServerTests {
 
         let list = server.handle(.object(["jsonrpc": .string("2.0"), "id": .number(2), "method": .string("tools/list")])) { _ in }
         let tools = try #require(list?["result"]?["tools"]?.arrayValue)
-        #expect(tools.count == 18)
+        #expect(tools.count == 20)
         for tool in tools {
             #expect(tool["name"]?.stringValue != nil && tool["description"]?.stringValue != nil)
             #expect(tool["inputSchema"]?["type"] == .string("object"))
@@ -113,6 +113,19 @@ struct MCPServerTests {
         _ = call(server, "listening_stats", ["range": .string("year")], notifications: &notes)
         _ = call(server, "listening_stats", notifications: &notes)
         #expect(app.requests == [.today, .listeningStats(range: "year"), .listeningStats(range: "month")])
+    }
+
+    /// Backups: the status is stamped (it changes outside the conversation), a backup now passes data_only along.
+    @Test func backupStatusAndBackingUpNow() throws {
+        let app = FakeApp()
+        app.answer = { _ in ControlReply(summary: "Last backup today", data: .object(["automatic": .bool(true)])) }
+        let server = makeServer(app)
+        var notes: [JSONValue] = []
+        let status = try #require(call(server, "backup_status", notifications: &notes))
+        #expect(status["structuredContent"]?["as_of"] != nil)
+        _ = call(server, "back_up_now", notifications: &notes)
+        _ = call(server, "back_up_now", ["data_only": .bool(true)], notifications: &notes)
+        #expect(app.requests == [.backupStatus, .backUp(BackupOptions()), .backUp(BackupOptions(dataOnly: true))])
     }
 
     /// The Claude Desktop extension (extension/manifest.json) lists the tools the server has.

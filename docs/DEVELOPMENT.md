@@ -135,7 +135,8 @@ APP=build/DebugUnsandboxed/Build/Products/Debug/Groovelight.app/Contents/MacOS/G
 "$APP" -GLDebugTour /tmp/tour -GLDebugTourGetInfo YES        # Get Info editor for a song and a whole album
 "$APP" -GLDebugTour /tmp/tour -GLDebugTourCredits YES        # album credits and Wikipedia background (needs network)
 "$APP" -GLDebugTour /tmp/tour -GLDebugTourLibraryJob YES     # Fetch Missing Info over the whole library (needs network)
-"$APP" -GLDebugTour /tmp/tour -GLDebugTourBackup YES         # backup, restore, relinking folders, automatic backups (~4 min)
+"$APP" -GLDebugTour /tmp/tour -GLDebugTourBackup YES         # backup, restore, relinking folders, automatic backups, a chosen folder (its Data folder, gone and back), the music mirror on a copy of the library (a rename moved, a deletion set aside and put back, the drive away, playing from the copy) (~5 min)
+"$APP" -GLDebugTour /tmp/tour -GLDebugTourHold backup-settings [-GLDebugBackupFolder <folder>] [-backup.mirror.enabled YES]   # Settings, Backups with that folder chosen; saves a PNG
 "$APP" -GLDebugTour /tmp/tour -GLDebugLibraryPath "$L" -GLDebugSyncFolder "$L" -GLDebugTourSync live   # live folder changes ($L: a scratch library with a Source/ album); quits
 "$APP" -GLDebugTour /tmp/tour -GLDebugSyncFolder "$L" -GLDebugTourSync check   # after changing $L while closed: caught up from the event history
 "$APP" -GLDebugTour /tmp/tour -GLDebugSyncFolder "$L" -GLDebugSyncImage vol.dmg -GLDebugTourSync volume   # drive unplugged and plugged back (image of a volume "GLSyncTest" with Music/Source/*.flac)

@@ -11,6 +11,8 @@ public final class ArtworkCache: Sendable {
     }
 
     public let directory: URL
+    /// The original image's file name ends with it (`<hash>.img`).
+    public static let originalSuffix = ".img"
 
     public init(directory: URL) throws {
         self.directory = directory
@@ -59,6 +61,14 @@ public final class ArtworkCache: Sendable {
             try? FileManager.default.removeItem(at: original)
             return false
         }
+    }
+
+    /// Makes the thumbnails missing for an original already stored (restored from a backup that keeps only originals).
+    public func makeThumbnails(_ hash: String) {
+        let missing = Size.allCases.filter { !FileManager.default.fileExists(atPath: url(for: hash, size: $0).path) }
+        guard !missing.isEmpty, let source = CGImageSourceCreateWithURL(url(for: hash, size: nil) as CFURL, nil),
+              CGImageSourceGetCount(source) > 0 else { return }
+        for size in missing { try? writeThumbnail(from: source, size: size.rawValue, to: url(for: hash, size: size)) }
     }
 
     public func has(_ hash: String) -> Bool {

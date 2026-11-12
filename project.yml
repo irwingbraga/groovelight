@@ -38,6 +38,12 @@ targets:
       # Licenses of the included software (Help, Acknowledgements).
       - path: THIRD_PARTY_NOTICES.md
         buildPhase: resources
+      # The launch agent for backups while the app is closed (BackupManager, registered with SMAppService).
+      - path: App/LaunchAgents
+        buildPhase:
+          copyFiles:
+            destination: wrapper
+            subpath: Contents/Library/LaunchAgents
     dependencies:
       - package: GroovelightKit
         product: PlayerCore

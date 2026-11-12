@@ -87,6 +87,8 @@ Any client that runs local stdio servers can use it: the command is `/usr/local/
 | `add_to_playlist` | Adds songs at the end of a playlist. | Library |
 | `play` | One song, songs by id, what a search finds, an album, an artist or a playlist; nothing resumes. | Playback |
 | `playback_control` | `pause`, `resume`, `toggle`, `next`, `previous` or `stop`. | Playback |
+| `backup_status` | Mac: where automatic backups go (a NAS, another disk) and whether it is reachable, the last and next backup, the last error, and the music backup's last run. | Nothing |
+| `back_up_now` | Mac: backs up the library data now, then new and changed music when the music backup is on (`data_only` for the data alone). Never deletes from the backup. | Backup folder |
 
 ### Arguments
 

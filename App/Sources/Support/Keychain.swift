@@ -15,6 +15,8 @@ enum Keychain {
     static let service = "dev.irwingbraga.groovelight.lastfm" + suffix
     /// Keys shared with paired devices (the Android and iOS apps), by device id.
     static let wirelessService = "dev.irwingbraga.groovelight.wireless" + suffix
+    /// The NAS logins automatic backups connect with, by "user@server" (`NASConnection`).
+    static let nasService = "dev.irwingbraga.groovelight.nas" + suffix
     /// The key and certificate wireless sync serves HTTPS with (protocol v2), in the login keychain. Only the build that
     /// made a key uses it without macOS asking: a release keeps its signature across updates, but each unsandboxed
     /// debug build is signed anew (unsandboxed, or run from Xcode, which signs ad hoc), so each makes its own (labeled

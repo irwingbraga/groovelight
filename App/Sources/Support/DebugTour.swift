@@ -927,7 +927,7 @@ enum DebugTour {
                 return
             }
             if let hold = UserDefaults.standard.string(forKey: "GLDebugTourHold"), hold == "lastfm" || hold == "playback" || hold == "devices-settings" || hold == "library-settings"
-                || hold == "general-settings" {
+                || hold == "general-settings" || hold == "backup-settings" {
                 try? await Task.sleep(for: .seconds(2))
                 NSApp.activate()
                 let window = NSWindow(contentRect: NSRect(x: 300, y: 200, width: 720, height: 560), styleMask: [.titled], backing: .buffered, defer: false)
@@ -945,6 +945,14 @@ enum DebugTour {
                     window.contentView = NSHostingView(rootView: LibrarySettings().environment(model).tint(.brand))
                 } else if hold == "general-settings" {
                     window.contentView = NSHostingView(rootView: GeneralSettings().environment(model).tint(.brand))
+                } else if hold == "backup-settings" {
+                    // `-GLDebugBackupFolder <folder>` as the chosen folder (a NAS share).
+                    if let folder = UserDefaults.standard.string(forKey: "GLDebugBackupFolder"),
+                       let bookmark = try? FolderAccess.makeBookmark(for: URL(fileURLWithPath: folder)) {
+                        UserDefaults.standard.set(bookmark, forKey: BackupManager.Keys.folder)
+                    }
+                    window.setContentSize(NSSize(width: 720, height: 1180))
+                    window.contentView = NSHostingView(rootView: BackupSettings().environment(model).tint(.brand))
                 } else {
                     window.contentView = NSHostingView(rootView: LastFMSettings().environment(model).tint(.brand))
                 }
@@ -956,6 +964,7 @@ enum DebugTour {
                         .write(to: output.appendingPathComponent("WINDOW"), atomically: true, encoding: .utf8)
                 }
                 try? await Task.sleep(for: .seconds(4))
+                if hold == "backup-settings" { await snapshot("backup-settings", output) }
                 if hold == "playback" {
                     // Back to the defaults.
                     UserDefaults.standard.set(0.0, forKey: PlaybackPrefs.crossfade)
@@ -2090,9 +2099,9 @@ enum DebugTour {
             lines.append("new Mac: folders to locate \(model.backup.foldersToLocate.map(\.path)), songs kept \(kept)")
             await snapshot("131-locate-folders", output)
             model.backup.foldersToLocate = []
-            // Locating it (what the panel does) brings the songs back to their files.
-            if let bookmark = try? FolderAccess.makeBookmark(for: URL(fileURLWithPath: UserDefaults.standard.string(forKey: "GLDebugLibraryPath") ?? "")) {
-                _ = try? model.database.relocateRoot(id, to: UserDefaults.standard.string(forKey: "GLDebugLibraryPath") ?? "", bookmark: bookmark)
+            // Locating it (what the panel does) brings the songs back to their files (where they were).
+            if !root.path.isEmpty, let bookmark = try? FolderAccess.makeBookmark(for: URL(fileURLWithPath: root.path, isDirectory: true)) {
+                _ = try? model.database.relocateRoot(id, to: root.path, bookmark: bookmark)
                 model.rescanAll()
                 try? await Task.sleep(for: .seconds(3))
                 lines.append("after locating: \(await state()), songs \((try? await model.database.writer.read { try Track.fetchCount($0) }) ?? 0)")
@@ -2107,6 +2116,107 @@ enum DebugTour {
         }
         let automatic = (try? FileManager.default.contentsOfDirectory(atPath: model.backup.defaultFolder.path)) ?? []
         lines.append("automatic backups kept: \(automatic.sorted())")
+
+        // A chosen folder (a NAS share): backups go in its Data folder, one made before at its top moves there, and a
+        // folder that is gone (the NAS off) fails without leaving anything, until it is back.
+        let fileManager = FileManager.default
+        func contents(_ url: URL) -> [String] { ((try? fileManager.contentsOfDirectory(atPath: url.path)) ?? []).sorted() }
+        let nas = output.appendingPathComponent("NAS", isDirectory: true)
+        try? fileManager.removeItem(at: nas)
+        try? fileManager.createDirectory(at: nas, withIntermediateDirectories: true)
+        if let first = automatic.sorted().first {
+            try? fileManager.copyItem(at: model.backup.defaultFolder.appendingPathComponent(first), to: nas.appendingPathComponent("Groovelight Backup 2026-01-01 03.00.groovelightbackup"))
+        }
+        if let bookmark = try? FolderAccess.makeBookmark(for: nas) {
+            UserDefaults.standard.set(bookmark, forKey: BackupManager.Keys.folder)
+            await model.backup.checkDestination()
+            lines.append("folder status: \(model.backup.destinationStatus)")
+            let ok = await model.backup.backUpAutomatically()
+            let data = nas.appendingPathComponent("Data")
+            lines.append("to the folder ok=\(ok): top \(contents(nas)), Data \(contents(data))")
+            lines.append("newest is a backup: \((try? LibraryBackup.manifest(of: data.appendingPathComponent(contents(data).last ?? ""))).map { "\($0.trackCount) songs" } ?? "no")")
+            try? fileManager.removeItem(at: nas)
+            let gone = await model.backup.backUpAutomatically()
+            lines.append("folder gone: ok=\(gone), error=\(model.backup.lastError ?? "-"), status \(model.backup.destinationStatus)")
+            try? fileManager.createDirectory(at: nas, withIntermediateDirectories: true)
+            await model.backup.checkDestination()
+            lines.append("folder back: status \(model.backup.destinationStatus)")
+
+            // The music mirror: the library copied as it is, then a rename moved (not copied again), a deletion set
+            // aside and put back, an offline folder left alone, and playing a folder from the copy.
+            UserDefaults.standard.set(true, forKey: BackupManager.Keys.mirror)
+            // On a copy of the library folder (files are renamed and deleted), put back at the end.
+            let rootRecord = (try? await model.database.writer.read { try LibraryDatabase.roots($0).first }) ?? nil
+            let originalPath = rootRecord?.path ?? ""
+            let library = output.appendingPathComponent("Library/" + URL(fileURLWithPath: originalPath).lastPathComponent, isDirectory: true)
+            try? fileManager.removeItem(at: library)
+            try? fileManager.createDirectory(at: library.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? fileManager.copyItem(at: URL(fileURLWithPath: originalPath), to: library)
+            if let id = rootRecord?.id, let bookmark = try? FolderAccess.makeBookmark(for: library) {
+                _ = try? model.database.relocateRoot(id, to: library.standardizedFileURL.path, bookmark: bookmark)
+            }
+            func describe(_ report: LibraryMirror.Report?) -> String {
+                guard let report else { return "no report" }
+                return "copied \(report.copied), moved \(report.moved), set aside \(report.removed), total \(report.totalFiles), skipped \(report.skipped.values.sorted()), errors \(report.errors.count)"
+            }
+            func libraryFiles() -> [String] {
+                ((fileManager.enumerator(at: library, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])?.allObjects as? [URL]) ?? [])
+                    .filter { (try? $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true }
+                    .map { String($0.standardizedFileURL.path.dropFirst(library.standardizedFileURL.path.count + 1)) }.sorted()
+            }
+            await model.backup.backUpAutomatically()
+            let mirrored = nas.appendingPathComponent("Music").appendingPathComponent(library.lastPathComponent)
+            let copies = ((fileManager.enumerator(at: mirrored, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])?.allObjects as? [URL]) ?? [])
+                .filter { (try? $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true }.count
+            lines.append("music first run: \(describe(model.backup.mirrorReport)); library files \(libraryFiles().count), copies \(copies), Music has \(contents(nas.appendingPathComponent("Music")))")
+
+            let audio = libraryFiles().filter { $0.hasSuffix(".flac") || $0.hasSuffix(".mp3") || $0.hasSuffix(".m4a") }
+            if audio.count >= 2 {
+                let renamed = library.appendingPathComponent(audio[0])
+                let newName = renamed.deletingLastPathComponent().appendingPathComponent("Renamed " + renamed.lastPathComponent)
+                try? fileManager.moveItem(at: renamed, to: newName)
+                let deleted = library.appendingPathComponent(audio[1])
+                let kept = output.appendingPathComponent("deleted-" + deleted.lastPathComponent)
+                try? fileManager.removeItem(at: kept)
+                try? fileManager.copyItem(at: deleted, to: kept)
+                try? fileManager.removeItem(at: deleted)
+                await model.backup.backUpAutomatically()
+                lines.append("after a rename and a deletion: \(describe(model.backup.mirrorReport)); renamed copy there \(fileManager.fileExists(atPath: mirrored.appendingPathComponent(String(newName.path.dropFirst(library.path.count + 1))).path))")
+                let removed = await model.backup.removedFiles()
+                lines.append("set aside: \(removed.map(\.key))")
+                let message = await model.backup.putBack(removed)
+                lines.append("put back: \(message) file back \(fileManager.fileExists(atPath: deleted.path))")
+                try? fileManager.moveItem(at: newName, to: renamed)
+                try? fileManager.removeItem(at: kept)
+            }
+
+            model.unavailableFolders.insert(library.standardizedFileURL.path)
+            await model.backup.backUpAutomatically()
+            lines.append("library drive away: \(describe(model.backup.mirrorReport))")
+            model.unavailableFolders.remove(library.standardizedFileURL.path)
+
+            let folders = await model.backup.mirroredFolders()
+            lines.append("mirrored folders: \(folders.map { "\($0.name) \($0.files) files" })")
+            if let folder = folders.first {
+                await model.backup.useMirror(folder)
+                try? await Task.sleep(for: .seconds(3))
+                let roots = (try? await model.database.writer.read { try LibraryDatabase.roots($0) }) ?? []
+                let songs = (try? await model.database.writer.read { try Track.fetchCount($0) }) ?? 0
+                lines.append("playing from the NAS copy: folders \(roots.map(\.path).map { $0.hasPrefix(nas.standardizedFileURL.path) || $0.hasPrefix(nas.path) ? "NAS/" + URL(fileURLWithPath: $0).lastPathComponent : $0 }), songs \(songs)")
+                if let id = roots.first?.id, let bookmark = try? FolderAccess.makeBookmark(for: library) {
+                    _ = try? model.database.relocateRoot(id, to: library.standardizedFileURL.path, bookmark: bookmark)
+                    await model.sync.foldersChanged()
+                    model.rescanAll()
+                    try? await Task.sleep(for: .seconds(3))
+                }
+            }
+            if let id = rootRecord?.id, let bookmark = rootRecord?.bookmark {
+                _ = try? model.database.relocateRoot(id, to: originalPath, bookmark: bookmark)
+            }
+            UserDefaults.standard.set(false, forKey: BackupManager.Keys.mirror)
+            try? fileManager.removeItem(at: BackupManager.mirrorState)
+            model.backup.forgetAutomaticFolder()
+        }
         save()
     }
 

@@ -123,6 +123,7 @@ Everything below is on the Mac and on Windows unless it says otherwise; the phon
 - Import songs, folders or archives (zip, 7z, rar, tar) by dragging them onto the window or with ⌘O (Ctrl+O): identified on MusicBrainz and moved or copied into your layout, in the library folder chosen in Settings. Archives are extracted first and can go to the Trash afterwards (Undo Import puts them back).
 - Organize files into a folder and name template you choose, previewed before anything moves, with undo.
 - Backups of the whole library (history, playlists, metadata fixes, settings) and restore, including relinking moved folders.
+- On the Mac, automatic backups to a NAS or another disk, at night by default, with Groovelight's own login to the NAS, also while Groovelight is closed. The music library can be copied there too: only new and changed files, renamed ones moved, removed ones set aside for a while, never deleted at once. Play a folder from the NAS when its drive is lost, copy it back, or put back songs removed by mistake. See [docs/NAS.md](docs/NAS.md) (a UGREEN NAS as the example).
 
 ### Playback
 - Gapless playback, crossfade (1 to 12 s, keeping albums gapless if you like), playback speed with pitch kept, sleep timer (minutes or end of song).
@@ -196,7 +197,7 @@ Everything below is on the Mac and on Windows unless it says otherwise; the phon
 - An installer per architecture (x64, ARM64) that keeps Groovelight up to date from GitHub releases (Velopack), or a portable single-file exe to run without installing.
 
 ### Command line and Claude
-- `groovelight` controls the running app from a terminal, scripts and AI tools, on the Mac and on Windows: `status`, `search`, `import` (songs, folders, archives), `fix-metadata`, `organize`, `undo`, `rescan`, `play`, `pause`, `next`, `now-playing`, `today`, `stats` and more. Every command takes `--json`, and the ones that change files take `--dry-run`.
+- `groovelight` controls the running app from a terminal, scripts and AI tools, on the Mac and on Windows: `status`, `search`, `import` (songs, folders, archives), `fix-metadata`, `organize`, `undo`, `rescan`, `play`, `pause`, `next`, `now-playing`, `today`, `stats`, `backup` (Mac) and more. Every command takes `--json`, and the ones that change files take `--dry-run`.
 - The tool asks the app to do the work, so the library, undo and the windows stay in step; it starts Groovelight in the background when needed.
 - Settings, General, Command Line puts it in your PATH (a one-line command on the Mac, a button on Windows).
 - **Use it with Claude:** `groovelight mcp` is an MCP server. Claude Desktop installs it from the extension attached to each release (`Groovelight-<version>.mcpb`: download and open it); Claude Code with `claude mcp add groovelight -- /usr/local/bin/groovelight mcp`. Claude can then search your library, play music, and import, fix and organize files. Changes to files always come as a preview first, applied only after you agree.

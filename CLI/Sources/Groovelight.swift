@@ -16,7 +16,7 @@ struct Groovelight: ParsableCommand {
             subcommands: [Status.self, Search.self, Import.self, FixMetadata.self, Organize.self, Undo.self, Rescan.self,
                           Play.self, Pause.self, Resume.self, Toggle.self, Next.self, Previous.self, Stop.self, NowPlaying.self,
                           Playlists.self, CreatePlaylist.self, AddToPlaylist.self, Today.self, Stats.self,
-                          MCP.self]
+                          Backup.self, MCP.self]
         )
     }
 }
@@ -289,6 +289,61 @@ struct AddToPlaylist: ParsableCommand {
     var songs: [Int64]
     @OptionGroup var output: OutputOptions
     func run() throws { try Runner.execute(.addToPlaylist(playlist: playlist, songIds: songs), output: output) }
+}
+
+// MARK: - Backups
+
+struct Backup: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "Show automatic backups' status, or back up now.",
+        discussion: "Backups go to the folder set in Settings, Backups (a NAS share, another disk), the music too when its backup is on.",
+        subcommands: [BackupStatus.self, BackupNow.self, BackupScheduled.self],
+        defaultSubcommand: BackupStatus.self
+    )
+}
+
+struct BackupStatus: ParsableCommand {
+    static let configuration = CommandConfiguration(commandName: "status", abstract: "Where backups go, the last and next one, and the music backup's last run.")
+    @OptionGroup var output: OutputOptions
+    func run() throws { try Runner.execute(.backupStatus, output: output) }
+}
+
+struct BackupNow: ParsableCommand {
+    static let configuration = CommandConfiguration(commandName: "now", abstract: "Back up the library data now, then the music when its backup is on.")
+    @Flag(help: "Only the library data, not the music.")
+    var dataOnly = false
+    @OptionGroup var output: OutputOptions
+    func run() throws { try Runner.execute(.backUp(BackupOptions(dataOnly: dataOnly)), output: output) }
+}
+
+/// Run by Groovelight's launch agent at night: asks the app for a backup when one is due, starting it hidden when it is
+/// closed (it quits when done). Without the app, a backup not due yet (as the app last said) starts nothing.
+struct BackupScheduled: ParsableCommand {
+    static let configuration = CommandConfiguration(commandName: "scheduled", abstract: "Back up if one is due (run at night by Groovelight).",
+                                                    shouldDisplay: false)
+
+    static var cache: URL {
+        URL.cachesDirectory.appendingPathComponent("dev.irwingbraga.groovelight.cli/next-backup")
+    }
+
+    func run() throws {
+        if !ControlClient.isAvailable() {
+            if let text = try? String(contentsOf: Self.cache, encoding: .utf8),
+               let next = ISO8601DateFormatter().date(from: text.trimmingCharacters(in: .whitespacesAndNewlines)), next > Date() {
+                return
+            }
+            try Runner.ensureRunning(forBackup: true)
+        }
+        let reply = try ControlClient.run(.backUp(BackupOptions(onlyIfDue: true))) { _ in }
+        try? FileManager.default.createDirectory(at: Self.cache.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if let next = reply.data?["next_backup"]?.stringValue {
+            try? next.write(to: Self.cache, atomically: true, encoding: .utf8)
+        } else {
+            try? FileManager.default.removeItem(at: Self.cache)
+        }
+        if let summary = reply.summary { print(summary) }
+        if let error = reply.error { throw ToolError(error) }
+    }
 }
 
 // MARK: - AI tools

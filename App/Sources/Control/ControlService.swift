@@ -91,6 +91,8 @@ final class ControlService {
             case .expectFiles(let paths):
                 for path in paths { expected[Self.normalized(path)] = .now }
                 return ControlReply()
+            case .backupStatus: return try backupStatus()
+            case .backUp(let options): return startJob { try await self.backUp(options, job: $0) }
             case .poll(let id): return poll(id)
             case .cancel(let id):
                 jobs[id]?.task?.cancel()
@@ -403,6 +405,58 @@ final class ControlService {
                             data: data)
     }
 
+    // MARK: - Backups
+
+    private func backupStatus() throws -> ControlReply {
+        let backup = model.backup!
+        let result = BackupStatusResult(backup)
+        var lines: [String] = []
+        lines.append(result.automatic ? "Automatic backups: on, \(result.frequency), \(result.window == "night" ? "at night" : "any time")" : "Automatic backups: off")
+        lines.append("Folder: \(result.destination)\(result.reachable == false ? " (not reachable now)" : "")")
+        lines.append("Last backup: \(backup.lastBackup?.formatted(date: .abbreviated, time: .shortened) ?? "never")")
+        if let next = backup.nextBackup { lines.append("Next backup: \(next > .now ? next.formatted(date: .abbreviated, time: .shortened) : "soon")") }
+        if let error = result.lastError { lines.append("Last try failed: \(error)") }
+        if result.music.enabled {
+            if let report = backup.mirrorReport {
+                lines.append("Music: \(report.totalFiles.formatted()) files (\(ByteCountFormatter.string(fromByteCount: report.totalBytes, countStyle: .file))), last run \(report.date.formatted(date: .abbreviated, time: .shortened)): \(report.copied) copied, \(report.moved) moved, \(report.removed) set aside")
+                for (folder, why) in report.skipped.sorted(by: { $0.key < $1.key }) { lines.append("  Skipped \(folder): \(why)") }
+            } else {
+                lines.append("Music: not backed up yet")
+            }
+        } else {
+            lines.append("Music: not backed up (Settings, Backups)")
+        }
+        if result.runsWhenClosed { lines.append("Also runs while Groovelight is closed\(backup.whenClosedNeedsApproval ? " (waiting to be allowed in System Settings, Login Items)" : "")") }
+        return ControlReply(summary: lines.joined(separator: "\n"), data: try JSONValue(encoding: result))
+    }
+
+    private func backUp(_ options: BackupOptions, job: Job) async throws -> ControlReply {
+        let backup = model.backup!
+        defer { if options.onlyIfDue { backup.scheduledRunFinished() } }
+        if options.onlyIfDue, !backup.isDue {
+            return ControlReply(summary: "No backup due.", data: try JSONValue(encoding: BackupStatusResult(backup)))
+        }
+        // Reports the mirror's progress while it runs.
+        let watcher = Task { @MainActor in
+            while !Task.isCancelled {
+                job.report(backup.mirrorActivity ?? "Backing up the library data", Int((backup.mirrorFraction ?? 0) * 100), backup.mirrorFraction == nil ? 0 : 100)
+                try? await Task.sleep(for: .milliseconds(500))
+            }
+        }
+        defer { watcher.cancel() }
+        let started = Date.now
+        let made = await backup.backUpAutomatically(includeMusic: !options.dataOnly)
+        let result = BackupStatusResult(backup)
+        guard made else { throw ControlError(backup.lastError ?? "The backup failed.") }
+        var summary = "Backed up the library data to \(result.destination)."
+        if !options.dataOnly, let report = backup.mirrorReport, report.date >= started {
+            summary += " Music: \(report.copied) copied, \(report.moved) moved, \(report.removed) set aside, \(report.totalFiles.formatted()) files in the backup."
+            if !report.needsConfirmation.isEmpty { summary += " Waiting for you in Settings, Backups: \(report.needsConfirmation.map(\.folder).joined(separator: ", ")) lost many files." }
+        }
+        if let error = backup.lastError { summary += " \(error)" }
+        return ControlReply(summary: summary, data: try JSONValue(encoding: result))
+    }
+
     // MARK: - Playback
 
     private func play(_ options: PlayOptions) throws -> ControlReply {
@@ -654,6 +708,68 @@ struct ControlError: LocalizedError {
 }
 
 // MARK: - Results (the `data` of replies)
+
+struct BackupStatusResult: Encodable {
+    struct Music: Encodable {
+        var enabled: Bool
+        var lastRun: Date?
+        var files: Int?
+        var bytes: Int64?
+        var copied: Int?
+        var moved: Int?
+        var setAside: Int?
+        var skipped: [String: String]?
+        var waitingForConfirmation: [String]?
+        var errors: [String]?
+
+        enum CodingKeys: String, CodingKey {
+            case enabled, files, bytes, copied, moved, skipped, errors
+            case lastRun = "last_run", setAside = "set_aside", waitingForConfirmation = "waiting_for_confirmation"
+        }
+    }
+
+    var automatic: Bool
+    var frequency: String
+    var window: String
+    var destination: String
+    var reachable: Bool?
+    var lastBackup: Date?
+    var nextBackup: Date?
+    var lastError: String?
+    var runsWhenClosed: Bool
+    var music: Music
+
+    @MainActor
+    init(_ backup: BackupManager) {
+        let defaults = UserDefaults.standard
+        automatic = defaults.bool(forKey: BackupManager.Keys.automatic)
+        frequency = defaults.string(forKey: BackupManager.Keys.frequency) ?? "weekly"
+        window = defaults.string(forKey: BackupManager.Keys.window) ?? "night"
+        switch backup.destinationStatus {
+        case .notChosen: destination = "inside Groovelight's data"
+        case .checking: destination = "the chosen folder"
+        case .ready(let path, _):
+            destination = path
+            reachable = true
+        case .unavailable(let reason):
+            destination = "the chosen folder (\(reason))"
+            reachable = false
+        }
+        lastBackup = backup.lastBackup
+        nextBackup = backup.nextBackup
+        lastError = backup.lastError
+        runsWhenClosed = backup.runsWhenClosed
+        let report = backup.mirrorReport
+        music = Music(enabled: backup.mirrorsMusic, lastRun: report?.date, files: report?.totalFiles, bytes: report?.totalBytes,
+                      copied: report?.copied, moved: report?.moved, setAside: report?.removed, skipped: report?.skipped,
+                      waitingForConfirmation: report?.needsConfirmation.map(\.folder), errors: report?.errors)
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case automatic, frequency, window, destination, reachable, music
+        case lastBackup = "last_backup", nextBackup = "next_backup", lastError = "last_error", runsWhenClosed = "runs_when_closed"
+    }
+}
 
 struct StatusResult: Encodable {
     var version: String

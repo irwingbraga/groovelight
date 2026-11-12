@@ -47,6 +47,10 @@ public enum ControlRequest: Codable, Hashable, Sendable {
     /// Files the tool is about to open with the app (to grant it access): the app takes them in silently instead of
     /// showing its import sheet.
     case expectFiles([String])
+    /// Automatic backups: where they go, the last and next one, the music mirror's last run.
+    case backupStatus
+    /// A backup now (the data, then the music mirror when it is on), as a job.
+    case backUp(BackupOptions)
     /// What a job did since the last poll, and its result when it is done.
     case poll(job: String)
     case cancel(job: String)
@@ -143,6 +147,18 @@ public struct PlayOptions: Codable, Hashable, Sendable {
         self.song = song
         self.query = query
         self.shuffle = shuffle
+    }
+}
+
+public struct BackupOptions: Codable, Hashable, Sendable {
+    /// Only when one is due (the launch agent's nightly request); otherwise now.
+    public var onlyIfDue = false
+    /// The data backup only, without the music mirror.
+    public var dataOnly = false
+
+    public init(onlyIfDue: Bool = false, dataOnly: Bool = false) {
+        self.onlyIfDue = onlyIfDue
+        self.dataOnly = dataOnly
     }
 }
 

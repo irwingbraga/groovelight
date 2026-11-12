@@ -9,7 +9,7 @@ For Claude and other AI tools, the same commands are available as an MCP server:
 - [Install](#install)
 - [Quick start](#quick-start)
 - [How names are matched](#how-names-are-matched)
-- [Commands](#commands): [library](#library), [import and files](#import-and-files), [metadata](#metadata), [playlists](#playlists), [playback](#playback), [home](#home), [mcp](#mcp)
+- [Commands](#commands): [library](#library), [import and files](#import-and-files), [metadata](#metadata), [playlists](#playlists), [playback](#playback), [home](#home), [backups](#backups), [mcp](#mcp)
 - [Output, JSON and exit codes](#output-json-and-exit-codes)
 - [Scripting examples](#scripting-examples)
 - [Troubleshooting](#troubleshooting)
@@ -252,6 +252,28 @@ What you listened to over a range: listening time, plays, songs, songs new to yo
 ```sh
 groovelight stats [--range week|month|year|all] [--json]
 ```
+
+### Backups
+
+Mac only. Backups go to the folder chosen in Settings, Backups (a NAS share, another disk), the music library too when its backup is on: see [NAS.md](NAS.md).
+
+#### `backup status`
+
+Where backups go and whether the folder is reachable, the last and next backup, the last error, and the music backup's last run (files copied, moved and set aside, library folders skipped). `groovelight backup` alone does the same.
+
+```sh
+groovelight backup status [--json]
+```
+
+#### `backup now`
+
+Backs up the library data now, then copies new and changed music when the music backup is on (the first time, the whole library: it can take hours, and shows its progress).
+
+```sh
+groovelight backup now [--data-only] [--json]
+```
+
+`backup scheduled` is what Groovelight runs at night while it is closed (Settings, Backups, Also when Groovelight is closed): it backs up only when one is due.
 
 ### `mcp`
 

@@ -20,14 +20,19 @@ enum Runner {
 
     static var version: String { "groovelight \(appVersion ?? "(Groovelight not found)")" }
 
-    /// Starts the app in the background when it is not running, and waits until it listens.
-    static func ensureRunning() throws {
+    /// Starts the app in the background when it is not running, and waits until it listens. `forBackup`: hidden, and
+    /// told it was opened only for a backup (it quits when done).
+    static func ensureRunning(forBackup: Bool = false) throws {
         if ControlClient.isAvailable() { return }
         guard let app = appURL else { throw ToolError("Groovelight is not installed (looked for \(ControlPort.appBundleIdentifier)).") }
         printError("Starting Groovelight…")
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.activates = false
         configuration.addsToRecentItems = false
+        if forBackup {
+            configuration.hides = true
+            configuration.arguments = ["-GLLaunchedForBackup", "YES"]
+        }
         let failure = wait { done in
             NSWorkspace.shared.openApplication(at: app, configuration: configuration) { _, error in done(error) }
         }

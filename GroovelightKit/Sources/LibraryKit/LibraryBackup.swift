@@ -6,7 +6,8 @@ import GRDB
 /// artwork folder and the app's preferences.
 ///
 /// A backup is a package (a folder that Finder shows as one file):
-/// `Library.sqlite`, `Artwork/`, `Preferences.plist` and `Manifest.json`.
+/// `Library.sqlite`, `Artwork/`, `Preferences.plist` and `Manifest.json`. Backups on a NAS keep their covers in an
+/// `Artwork` folder beside them instead, shared by all of them (`Manifest.artworkFiles`).
 public enum LibraryBackup {
     public static let fileExtension = "groovelightbackup"
 
@@ -22,6 +23,9 @@ public enum LibraryBackup {
         public var artworkCount: Int
         /// Library folders at backup time; they must be located again after restoring on another Mac.
         public var folders: [String]
+        /// For a backup whose covers are in the folder shared by the backups beside it (on a NAS): the covers it uses.
+        /// Nil when they are in the package (older readers ignore it).
+        public var artworkFiles: [String]?
     }
 
     public enum BackupError: LocalizedError {
@@ -39,53 +43,114 @@ public enum LibraryBackup {
     static let formatVersion = 1
 
     /// Writes a backup package at `url` (replacing it). The database copy is a consistent snapshot, taken with SQLite's
-    /// backup API while the library stays open.
+    /// backup API while the library stays open. `preferences` is property list data (a dictionary), kept as data so it
+    /// can cross concurrency boundaries.
+    ///
+    /// With `sharedArtwork` (a folder beside the backups, on a NAS), the covers go there instead of in the package:
+    /// only the originals (thumbnails are made again on restore), and only those not there yet, since their names are
+    /// their contents' hash. Each file on a NAS costs a fraction of a second, so this turns minutes into seconds. The
+    /// manifest lists the covers the backup uses. `progress` gets the files written so far and their total.
     @discardableResult
-    /// `preferences` is property list data (a dictionary), kept as data so it can cross concurrency boundaries.
     public static func write(database: LibraryDatabase, artworkDirectory: URL, preferences: Data, appVersion: String,
-                             to url: URL) throws -> Manifest {
+                             to url: URL, sharedArtwork: URL? = nil,
+                             progress: ((_ done: Int, _ total: Int) -> Void)? = nil) throws -> Manifest {
         let fileManager = FileManager.default
         // Build in the temporary folder, then move into place, so a failed backup never leaves a half-written package
         // (and a sandboxed app may only write the chosen file itself, not next to it).
         let staging = fileManager.temporaryDirectory.appendingPathComponent("backup-\(UUID().uuidString)", isDirectory: true)
         try fileManager.createDirectory(at: staging, withIntermediateDirectories: true)
+        defer { try? fileManager.removeItem(at: staging) }
+
+        let snapshot = try DatabaseQueue(path: staging.appendingPathComponent("Library.sqlite").path)
+        try database.writer.backup(to: snapshot)
+        // The copy inherits the library's WAL mode, which needs side files to be read: make it a single,
+        // self-contained file.
+        try snapshot.writeWithoutTransaction { try $0.execute(sql: "PRAGMA journal_mode = DELETE") }
+        try snapshot.close()
+        try preferences.write(to: staging.appendingPathComponent("Preferences.plist"))
+
+        let covers = ((try? fileManager.contentsOfDirectory(atPath: artworkDirectory.path)) ?? []).filter { !$0.hasPrefix(".") }.sorted()
+        // What goes where: the package's own files, then the covers (in the package, or the missing ones in the shared
+        // folder, through a temporary name), then the manifest last.
+        var copies: [(from: URL, to: URL, through: URL?)] = ["Library.sqlite", "Preferences.plist"].map {
+            (staging.appendingPathComponent($0), url.appendingPathComponent($0), nil)
+        }
+        let artworkFiles: [String]?
+        if let sharedArtwork {
+            try fileManager.createDirectory(at: sharedArtwork, withIntermediateDirectories: true)
+            let there = Set((try? fileManager.contentsOfDirectory(atPath: sharedArtwork.path)) ?? [])
+            let originals = covers.filter { $0.hasSuffix(ArtworkCache.originalSuffix) }
+            artworkFiles = originals
+            for name in originals where !there.contains(name) {
+                copies.append((artworkDirectory.appendingPathComponent(name), sharedArtwork.appendingPathComponent(name),
+                               sharedArtwork.appendingPathComponent(".\(name).partial")))
+            }
+        } else {
+            artworkFiles = nil
+            for name in covers {
+                copies.append((artworkDirectory.appendingPathComponent(name), url.appendingPathComponent("Artwork").appendingPathComponent(name), nil))
+            }
+        }
+
+        let manifest = try database.writer.read { db in
+            Manifest(formatVersion: formatVersion, appVersion: appVersion, createdAt: .now, computerName: Self.computerName,
+                     trackCount: try Track.fetchCount(db), playlistCount: try Playlist.fetchCount(db),
+                     lovedCount: try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM track WHERE isLoved") ?? 0,
+                     playCount: try Int.fetchOne(db, sql: "SELECT COALESCE(SUM(playCount), 0) FROM track") ?? 0,
+                     artworkCount: artworkFiles?.count ?? covers.count, folders: try LibraryDatabase.roots(db).map(\.path),
+                     artworkFiles: artworkFiles)
+        }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        try encoder.encode(manifest).write(to: staging.appendingPathComponent("Manifest.json"))
+        copies.append((staging.appendingPathComponent("Manifest.json"), url.appendingPathComponent("Manifest.json"), nil))
+
+        if fileManager.fileExists(atPath: url.path) { try fileManager.removeItem(at: url) }
         do {
-            let snapshot = try DatabaseQueue(path: staging.appendingPathComponent("Library.sqlite").path)
-            try database.writer.backup(to: snapshot)
-            // The copy inherits the library's WAL mode, which needs side files to be read: make it a single,
-            // self-contained file.
-            try snapshot.writeWithoutTransaction { try $0.execute(sql: "PRAGMA journal_mode = DELETE") }
-            try snapshot.close()
-
-            let artwork = staging.appendingPathComponent("Artwork", isDirectory: true)
-            try fileManager.createDirectory(at: artwork, withIntermediateDirectories: true)
-            var artworkCount = 0
-            for file in (try? fileManager.contentsOfDirectory(at: artworkDirectory, includingPropertiesForKeys: nil)) ?? [] {
-                try fileManager.copyItem(at: file, to: artwork.appendingPathComponent(file.lastPathComponent))
-                artworkCount += 1
+            try fileManager.createDirectory(at: url, withIntermediateDirectories: true)
+            if artworkFiles == nil { try fileManager.createDirectory(at: url.appendingPathComponent("Artwork"), withIntermediateDirectories: true) }
+            progress?(0, copies.count)
+            for (index, copy) in copies.enumerated() {
+                try Task.checkCancellation()
+                if let through = copy.through {
+                    try? fileManager.removeItem(at: through)
+                    try fileManager.copyItem(at: copy.from, to: through)
+                    if fileManager.fileExists(atPath: copy.to.path) { try? fileManager.removeItem(at: through) } else { try fileManager.moveItem(at: through, to: copy.to) }
+                } else {
+                    try fileManager.copyItem(at: copy.from, to: copy.to)
+                }
+                progress?(index + 1, copies.count)
             }
-
-            try preferences.write(to: staging.appendingPathComponent("Preferences.plist"))
-
-            let manifest = try database.writer.read { db in
-                Manifest(formatVersion: formatVersion, appVersion: appVersion, createdAt: .now, computerName: Self.computerName,
-                         trackCount: try Track.fetchCount(db), playlistCount: try Playlist.fetchCount(db),
-                         lovedCount: try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM track WHERE isLoved") ?? 0,
-                         playCount: try Int.fetchOne(db, sql: "SELECT COALESCE(SUM(playCount), 0) FROM track") ?? 0,
-                         artworkCount: artworkCount, folders: try LibraryDatabase.roots(db).map(\.path))
-            }
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            encoder.dateEncodingStrategy = .iso8601
-            try encoder.encode(manifest).write(to: staging.appendingPathComponent("Manifest.json"))
-
-            if fileManager.fileExists(atPath: url.path) { try fileManager.removeItem(at: url) }
-            try fileManager.moveItem(at: staging, to: url)
-            return manifest
         } catch {
-            try? fileManager.removeItem(at: staging)
+            try? fileManager.removeItem(at: url)
             throw error
         }
+        return manifest
+    }
+
+    /// The folder of covers shared by the backups in `folder` (on a NAS).
+    public static func sharedArtwork(in folder: URL) -> URL {
+        folder.appendingPathComponent("Artwork", isDirectory: true)
+    }
+
+    /// Removes the shared covers that none of `backups` uses (and copies left half-written). Does nothing when one
+    /// of them cannot be read, so a cover is never removed while a backup might still need it.
+    public static func pruneSharedArtwork(_ folder: URL, keepingFor backups: [URL]) {
+        var used = Set<String>()
+        for backup in backups {
+            guard let manifest = try? manifest(of: backup) else { return }
+            used.formUnion(manifest.artworkFiles ?? [])
+        }
+        let fileManager = FileManager.default
+        for name in (try? fileManager.contentsOfDirectory(atPath: folder.path)) ?? [] where !used.contains(name) {
+            try? fileManager.removeItem(at: folder.appendingPathComponent(name))
+        }
+    }
+
+    /// Where a backup's covers are: its own `Artwork` folder, or the shared one beside it.
+    public static func artworkFolder(of url: URL, manifest: Manifest) -> URL {
+        manifest.artworkFiles == nil ? url.appendingPathComponent("Artwork") : sharedArtwork(in: url.deletingLastPathComponent())
     }
 
     public static func manifest(of url: URL) throws -> Manifest {
@@ -101,8 +166,11 @@ public enum LibraryBackup {
     /// Replaces the library with the backup's (in place, while it stays open; observers see the new data), brings the
     /// schema up to date, and adds the backup's artwork. Returns the backup's preferences (property list data) for the
     /// app to apply.
-    public static func restore(from url: URL, into database: LibraryDatabase, artworkDirectory: URL) throws -> Data? {
-        _ = try manifest(of: url)
+    ///
+    /// `artworkFrom` is where the covers are when not in the default place (the shared folder chosen by the user).
+    /// Covers without thumbnails (from a shared folder, which keeps only originals) get them made again.
+    public static func restore(from url: URL, into database: LibraryDatabase, artworkDirectory: URL, artworkFrom: URL? = nil) throws -> Data? {
+        let manifest = try manifest(of: url)
         // Read from a temporary copy: the backup itself is never modified, and SQLite may need to write side files.
         let fileManager = FileManager.default
         let temporary = fileManager.temporaryDirectory.appendingPathComponent("restore-\(UUID().uuidString).sqlite")
@@ -115,10 +183,18 @@ public enum LibraryBackup {
         try LibraryDatabase.migrator.migrate(database.writer)
 
         try fileManager.createDirectory(at: artworkDirectory, withIntermediateDirectories: true)
-        for file in (try? fileManager.contentsOfDirectory(at: url.appendingPathComponent("Artwork"), includingPropertiesForKeys: nil)) ?? [] {
-            let destination = artworkDirectory.appendingPathComponent(file.lastPathComponent)
+        let folder = artworkFrom ?? artworkFolder(of: url, manifest: manifest)
+        let names = manifest.artworkFiles ?? ((try? fileManager.contentsOfDirectory(atPath: folder.path)) ?? [])
+        let cache = try ArtworkCache(directory: artworkDirectory)
+        for name in names where !name.hasPrefix(".") {
+            let destination = artworkDirectory.appendingPathComponent(name)
             // Content-addressed names: an existing file is the same image.
-            if !fileManager.fileExists(atPath: destination.path) { try fileManager.copyItem(at: file, to: destination) }
+            if !fileManager.fileExists(atPath: destination.path) {
+                try? fileManager.copyItem(at: folder.appendingPathComponent(name), to: destination)
+            }
+            if name.hasSuffix(ArtworkCache.originalSuffix) {
+                cache.makeThumbnails(String(name.dropLast(ArtworkCache.originalSuffix.count)))
+            }
         }
 
         return try? Data(contentsOf: url.appendingPathComponent("Preferences.plist"))
