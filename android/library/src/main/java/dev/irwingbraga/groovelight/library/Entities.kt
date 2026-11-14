@@ -61,6 +61,8 @@ data class Track(
     /** LRC text when synced, plain text otherwise. */
     val lyrics: String? = null,
     val artworkHash: String? = null,
+    /** The composer the Mac lists the song under (classical albums, in Composers); null: under its artist. */
+    val composer: String? = null,
 ) {
     /** The gain to play it at (dB), as the Mac's Sound Check does: ReplayGain, else the measured loudness against -18 LUFS. */
     val normalizationGain: Double? get() = trackGain ?: loudness?.let { -18.0 - it }
@@ -235,6 +237,8 @@ data class CatalogTrack(
     val genre: String? = null,
     val year: Int? = null,
     val artworkHash: String? = null,
+    /** The composer the Mac lists the song under (classical albums, in Composers); null: under its artist. */
+    val composer: String? = null,
 )
 
 /** What the device's selection on the Mac holds: [kind] is "album", "artist", "song", "everything" or "others". */

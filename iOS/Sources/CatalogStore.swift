@@ -143,9 +143,11 @@ final class CatalogStore {
         return byArtist.enumerated().sorted { (rank[$0.element.key] ?? Int.max, $0.offset) < (rank[$1.element.key] ?? Int.max, $1.offset) }.map(\.element)
     }
 
-    /// Album artists, the Mac's and this device's, with their number of albums and a cover.
+    /// Album artists, the Mac's and this device's, with their number of albums and a cover (classical albums listed by
+    /// composer are under their composers instead).
     var artists: [(name: String, albums: Int, artworkHash: String?)] {
-        Dictionary(grouping: albums().filter { !Self.isCompilation($0) }, by: \.artist)
+        let byComposer = composerOnlyAlbums
+        return Dictionary(grouping: albums().filter { !Self.isCompilation($0) && !byComposer.contains($0.key) }, by: \.artist)
             .map { (name: $0.key, albums: $0.value.count, artworkHash: photo(of: $0.key) ?? $0.value.first?.artworkHash) }
             .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
@@ -214,7 +216,49 @@ final class CatalogStore {
 
     /// Albums by various artists, the Mac's and this device's.
     var compilations: [DeviceCatalog.Album] {
-        albums().filter(Self.isCompilation).sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+        let byComposer = composerOnlyAlbums
+        return albums().filter { Self.isCompilation($0) && !byComposer.contains($0.key) }.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+    }
+
+    // MARK: - Composers
+
+    /// The albums each composer has music on, as the Mac lists them: its list's, and this device's (from the last sync,
+    /// which also covers a list read from an older Mac, without composers).
+    private var composerAlbumKeys: [String: Set<String>] {
+        var result = library.contents.composerAlbums
+        for song in catalog?.songs ?? [] {
+            if let composer = song.composer { result[composer, default: []].insert(song.albumKey) }
+        }
+        return result
+    }
+
+    /// Albums whose every song is listed by composer: they are in Composers, not under their artist.
+    private var composerOnlyAlbums: Set<String> {
+        var result = library.contents.composerOnlyAlbums
+        for (key, songs) in Dictionary(grouping: catalog?.songs ?? [], by: \.albumKey) where songs.allSatisfy({ $0.composer != nil }) {
+            result.insert(key)
+        }
+        return result
+    }
+
+    /// Composers, the Mac's and this device's, with their number of albums and a picture.
+    var composers: [(name: String, albums: Int, artworkHash: String?)] {
+        let covers = Dictionary(albums().map { ($0.key, $0.artworkHash) }, uniquingKeysWith: { first, _ in first })
+        return composerAlbumKeys.map { name, keys in
+            (name: name, albums: keys.count, artworkHash: photo(of: name) ?? keys.sorted().lazy.compactMap { covers[$0] ?? nil }.first)
+        }
+        .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    /// Whether there is anything to list in Composers (the Mac's music when it is shown).
+    var hasComposers: Bool {
+        !library.contents.composers.isEmpty || (showsMac && catalog?.songs.contains { $0.composer != nil } == true)
+    }
+
+    /// A composer's albums, the Mac's and this device's, by year.
+    func albums(composer name: String) -> [DeviceCatalog.Album] {
+        let keys = composerAlbumKeys[name] ?? []
+        return albums().filter { keys.contains($0.key) }.sorted { ($0.year ?? 0, $0.title) < ($1.year ?? 0, $1.title) }
     }
 
     /// A device's album lacks the flag: its artist is the Mac's name for them.

@@ -5,10 +5,20 @@ import SwiftUI
 // Artists where there is room, as on the Mac: the artist list as a column of its own between the sidebar and the page,
 // and the artist's page with their photo beside their name, then each album with its cover beside its songs.
 
+/// Artists, or the composers classical albums are listed under (as on the Mac).
+enum ArtistKind: Hashable {
+    case artists, composers
+
+    var title: String { self == .artists ? "Artists" : "Composers" }
+    var symbol: String { self == .artists ? "music.microphone" : "music.quarternote.3" }
+}
+
 /// The artist list column: this device's artists, or with Downloaded off the Mac's too. Compilations first, as on the Mac.
+/// The same column lists the composers on Composers.
 struct ArtistColumn: View {
     @Environment(AppModel.self) private var model
     @Binding var selection: String?
+    var kind: ArtistKind = .artists
 
     struct Entry: Identifiable {
         var name: String
@@ -19,6 +29,11 @@ struct ArtistColumn: View {
 
     private var entries: [Entry] {
         let catalog = model.catalog
+        if kind == .composers {
+            if catalog.showsMac { return catalog.composers.map { Entry(name: $0.name, albums: $0.albums, artworkHash: $0.artworkHash) } }
+            return model.library.contents.composers
+                .map { Entry(name: $0.name, albums: $0.albumCount, artworkHash: model.library.artistPhoto($0.name) ?? $0.artworkHash) }
+        }
         if catalog.showsMac {
             let compilations = catalog.compilations
             return (compilations.isEmpty ? [] : [Entry(name: ArtistSummary.compilations, albums: compilations.count, artworkHash: nil)])
@@ -48,10 +63,10 @@ struct ArtistColumn: View {
         .listSectionIndexVisibility(SectionIndex.visibility(count: artists.count, sections: sections.count))
         .overlay {
             if entries.isEmpty {
-                if catalog.showsMac, catalog.catalog == nil { MacLibraryUnavailable() } else { ContentUnavailableView("No Artists", systemImage: "music.microphone") }
+                if catalog.showsMac, catalog.catalog == nil { MacLibraryUnavailable() } else { ContentUnavailableView("No \(kind.title)", systemImage: kind.symbol) }
             }
         }
-        .navigationTitle("Artists")
+        .navigationTitle(kind.title)
         .toolbar { ToolbarItem(placement: .topBarTrailing) { DownloadedToggle() } }
         .safeAreaInset(edge: .top, spacing: 0) { if catalog.showsMac { CatalogNotice() } }
         .refreshable { if catalog.showsMac { await catalog.refresh() } }
@@ -85,7 +100,7 @@ struct ArtistColumn: View {
                 Text(entry.albums == 1 ? "1 album" : "\(entry.albums) albums").font(.caption).foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
-            if catalog.showsMac, entry.name != ArtistSummary.compilations {
+            if catalog.showsMac, kind == .artists, entry.name != ArtistSummary.compilations {
                 if catalog.isWaiting(artist: entry.name) {
                     AvailabilityMark(availability: .waiting)
                 } else if catalog.isHere(artist: entry.name) {
@@ -102,19 +117,34 @@ struct ArtistColumn: View {
 struct ArtistPage: View {
     @Environment(AppModel.self) private var model
     let name: String
+    /// A composer's page lists their albums with their part of each, and who plays it.
+    var kind: ArtistKind = .artists
     @State private var width: CGFloat = 900
 
     private var isCompilations: Bool { name == ArtistSummary.compilations }
+    private var composer: String? { kind == .composers ? name : nil }
 
     var body: some View {
         let catalog = model.catalog
-        let local = model.library.read { try LibraryDatabase.albums($0, sort: .year, artist: name) } ?? []
-        let mac = catalog.showsMac ? catalog.albums(artist: name) : []
-        let tracks = local.flatMap { album in model.library.read { try LibraryDatabase.tracks($0, albumKey: album.albumKey) } ?? [] }
+        let local = model.library.read { db in
+            try kind == .composers ? LibraryDatabase.albums(db, composer: name) : LibraryDatabase.albums(db, sort: .year, artist: name)
+        } ?? []
+        let mac = catalog.showsMac ? (kind == .composers ? catalog.albums(composer: name) : catalog.albums(artist: name)) : []
+        let tracks = local.flatMap { album in
+            model.library.read { db in
+                try composer.map { try LibraryDatabase.tracks(db, albumKey: album.albumKey, composer: $0) } ?? LibraryDatabase.tracks(db, albumKey: album.albumKey)
+            } ?? []
+        }
         let albumCount = catalog.showsMac ? mac.count : local.count
-        let songCount = catalog.showsMac ? mac.reduce(0) { $0 + catalog.songsAnywhere(album: $1.key).count } : tracks.count
+        // A composer's part of each album (all of it when the Mac's list does not say, as from an older Mac).
+        let macSongs = catalog.showsMac ? mac.flatMap { album -> [DeviceCatalog.Song] in
+            let all = catalog.songsAnywhere(album: album.key)
+            let theirs = all.filter { composer == nil || $0.composer == composer }
+            return theirs.isEmpty ? all : theirs
+        } : []
+        let songCount = catalog.showsMac ? macSongs.count : tracks.count
         // Played on the Mac when it plays: all of them, here or not.
-        let macIds = model.playsOnMac && catalog.showsMac ? mac.flatMap { catalog.songsAnywhere(album: $0.key).map(\.id) } : []
+        let macIds = model.playsOnMac && catalog.showsMac ? macSongs.map(\.id) : []
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
                 Group {
@@ -127,9 +157,9 @@ struct ArtistPage: View {
                 .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
                 LazyVStack(alignment: .leading, spacing: 44) {
                     if catalog.showsMac {
-                        ForEach(mac, id: \.key) { MacArtistAlbumSection(album: $0) }
+                        ForEach(mac, id: \.key) { MacArtistAlbumSection(album: $0, composer: composer) }
                     } else {
-                        ForEach(local) { LocalArtistAlbumSection(album: $0) }
+                        ForEach(local) { LocalArtistAlbumSection(album: $0, composer: composer) }
                     }
                 }
             }
@@ -147,7 +177,7 @@ struct ArtistPage: View {
             } else if model.catalog.showsMac {
                 CatalogCover(hash: model.catalog.photo(of: name) ?? mac.first?.artworkHash, size: 220, corner: 110)
             } else {
-                Cover(hash: model.library.artistPhoto(name) ?? local.first?.artworkHash, size: 220, corner: 110, large: true, symbol: "music.microphone")
+                Cover(hash: model.library.artistPhoto(name) ?? local.first?.artworkHash, size: 220, corner: 110, large: true, symbol: kind.symbol)
             }
         }
         .frame(width: 220, height: 220)
@@ -168,7 +198,7 @@ struct ArtistPage: View {
                 .buttonStyle(.glass)
                 // What is here plays (or, on the Mac, everything); the Mac's albums are brought here first.
                 .disabled(tracks.isEmpty && macIds.isEmpty)
-                if model.catalog.showsMac, !isCompilations { ArtistTransferButton(name: name) }
+                if model.catalog.showsMac, !isCompilations, kind == .artists { ArtistTransferButton(name: name) }
             }
             .controlSize(.large)
             .disabled(tracks.isEmpty && macIds.isEmpty && !model.catalog.showsMac)
@@ -284,11 +314,16 @@ private struct ArtistAlbumLayout<CoverView: View, Buttons: View, Songs: View>: V
 private struct LocalArtistAlbumSection: View {
     @Environment(AppModel.self) private var model
     let album: AlbumSummary
+    /// On a composer's page: only their songs, and who plays them.
+    var composer: String? = nil
     @State private var isRemoving = false
 
     var body: some View {
-        let tracks = model.library.read { try LibraryDatabase.tracks($0, albumKey: album.albumKey) } ?? []
-        ArtistAlbumLayout(title: album.title, subtitle: [album.genre, album.year.map(String.init)].compactMap(\.self).joined(separator: " · "),
+        let tracks = model.library.read { db in
+            try composer.map { try LibraryDatabase.tracks(db, albumKey: album.albumKey, composer: $0) } ?? LibraryDatabase.tracks(db, albumKey: album.albumKey)
+        } ?? []
+        let details = composer == nil ? [album.genre, album.year.map(String.init)] : [album.artist, album.year.map(String.init)]
+        ArtistAlbumLayout(title: album.title, subtitle: details.compactMap(\.self).joined(separator: " · "),
                           route: .album(album.albumKey)) { size in
             Cover(hash: album.artworkHash, size: size, corner: 8, large: true)
         } buttons: {
@@ -331,15 +366,23 @@ private struct LocalArtistAlbumSection: View {
 private struct MacArtistAlbumSection: View {
     @Environment(AppModel.self) private var model
     let album: DeviceCatalog.Album
+    /// On a composer's page: only their songs, and who plays them.
+    var composer: String? = nil
 
     var body: some View {
         let catalog = model.catalog
         let here = catalog.isHere(album: album.key)
-        let songs = catalog.songsAnywhere(album: album.key)
+        let all = catalog.songsAnywhere(album: album.key)
+        // A device's album the Mac's list lacks has no composers in its songs: all of them then.
+        let songs = composer.map { name in all.filter { $0.composer == name } }.flatMap { $0.isEmpty ? nil : $0 } ?? all
         let availability = catalog.availability(album: album)
-        let tracks = here ? model.library.read { try LibraryDatabase.tracks($0, albumKey: album.key) } ?? [] : []
+        let tracks = here ? model.library.read { db in
+            try composer.map { try LibraryDatabase.tracks(db, albumKey: album.key, composer: $0) }.flatMap { $0.isEmpty ? nil : $0 }
+                ?? LibraryDatabase.tracks(db, albumKey: album.key)
+        } ?? [] : []
         let genre = songs.lazy.compactMap(\.genre).first
-        ArtistAlbumLayout(title: album.title, subtitle: [genre, album.year.map(String.init)].compactMap(\.self).joined(separator: " · "),
+        let details = composer == nil ? [genre, album.year.map(String.init)] : [album.artist, album.year.map(String.init)]
+        ArtistAlbumLayout(title: album.title, subtitle: details.compactMap(\.self).joined(separator: " · "),
                           route: here ? .album(album.key) : .macAlbum(album.key)) { size in
             CatalogCover(hash: album.artworkHash, size: size, corner: 8)
         } buttons: {
@@ -403,5 +446,106 @@ struct ArtistDestination: View {
         } else {
             ArtistDetail(name: name)
         }
+    }
+}
+
+// MARK: - Composers
+
+/// The composers of classical albums, as on the Mac: each opening their albums (the Mac's too with Downloaded off).
+struct ComposerList: View {
+    struct Entry: Hashable {
+        var name: String
+        var albums: Int
+        var artworkHash: String?
+    }
+
+    let entries: [Entry]
+    /// Covers from the Mac's library (with Downloaded off).
+    var fromMac = false
+
+    var body: some View {
+        let sections = SectionIndex.sections(entries, by: \.name)
+        List {
+            ForEach(sections) { section in
+                Section {
+                    ForEach(section.items, id: \.element.name) { _, entry in
+                        NavigationLink(value: LibraryRoute.composer(entry.name)) {
+                            HStack(spacing: 12) {
+                                if fromMac {
+                                    CatalogCover(hash: entry.artworkHash, size: 44, corner: 22)
+                                } else {
+                                    Cover(hash: entry.artworkHash, size: 44, corner: 22, symbol: "music.quarternote.3")
+                                }
+                                VStack(alignment: .leading) {
+                                    Text(entry.name)
+                                    Text(entry.albums == 1 ? "1 album" : "\(entry.albums) albums").font(.caption).foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                    }
+                }
+                .sectionIndexLabel(section.letter)
+            }
+        }
+        .listStyle(.plain)
+        .listSectionIndexVisibility(SectionIndex.visibility(count: entries.count, sections: sections.count))
+        .overlay {
+            if entries.isEmpty { ContentUnavailableView("No Composers", systemImage: "music.quarternote.3") }
+        }
+    }
+}
+
+/// A composer's page in any stack: the Mac's layout where there is room, a cover and the albums where there is not.
+struct ComposerDestination: View {
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    let name: String
+
+    var body: some View {
+        if sizeClass == .regular {
+            ArtistPage(name: name, kind: .composers)
+        } else {
+            ComposerDetail(name: name)
+        }
+    }
+}
+
+/// A composer on the phone: their picture, Play and Shuffle for their music here, and their albums (each with who
+/// plays it), with Downloaded off the Mac's too.
+struct ComposerDetail: View {
+    @Environment(AppModel.self) private var model
+    let name: String
+
+    var body: some View {
+        let catalog = model.catalog
+        let local = model.library.read { try LibraryDatabase.albums($0, composer: name) } ?? []
+        let tracks = model.library.read { db in
+            try local.flatMap { try LibraryDatabase.tracks(db, albumKey: $0.albumKey, composer: name) }
+        } ?? []
+        let mac = catalog.showsMac ? catalog.albums(composer: name) : []
+        let count = catalog.showsMac ? mac.count : local.count
+        ScrollView {
+            VStack(spacing: 16) {
+                if catalog.showsMac {
+                    CatalogCover(hash: catalog.photo(of: name) ?? mac.first?.artworkHash, size: 160, corner: 80)
+                } else {
+                    Cover(hash: model.library.artistPhoto(name) ?? local.first?.artworkHash, size: 160, corner: 80, large: true,
+                          symbol: "music.quarternote.3")
+                }
+                VStack(spacing: 2) {
+                    Text(name).font(.title.bold()).multilineTextAlignment(.center)
+                    Text(count == 1 ? "1 album" : "\(count) albums").font(.subheadline).foregroundStyle(.secondary)
+                }
+                if !tracks.isEmpty {
+                    PlayShuffleButtons(tracks: tracks).frame(maxWidth: 420).padding(.horizontal)
+                }
+                if catalog.showsMac {
+                    MergedAlbumGrid(albums: mac, scrolls: false)
+                } else {
+                    AlbumGrid(albums: local, scrolls: false)
+                }
+            }
+            .padding(.top)
+        }
+        .navigationBarTitleDisplayMode(.inline)
     }
 }

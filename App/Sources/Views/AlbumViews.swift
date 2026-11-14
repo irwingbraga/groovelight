@@ -286,14 +286,26 @@ private struct AlbumHeaderInfo: View {
     var isLoadingInfo: Bool
     var showCredits: () -> Void
     @Environment(AppModel.self) private var model
+    /// The composers a classical album is listed under (empty: it is under its artist).
+    @State private var composers: [String] = []
+    /// How the album was chosen to be listed (nil: from its tags).
+    @State private var grouping: ClassicalGrouping.Mode?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(album.title)
                 .font(.system(size: 30, weight: .bold))
                 .lineLimit(2)
-            ArtistLink(name: album.artist)
-                .font(.system(size: 22))
+            if composers.isEmpty {
+                ArtistLink(name: album.artist)
+                    .font(.system(size: 22))
+            } else {
+                // Classical: the composers first (the album is listed under them), then who plays it.
+                ComposerLinks(names: composers)
+                    .font(.system(size: 22))
+                ArtistLink(name: album.artist)
+                    .font(.system(size: 16))
+            }
             Text([album.genre, album.year.map(String.init)].compactMap { $0 }.joined(separator: " · ").uppercased())
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(.secondary)
@@ -347,6 +359,12 @@ private struct AlbumHeaderInfo: View {
                         Button("Fix Metadata…", systemImage: "wand.and.sparkles") { model.metadata.review(tracks) }
                         Button("Organize Files…", systemImage: "folder.badge.gearshape") { model.files.organize(tracks) }
                         Button("Show in Finder", systemImage: "folder") { model.showInFinder(Array(tracks.prefix(1))) }
+                        Divider()
+                        Picker("List In", systemImage: "music.quarternote.3", selection: groupingChoice) {
+                            Text("Decided from Tags").tag(ClassicalGrouping.Mode?.none)
+                            Text("Composers").tag(ClassicalGrouping.Mode?.some(.composer))
+                            Text("Artists").tag(ClassicalGrouping.Mode?.some(.artist))
+                        }
                     } label: {
                         Image(systemName: "ellipsis")
                     }
@@ -363,6 +381,40 @@ private struct AlbumHeaderInfo: View {
             }
             .padding(.top, 10)
         }
+        .observing(model.database, id: "grouping-\(album.albumKey)", { [key = album.albumKey] db in
+            (try LibraryDatabase.composers(db, albumKey: key), try LibraryDatabase.albumGrouping(db, albumKey: key))
+        }) { value in
+            composers = value.0
+            grouping = value.1
+        }
+    }
+
+    /// The album's "List In" choice: under its composers (Composers) or its artist (Artists), or from its tags.
+    private var groupingChoice: Binding<ClassicalGrouping.Mode?> {
+        Binding(get: { grouping }, set: { mode in
+            grouping = mode
+            let key = album.albumKey
+            let database = model.database
+            Task.detached { try? database.setAlbumGrouping(mode, albumKey: key) }
+        })
+    }
+}
+
+/// Composer names that open their page on Composers (classical albums).
+private struct ComposerLinks: View {
+    var names: [String]
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(Array(names.prefix(4).enumerated()), id: \.offset) { index, name in
+                if index > 0 { Text(", ") }
+                LinkText(text: name, help: "Go to \(name) in Composers") { model.showComposer(name) }
+                    .foregroundStyle(Color.brand)
+            }
+            if names.count > 4 { Text(" and \(names.count - 4) more").foregroundStyle(.secondary) }
+        }
+        .lineLimit(1)
     }
 }
 

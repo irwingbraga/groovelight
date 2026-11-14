@@ -66,7 +66,7 @@ class Catalog(val albums: List<CatalogAlbum>, val tracks: List<CatalogTrack>, va
         private fun song(reader: JsonReader): CatalogTrack {
             var id = 0L; var title = ""; var artist = ""; var albumKey = ""; var disc: Int? = null; var number: Int? = null
             var duration = 0.0; var codec = ""; var rate: Int? = null; var bits: Int? = null; var genre: String? = null
-            var year: Int? = null; var artwork: String? = null
+            var year: Int? = null; var artwork: String? = null; var composer: String? = null
             reader.obj { name ->
                 when (name) {
                     "id" -> id = reader.nextLong()
@@ -82,10 +82,11 @@ class Catalog(val albums: List<CatalogAlbum>, val tracks: List<CatalogTrack>, va
                     "genre" -> genre = reader.stringOrNull()
                     "year" -> year = reader.intOrNull()
                     "artworkHash" -> artwork = reader.stringOrNull()
+                    "composer" -> composer = reader.stringOrNull()
                     else -> reader.skipValue()
                 }
             }
-            return CatalogTrack(id, title, artist, albumKey, disc, number, (duration * 1000).toLong(), codec, rate, bits, genre, year, artwork)
+            return CatalogTrack(id, title, artist, albumKey, disc, number, (duration * 1000).toLong(), codec, rate, bits, genre, year, artwork, composer)
         }
     }
 }

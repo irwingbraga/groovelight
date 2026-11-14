@@ -39,6 +39,9 @@ public struct DeviceSnapshot: Codable, Hashable, Sendable {
         /// LRC text when synced, plain text otherwise.
         public var lyrics: String?
         public var artworkHash: String?
+        /// The composer the Mac lists the song under (classical albums, in Composers); nil: under its artist. Added
+        /// after version 1: older readers ignore it.
+        public var composer: String? = nil
     }
 
     public struct Album: Codable, Hashable, Sendable {
@@ -170,6 +173,7 @@ public struct DeviceSnapshot: Codable, Hashable, Sendable {
     public static func build(_ db: Database, paths: [Int64: String], codecs: [Int64: String] = [:], equalizer: Equalizer? = nil,
                              now: Date = .now) throws -> DeviceSnapshot {
         let tracks = try Track.fetchAll(db, keys: Array(paths.keys))
+        let composers = try LibraryDatabase.composerGroups(db)
         var songs: [Song] = []
         var albums: [String: Album] = [:]
         for track in tracks {
@@ -185,7 +189,8 @@ public struct DeviceSnapshot: Codable, Hashable, Sendable {
                 sampleRate: track.sampleRate.map { Int(lossy?.outputRate(for: $0) ?? $0) }, bitDepth: lossy == nil ? track.bitDepth : nil,
                 trackGain: track.replayGainTrackGain, albumGain: track.replayGainAlbumGain, loudness: track.loudness,
                 loved: track.isLoved, lovedAt: track.lovedAt, rating: track.rating, playCount: track.playCount,
-                lastPlayed: track.lastPlayedAt, dateAdded: track.dateAdded, lyrics: track.displayLyrics, artworkHash: artwork))
+                lastPlayed: track.lastPlayedAt, dateAdded: track.dateAdded, lyrics: track.displayLyrics, artworkHash: artwork,
+                composer: composers[id]))
             if albums[track.albumKey] == nil {
                 albums[track.albumKey] = Album(key: track.albumKey, title: track.displayAlbum,
                                                artist: track.isCompilation ? "Various Artists" : track.displayAlbumArtist,
@@ -220,7 +225,7 @@ public struct DeviceSnapshot: Codable, Hashable, Sendable {
                                       albumKey: row["albumKey"], trackId: trackId, wholeRelease: row["wholeRelease"]))
             }
         }
-        let names = Set(albums.values.filter { !$0.isCompilation }.map(\.artist) + songs.map(\.artist))
+        let names = Set(albums.values.filter { !$0.isCompilation }.map(\.artist) + songs.map(\.artist) + songs.compactMap(\.composer))
         let artists = try LibraryDatabase.artistPhotos(db, names: names).map { Artist(name: $0.key, artworkHash: $0.value) }
             .sorted { $0.name < $1.name }
         return DeviceSnapshot(createdAt: now, songs: songs.sorted { $0.id < $1.id },

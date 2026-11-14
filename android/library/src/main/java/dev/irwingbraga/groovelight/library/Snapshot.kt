@@ -95,6 +95,7 @@ data class Snapshot(
             var genre: String? = null; var year: Int? = null; var duration = 0.0; var codec = ""; var rate: Int? = null; var bits: Int? = null
             var trackGain: Double? = null; var albumGain: Double? = null; var loudness: Double? = null; var loved = false; var lovedAt: Long? = null
             var rating = 0; var plays = 0; var lastPlayed: Long? = null; var added = 0L; var lyrics: String? = null; var artwork: String? = null
+            var composer: String? = null
             reader.obj { name ->
                 when (name) {
                     "id" -> id = reader.nextLong()
@@ -121,11 +122,12 @@ data class Snapshot(
                     "dateAdded" -> added = reader.dateOrNull() ?: 0
                     "lyrics" -> lyrics = reader.stringOrNull()
                     "artworkHash" -> artwork = reader.stringOrNull()
+                    "composer" -> composer = reader.stringOrNull()
                     else -> reader.skipValue()
                 }
             }
             return Track(id, title, artist, albumKey, disc, number, genre, year, (duration * 1000).toLong(), path, codec, rate, bits,
-                trackGain, albumGain, loudness, loved, lovedAt, rating, plays, lastPlayed, added, lyrics, artwork)
+                trackGain, albumGain, loudness, loved, lovedAt, rating, plays, lastPlayed, added, lyrics, artwork, composer)
         }
 
         private fun artistPhoto(reader: JsonReader): ArtistPhoto {

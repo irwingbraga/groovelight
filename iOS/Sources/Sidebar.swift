@@ -3,16 +3,19 @@ import WirelessSyncClient
 import SwiftUI
 
 /// The places of the app, as the Mac's sidebar lists them (same names, same symbols, same order): Search; Library
-/// (Recently Added, Artists, Albums, Songs, Genres); Explore (Shelf); Playlists (All Playlists, Loved Songs, each
-/// playlist).
+/// (Recently Added, Artists, Composers, Albums, Songs, Genres); Explore (Shelf); Playlists (All Playlists, Loved Songs,
+/// each playlist).
 enum SidebarItem: Hashable {
     case search, home
-    case recentlyAdded, artists, albums, songs, genres
+    case recentlyAdded, artists, composers, albums, songs, genres
     case shelf
     case allPlaylists, lovedSongs
     case playlist(Int64)
 
-    static let library: [SidebarItem] = [.recentlyAdded, .artists, .albums, .songs, .genres]
+    static let library: [SidebarItem] = [.recentlyAdded, .artists, .composers, .albums, .songs, .genres]
+
+    /// The Library's places: Composers only when there is classical music listed by composer, as on the Mac.
+    static func library(composers: Bool) -> [SidebarItem] { composers ? library : library.filter { $0 != .composers } }
 
     var title: String {
         switch self {
@@ -20,6 +23,7 @@ enum SidebarItem: Hashable {
         case .home: "Home"
         case .recentlyAdded: "Recently Added"
         case .artists: "Artists"
+        case .composers: "Composers"
         case .albums: "Albums"
         case .songs: "Songs"
         case .genres: "Genres"
@@ -37,6 +41,7 @@ enum SidebarItem: Hashable {
         case .home: "house"
         case .recentlyAdded: "clock"
         case .artists: "music.microphone"
+        case .composers: "music.quarternote.3"
         case .albums: "square.stack"
         case .songs: "music.note"
         case .genres: "guitars"
@@ -52,6 +57,8 @@ enum SidebarItem: Hashable {
 enum LibraryRoute: Hashable {
     case album(String)
     case artist(String)
+    /// A composer's classical albums.
+    case composer(String)
     case playlist(Int64)
     case genre(String)
     case section(SidebarItem)
@@ -66,6 +73,7 @@ extension View {
             switch route {
             case .album(let key): AlbumDetail(albumKey: key)
             case .artist(let name): ArtistDestination(name: name)
+            case .composer(let name): ComposerDestination(name: name)
             case .playlist(let id): PlaylistDetail(playlistId: id)
             case .genre(let name): GenreDetail(genre: name)
             case .section(let item): SidebarItemContent(item: item)
@@ -84,7 +92,7 @@ struct SidebarItemContent: View {
 
     var body: some View {
         let contents = model.library.contents
-        let filtered = [.recentlyAdded, .albums, .artists, .songs, .genres].contains(item)
+        let filtered = [.recentlyAdded, .albums, .artists, .composers, .songs, .genres].contains(item)
         Group {
             if filtered, model.catalog.showsMac {
                 MergedLibrarySection(item: item)
@@ -97,6 +105,9 @@ struct SidebarItemContent: View {
                 case .recentlyAdded: AlbumGrid(albums: contents.recentlyAdded)
                 case .albums: AlbumGrid(albums: contents.albums)
                 case .artists: ArtistList(artists: contents.artists, compilations: contents.compilations)
+                case .composers: ComposerList(entries: contents.composers.map {
+                    ComposerList.Entry(name: $0.name, albums: $0.albumCount, artworkHash: model.library.artistPhoto($0.name) ?? $0.artworkHash)
+                })
                 case .songs: SongList(tracks: contents.songs, showsArtwork: true, indexed: true)
                 case .genres: GenreList()
                 case .shelf: ShelfContent()
@@ -129,7 +140,7 @@ struct LibrarySidebar: View {
             SidebarRow(item: .search).tag(SidebarItem.search)
             SidebarRow(item: .home).tag(SidebarItem.home)
             Section("Library") {
-                ForEach(SidebarItem.library, id: \.self) { item in
+                ForEach(SidebarItem.library(composers: model.catalog.hasComposers), id: \.self) { item in
                     SidebarRow(item: item).tag(item)
                 }
             }
@@ -250,7 +261,7 @@ struct LibraryHome: View {
                 Section { EmptyLibrary().listRowBackground(Color.clear) }
             }
             Section {
-                ForEach(SidebarItem.library, id: \.self) { item in
+                ForEach(SidebarItem.library(composers: model.catalog.hasComposers), id: \.self) { item in
                     NavigationLink(value: LibraryRoute.section(item)) { SidebarRow(item: item) }
                 }
             }

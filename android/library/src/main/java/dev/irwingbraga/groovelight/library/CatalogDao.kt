@@ -24,9 +24,23 @@ interface CatalogDao {
         SELECT artist AS name, COUNT(*) AS albums,
             COALESCE((SELECT artworkHash FROM catalog_artist_photo WHERE catalog_artist_photo.name = catalog_album.artist),
                 MIN(artworkHash)) AS artworkHash
-        FROM catalog_album WHERE isCompilation = 0 GROUP BY artist ORDER BY artist COLLATE NOCASE
+        FROM catalog_album WHERE isCompilation = 0
+            AND EXISTS (SELECT 1 FROM catalog_track WHERE catalog_track.albumKey = catalog_album.`key` AND catalog_track.composer IS NULL)
+        GROUP BY artist ORDER BY artist COLLATE NOCASE
     """)
     fun artists(): Flow<List<CatalogArtist>>
+
+    /** Composers of the Mac's classical albums, with their photo on the Mac or one of their covers. */
+    @Query("""
+        SELECT composer AS name, COUNT(DISTINCT albumKey) AS albums,
+            COALESCE((SELECT artworkHash FROM catalog_artist_photo WHERE catalog_artist_photo.name = catalog_track.composer),
+                MIN(artworkHash)) AS artworkHash
+        FROM catalog_track WHERE composer IS NOT NULL GROUP BY composer ORDER BY composer COLLATE NOCASE
+    """)
+    fun composers(): Flow<List<CatalogArtist>>
+
+    @Query("SELECT * FROM catalog_album WHERE `key` IN (SELECT albumKey FROM catalog_track WHERE composer = :composer) ORDER BY year, title COLLATE NOCASE")
+    fun albumsOfComposer(composer: String): Flow<List<CatalogAlbum>>
 
     @Query("SELECT artworkHash FROM catalog_artist_photo WHERE name = :name")
     fun artistPhoto(name: String): Flow<String?>

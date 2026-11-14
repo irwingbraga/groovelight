@@ -13,6 +13,8 @@ enum SidebarItem: Hashable {
     case home
     case recentlyAdded
     case artists
+    /// Classical music by composer (albums listed there are not in Artists).
+    case composers
     case albums
     case songs
     case genres
@@ -76,6 +78,10 @@ final class AppModel {
     /// one again, closes the album pages opened over it, as in Music.
     var selectedArtist: String? {
         didSet { if selection == .artists, !path.isEmpty { path = [] } }
+    }
+    /// Composer selected on the Composers page; choosing one closes the pages opened over it.
+    var selectedComposer: String? {
+        didSet { if selection == .composers, !path.isEmpty { path = [] } }
     }
     /// Genre selected on the Genres page; choosing one closes the pages opened over it.
     var selectedGenre: String? {
@@ -463,6 +469,13 @@ final class AppModel {
         searchText = ""
         selectedArtist = name
         selection = .artists
+    }
+
+    /// Switches to the Composers page with `name` selected.
+    func showComposer(_ name: String) {
+        searchText = ""
+        selectedComposer = name
+        selection = .composers
     }
 
     /// Opens the page of a person from the credits (what they did in the library), on top of the current page.

@@ -96,13 +96,15 @@ struct SplitRoot: View {
     @Environment(WindowModel.self) private var window
     @Binding var selection: SidebarItem?
     @State private var path: [LibraryRoute] = []
-    /// The artist shown in the Artists' list column.
+    /// The artist shown in the Artists' list column, and the composer in Composers'.
     @State private var artist: String?
+    @State private var composer: String?
     /// The page's column, where the player bar floats, and the list column when there is one.
     @State private var detail: CGRect = .zero
     @State private var list: CGRect = .zero
 
-    private var hasList: Bool { selection == .artists }
+    private var hasList: Bool { selection == .artists || selection == .composers }
+    private var kind: ArtistKind { selection == .composers ? .composers : .artists }
 
     var body: some View {
         Group {
@@ -110,19 +112,21 @@ struct SplitRoot: View {
                 NavigationSplitView {
                     LibrarySidebar(selection: $selection)
                 } content: {
-                    ArtistColumn(selection: $artist)
+                    ArtistColumn(selection: kind == .composers ? $composer : $artist, kind: kind)
+                        .id(kind)
                         .navigationSplitViewColumnWidth(min: 220, ideal: 280, max: 340)
                         .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("split")) } action: { list = $0 }
                         .onDisappear { list = .zero }
                 } detail: {
+                    let shown = kind == .composers ? composer : artist
                     page {
-                        if let artist {
-                            ArtistPage(name: artist).id(artist)
+                        if let shown {
+                            ArtistPage(name: shown, kind: kind).id(shown)
                         } else {
-                            ContentUnavailableView("Select an Artist", systemImage: "music.microphone")
+                            ContentUnavailableView(kind == .composers ? "Select a Composer" : "Select an Artist", systemImage: kind.symbol)
                         }
                     }
-                    .id(artist)
+                    .id("\(kind)-\(shown ?? "")")
                 }
             } else {
                 NavigationSplitView {
@@ -158,8 +162,11 @@ struct SplitRoot: View {
         .onChange(of: window.requestedRoute) { _, route in
             guard let route else { return }
             switch route {
-            case .artist(let name) where hasList, .macArtist(let name) where hasList:
+            case .artist(let name) where selection == .artists, .macArtist(let name) where selection == .artists:
                 artist = name
+                path = []
+            case .composer(let name) where selection == .composers:
+                composer = name
                 path = []
             default:
                 path = [route]

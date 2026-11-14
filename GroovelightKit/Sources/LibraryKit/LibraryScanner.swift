@@ -288,7 +288,10 @@ public actor LibraryScanner {
             _ = try await database.writer.write { db in try Track.deleteAll(db, keys: missing) }
         }
         let isFull = scope == .full
+        let changedSongs = summary.added + summary.updated + summary.removed > 0
         try await database.writer.write { db in
+            // Songs that came, went or changed can move albums between Artists and Composers.
+            if changedSongs { try LibraryDatabase.refreshComposerGroups(db) }
             if isFull {
                 try db.execute(sql: "UPDATE libraryRoot SET lastScanAt = ?, lastFullScanAt = ? WHERE id = ?", arguments: [Date.now, Date.now, rootId])
             } else {

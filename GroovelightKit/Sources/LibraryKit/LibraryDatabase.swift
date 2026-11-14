@@ -245,6 +245,19 @@ public final class LibraryDatabase: Sendable {
                 t.primaryKey(["day", "kind"])
             }
         }
+        migrator.registerMigration("v15-composers") { db in
+            // The composer a classical song is listed under (nil: listed under its artist), kept up to date by
+            // `refreshComposerGroups`, and how an album is listed when chosen on its page.
+            try db.alter(table: Track.databaseTableName) { t in
+                t.add(column: "composerGroup", .text)
+            }
+            try db.create(index: "track_on_composerGroup", on: Track.databaseTableName, columns: ["composerGroup"])
+            try db.create(table: "albumGrouping") { t in
+                t.primaryKey("albumKey", .text)
+                t.column("mode", .text).notNull()
+            }
+            try LibraryDatabase.refreshComposerGroups(db)
+        }
         return migrator
     }
 
@@ -302,24 +315,137 @@ extension LibraryDatabase {
         Array(try albums(db, sort: .recentlyAdded).prefix(limit))
     }
 
-    public static func artists(_ db: Database) throws -> [ArtistSummary] {
+    /// Artists by album artist. `includingComposerAlbums: false` leaves out the songs of classical albums listed under their
+    /// composers (the Mac's Artists list, beside its Composers); other uses (links, pickers, apps without Composers)
+    /// keep everyone.
+    public static func artists(_ db: Database, includingComposerAlbums: Bool = true) throws -> [ArtistSummary] {
         try ArtistSummary.fetchAll(db, sql: """
             SELECT \(artistNameSQL) AS name,
                    COUNT(DISTINCT albumKey) AS albumCount,
                    COUNT(*) AS trackCount,
                    MAX(artworkHash) AS artworkHash
             FROM track
-            WHERE isCompilation = 0
+            WHERE isCompilation = 0\(includingComposerAlbums ? "" : " AND composerGroup IS NULL")
             GROUP BY \(artistNameSQL) COLLATE NOCASE
             ORDER BY name COLLATE NOCASE
             """)
     }
 
-    /// The "Compilations" entry for the artist list, or nil when the library has no compilation albums.
-    public static func compilations(_ db: Database) throws -> ArtistSummary? {
+    /// Composers of the classical albums, for the Composers page (an album with several is under each).
+    public static func composers(_ db: Database) throws -> [ArtistSummary] {
+        try ArtistSummary.fetchAll(db, sql: """
+            SELECT composerGroup AS name,
+                   COUNT(DISTINCT albumKey) AS albumCount,
+                   COUNT(*) AS trackCount,
+                   MAX(artworkHash) AS artworkHash
+            FROM track
+            WHERE composerGroup IS NOT NULL
+            GROUP BY composerGroup
+            ORDER BY name COLLATE NOCASE
+            """)
+    }
+
+    /// The composer each song is listed under, for the songs that are (sent to the phone apps).
+    public static func composerGroups(_ db: Database) throws -> [Int64: String] {
+        Dictionary(try Row.fetchAll(db, sql: "SELECT id, composerGroup FROM track WHERE composerGroup IS NOT NULL").map { ($0["id"], $0["composerGroup"]) },
+                   uniquingKeysWith: { first, _ in first })
+    }
+
+    /// The albums each composer has music on (the phone apps merge them with the Mac's).
+    public static func composerAlbums(_ db: Database) throws -> [String: Set<String>] {
+        var result: [String: Set<String>] = [:]
+        for row in try Row.fetchAll(db, sql: "SELECT DISTINCT composerGroup, albumKey FROM track WHERE composerGroup IS NOT NULL") {
+            result[row["composerGroup"], default: []].insert(row["albumKey"])
+        }
+        return result
+    }
+
+    /// Albums whose every song is listed by composer: they are not under their artist.
+    public static func composerOnlyAlbumKeys(_ db: Database) throws -> Set<String> {
+        Set(try String.fetchAll(db, sql: "SELECT albumKey FROM track GROUP BY albumKey HAVING COUNT(composerGroup) = COUNT(*)"))
+    }
+
+    /// Whether any album is listed by composer (the Composers page shows only then).
+    public static func hasComposers(_ db: Database) throws -> Bool {
+        try Bool.fetchOne(db, sql: "SELECT EXISTS (SELECT 1 FROM track WHERE composerGroup IS NOT NULL)") ?? false
+    }
+
+    /// Albums with music by `composer`, oldest first.
+    public static func albums(_ db: Database, composer: String) throws -> [AlbumSummary] {
+        try AlbumSummary.fetchAll(db, sql: """
+            SELECT albumKey,
+                   COALESCE(NULLIF(MAX(album), ''), 'Unknown Album') AS title,
+                   \(albumArtistSQL) AS artist,
+                   MAX(year) AS year,
+                   MAX(genre) AS genre,
+                   COUNT(*) AS trackCount,
+                   SUM(duration) AS duration,
+                   MAX(artworkHash) AS artworkHash,
+                   MIN(dateAdded) AS dateAdded
+            FROM track
+            WHERE albumKey IN (SELECT albumKey FROM track WHERE composerGroup = ?)
+            GROUP BY albumKey
+            ORDER BY year, title COLLATE NOCASE
+            """, arguments: [composer])
+    }
+
+    /// An album's songs by `composer` (a recital's other composers' are on their own pages).
+    public static func tracks(_ db: Database, albumKey: String, composer: String) throws -> [Track] {
+        try Track.fetchAll(db, sql: """
+            SELECT * FROM track WHERE albumKey = ? AND composerGroup = ?
+            ORDER BY discNumber, trackNumber, title COLLATE NOCASE
+            """, arguments: [albumKey, composer])
+    }
+
+    /// The composers an album is listed under (none when it is listed under its artist).
+    public static func composers(_ db: Database, albumKey: String) throws -> [String] {
+        try String.fetchAll(db, sql: """
+            SELECT composerGroup FROM track WHERE albumKey = ? AND composerGroup IS NOT NULL
+            GROUP BY composerGroup ORDER BY MIN(discNumber), MIN(trackNumber)
+            """, arguments: [albumKey])
+    }
+
+    /// Whether any song is listed under `name` as its artist (classical performers too, whose albums are under their
+    /// composers): their page still opens from an album page.
+    public static func hasArtist(_ db: Database, named name: String) throws -> Bool {
+        try Bool.fetchOne(db, sql: "SELECT EXISTS (SELECT 1 FROM track WHERE \(artistNameSQL) = ? COLLATE NOCASE)", arguments: [name]) ?? false
+    }
+
+    /// How an album was chosen to be listed on its page (nil: from its tags).
+    public static func albumGrouping(_ db: Database, albumKey: String) throws -> ClassicalGrouping.Mode? {
+        try String.fetchOne(db, sql: "SELECT mode FROM albumGrouping WHERE albumKey = ?", arguments: [albumKey])
+            .flatMap(ClassicalGrouping.Mode.init(rawValue:))
+    }
+
+    /// Works out again which songs are listed under which composer (after scans, fixes and overrides).
+    static func refreshComposerGroups(_ db: Database) throws {
+        let rows = try Row.fetchAll(db, sql: """
+            SELECT id, albumKey, genre, composer, composerGroup, \(artistNameSQL) AS artistName FROM track
+            """)
+        let overrides = Dictionary(try Row.fetchAll(db, sql: "SELECT albumKey, mode FROM albumGrouping").compactMap { row -> (String, ClassicalGrouping.Mode)? in
+            guard let mode = ClassicalGrouping.Mode(rawValue: row["mode"]) else { return nil }
+            return (row["albumKey"], mode)
+        }, uniquingKeysWith: { first, _ in first })
+        let songs = rows.map { row in
+            ClassicalGrouping.Song(id: row["id"], albumKey: row["albumKey"], genre: row["genre"], composer: row["composer"],
+                                   artistName: row["artistName"])
+        }
+        let groups = ClassicalGrouping.groups(for: songs, overrides: overrides)
+        let update = try db.makeStatement(sql: "UPDATE track SET composerGroup = ? WHERE id = ?")
+        for row in rows {
+            let id: Int64 = row["id"]
+            let current: String? = row["composerGroup"]
+            let wanted = groups[id]
+            if current != wanted { try update.execute(arguments: [wanted, id]) }
+        }
+    }
+
+    /// The "Compilations" entry for the artist list, or nil when the library has no compilation albums
+    /// (`includingComposerAlbums` as for `artists`).
+    public static func compilations(_ db: Database, includingComposerAlbums: Bool = true) throws -> ArtistSummary? {
         guard let row = try Row.fetchOne(db, sql: """
             SELECT COUNT(DISTINCT albumKey) AS albumCount, COUNT(*) AS trackCount, MAX(artworkHash) AS artworkHash
-            FROM track WHERE isCompilation = 1
+            FROM track WHERE isCompilation = 1\(includingComposerAlbums ? "" : " AND composerGroup IS NULL")
             """), let tracks = row["trackCount"] as Int?, tracks > 0 else { return nil }
         return ArtistSummary(name: ArtistSummary.compilations, albumCount: row["albumCount"], trackCount: tracks,
                              artworkHash: row["artworkHash"])
@@ -507,6 +633,20 @@ extension LibraryDatabase {
                 track.overrides = asOverrides ? (track.overrides ?? TrackMetadata()).merging(metadata) : nil
                 try track.update(db)
             }
+            // A new genre or composer can move an album between Artists and Composers.
+            if !changes.isEmpty { try Self.refreshComposerGroups(db) }
+        }
+    }
+
+    /// Lists an album under its composers or its artist, whatever its tags say (nil: back to deciding from them).
+    public func setAlbumGrouping(_ mode: ClassicalGrouping.Mode?, albumKey: String) throws {
+        try writer.write { db in
+            if let mode {
+                try db.execute(sql: "INSERT OR REPLACE INTO albumGrouping (albumKey, mode) VALUES (?, ?)", arguments: [albumKey, mode.rawValue])
+            } else {
+                try db.execute(sql: "DELETE FROM albumGrouping WHERE albumKey = ?", arguments: [albumKey])
+            }
+            try Self.refreshComposerGroups(db)
         }
     }
 

@@ -126,6 +126,16 @@ enum DebugTour {
                 // `-GLDebugGenres YES` shows Genres instead, `-GLDebugLyricsPanel YES` opens the lyrics panel.
                 if UserDefaults.standard.bool(forKey: "GLDebugGenres") { model.selection = .genres }
                 if UserDefaults.standard.bool(forKey: "GLDebugLyricsPanel") { model.isShowingLyricsPanel = true }
+                // `-GLDebugComposer NAME` shows that composer on Composers; `-GLDebugComposerAlbum TEXT` then opens their
+                // album whose title contains TEXT.
+                if let composer = UserDefaults.standard.string(forKey: "GLDebugComposer") {
+                    model.showComposer(composer)
+                    if let text = UserDefaults.standard.string(forKey: "GLDebugComposerAlbum") {
+                        try? await Task.sleep(for: .seconds(2))
+                        let albums = (try? await model.database.writer.read { try LibraryDatabase.albums($0, composer: composer) }) ?? []
+                        if let album = albums.first(where: { $0.title.localizedCaseInsensitiveContains(text) }) { model.albumPath = [album] }
+                    }
+                }
                 try? await Task.sleep(for: .seconds(3))
                 if let window = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("main") == true }), let screen = window.screen {
                     let frame = window.frame

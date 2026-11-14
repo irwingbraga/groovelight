@@ -144,6 +144,8 @@ sealed interface Route {
     data class CassetteEditor(val id: String) : Route
     data class AlbumPage(val key: String) : Route
     data class ArtistPage(val name: String) : Route
+    /** A composer's classical albums (Composers). */
+    data class ComposerPage(val name: String) : Route
     data class PlaylistPage(val id: Long) : Route
     data class PersonPage(val name: String) : Route
     data class MacAlbumPage(val key: String) : Route
@@ -153,7 +155,7 @@ sealed interface Route {
     data object Compilations : Route
 
     /** A page of the library (it opens in the Library tab when asked from Settings). */
-    val isLibraryPage: Boolean get() = this is AlbumPage || this is ArtistPage || this is PlaylistPage || this is PersonPage || this == LovedSongs || this == Compilations ||
+    val isLibraryPage: Boolean get() = this is AlbumPage || this is ArtistPage || this is ComposerPage || this is PlaylistPage || this is PersonPage || this == LovedSongs || this == Compilations ||
         this is MacAlbumPage || this is MacArtistPage
 
     companion object {
@@ -172,6 +174,7 @@ sealed interface Route {
             Compilations -> "compilations"
             is AlbumPage -> "album:${route.key}"
             is ArtistPage -> "artist:${route.name}"
+            is ComposerPage -> "composer:${route.name}"
             is PlaylistPage -> "playlist:${route.id}"
             is PersonPage -> "person:${route.name}"
             is MacAlbumPage -> "macalbum:${route.key}"
@@ -195,6 +198,7 @@ sealed interface Route {
                 "compilations" -> Compilations
                 "album" -> AlbumPage(value)
                 "artist" -> ArtistPage(value)
+                "composer" -> ComposerPage(value)
                 "person" -> PersonPage(value)
                 "macalbum" -> MacAlbumPage(value)
                 "macartist" -> MacArtistPage(value)
@@ -416,6 +420,7 @@ fun PlayerShell(sync: SyncViewModel, player: PlayerModel = viewModel(), library:
                                         is Route.MacArtistPage -> MacArtistPage(it.name)
                                         is Route.AlbumPage -> AlbumPage(it.key)
                                         is Route.ArtistPage -> ArtistPage(it.name)
+                                        is Route.ComposerPage -> ComposerPage(it.name)
                                         is Route.PlaylistPage -> PlaylistPage(it.id)
                                         Route.LovedSongs -> PlaylistPage(null)
                                         Route.Compilations -> CompilationsPage()

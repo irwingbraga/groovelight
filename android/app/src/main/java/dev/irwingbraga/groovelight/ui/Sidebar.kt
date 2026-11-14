@@ -56,13 +56,14 @@ val SIDEBAR_WIDTH: Dp = 248.dp
 fun Sidebar(selected: SidebarPlace, onSelect: (SidebarPlace) -> Unit, modifier: Modifier = Modifier) {
     val library = LocalActions.current.library
     val playlists by library.playlists.collectAsStateWithLifecycle()
+    val sections = librarySections()
     Surface(modifier.width(SIDEBAR_WIDTH).fillMaxHeight(), color = MaterialTheme.colorScheme.surfaceContainerLow) {
         Column(Modifier.windowInsetsPadding(WindowInsets.statusBars).windowInsetsPadding(WindowInsets.navigationBars)) {
             LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)) {
                 item { Place(selected, SidebarPlace.Search, "Search", R.drawable.ic_search, onSelect) }
                 item { Place(selected, SidebarPlace.Home, "Home", R.drawable.ic_home, onSelect) }
                 item { Heading("Library") }
-                items(LibrarySection.entries) { section ->
+                items(sections) { section ->
                     Place(selected, SidebarPlace.Section(section), section.title, section.icon, onSelect)
                 }
                 item { Heading("Explore") }
@@ -84,6 +85,7 @@ fun Sidebar(selected: SidebarPlace, onSelect: (SidebarPlace) -> Unit, modifier: 
 private val LibrarySection.icon: Int get() = when (this) {
     LibrarySection.ALBUMS -> R.drawable.ic_album
     LibrarySection.ARTISTS -> R.drawable.ic_person
+    LibrarySection.COMPOSERS -> R.drawable.ic_composer
     LibrarySection.SONGS -> R.drawable.ic_music
     LibrarySection.PLAYLISTS -> R.drawable.ic_library
 }

@@ -3,9 +3,18 @@ import MetadataKit
 import PlayerCore
 import SwiftUI
 
+/// Artists, or the composers classical albums are listed under.
+enum ArtistKind: Hashable {
+    case artists, composers
+
+    var title: String { self == .artists ? "Artists" : "Composers" }
+}
+
 /// The artist list, a column of its own between the sidebar and the page (like Music). Side by side in one column, the
-/// two scroll views under the same toolbar made it flicker whenever the page redrew while scrolled.
+/// two scroll views under the same toolbar made it flicker whenever the page redrew while scrolled. The same list shows
+/// the composers on the Composers page.
 struct ArtistListColumn: View {
+    var kind: ArtistKind
     @Environment(AppModel.self) private var model
     @State private var artists: [ArtistSummary] = []
     /// Artist photos by lowercased name (artists looked up so far).
@@ -15,7 +24,8 @@ struct ArtistListColumn: View {
         @Bindable var model = model
         // Custom list instead of List(selection:): setting the initial selection while an outline table loads its
         // rows crashes SwiftUI (AttributeGraph precondition) when the window is not key.
-        SelectableList(items: artists, id: \.name, selection: $model.selectedArtist, scrollsToSelection: true) { artist in
+        SelectableList(items: artists, id: \.name, selection: kind == .artists ? $model.selectedArtist : $model.selectedComposer,
+                       scrollsToSelection: true) { artist in
             HStack(spacing: 10) {
                 // The artist's photo when known, otherwise one of their album covers; a symbol for Compilations.
                 Group {
@@ -36,17 +46,32 @@ struct ArtistListColumn: View {
                 Spacer(minLength: 0)
             }
         }
-        .navigationTitle("Artists")
+        .navigationTitle(kind.title)
         // Compilations first, like Music, when the library has any: their songs are not under their own artists.
-        .observing(model.database, id: 0, { db in
-            try [LibraryDatabase.compilations(db)].compactMap { $0 } + LibraryDatabase.artists(db)
+        .observing(model.database, id: kind, { [kind] db in
+            if kind == .composers { return try LibraryDatabase.composers(db) }
+            return try [LibraryDatabase.compilations(db, includingComposerAlbums: false)].compactMap { $0 }
+                + LibraryDatabase.artists(db, includingComposerAlbums: false)
         }) { value in
             artists = value
+            if kind == .composers {
+                if let wanted = model.selectedComposer, !value.contains(where: { $0.name == wanted }) {
+                    model.selectedComposer = value.first { $0.name.caseInsensitiveCompare(wanted) == .orderedSame }?.name
+                }
+                if model.selectedComposer == nil { model.selectedComposer = value.first?.name }
+                return
+            }
             // Names coming from other pages may differ in case from the grouped artist name, and a compilation's
-            // "Various Artists" (an album page's artist link) means the compilations entry.
+            // "Various Artists" (an album page's artist link) means the compilations entry. A classical performer
+            // (opened from an album page) is not in the list but keeps their page.
             if let wanted = model.selectedArtist, !value.contains(where: { $0.name == wanted }) {
-                model.selectedArtist = value.first { $0.name.caseInsensitiveCompare(wanted) == .orderedSame }?.name
+                let match = value.first { $0.name.caseInsensitiveCompare(wanted) == .orderedSame }?.name
                     ?? (wanted.caseInsensitiveCompare("Various Artists") == .orderedSame ? value.first(where: \.isCompilations)?.name : nil)
+                if let match {
+                    model.selectedArtist = match
+                } else if (try? model.database.writer.read({ try LibraryDatabase.hasArtist($0, named: wanted) })) != true {
+                    model.selectedArtist = nil
+                }
             }
             if model.selectedArtist == nil { model.selectedArtist = value.first?.name }
         }
@@ -60,25 +85,30 @@ struct ArtistListColumn: View {
     }
 }
 
-/// The Artists page: the artist chosen in the list column.
+/// The Artists (or Composers) page: the one chosen in the list column.
 struct ArtistsView: View {
+    var kind: ArtistKind
     @Environment(AppModel.self) private var model
 
     var body: some View {
+        let selected = kind == .artists ? model.selectedArtist : model.selectedComposer
         Group {
-            if let selected = model.selectedArtist {
-                ArtistDetailView(artist: selected)
+            if let selected {
+                ArtistDetailView(artist: selected, kind: kind)
+            } else if kind == .composers {
+                ContentUnavailableView("Select a Composer", systemImage: "music.quarternote.3")
             } else {
                 ContentUnavailableView("Select an Artist", systemImage: "music.microphone")
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .navigationTitle(model.selectedArtist.map(ArtistSummary.displayName) ?? "Artists")
+        .navigationTitle(selected.map(ArtistSummary.displayName) ?? kind.title)
     }
 }
 
 struct ArtistDetailView: View {
     var artist: String
+    var kind: ArtistKind = .artists
     @Environment(AppModel.self) private var model
     @State private var albums: [ArtistAlbum] = []
     @State private var info: ArtistInfo?
@@ -122,15 +152,21 @@ struct ArtistDetailView: View {
                 // Each album like Music's artist pages: cover on the left, its songs on the right.
                 LazyVStack(alignment: .leading, spacing: 44) {
                     ForEach(albums) { entry in
-                        ArtistAlbumSection(album: entry.album, tracks: entry.tracks)
+                        ArtistAlbumSection(album: entry.album, tracks: entry.tracks, showsPerformer: kind == .composers)
                     }
                 }
             }
             .padding(28)
         }
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { pageWidth = $0 }
-        .observing(model.database, id: artist, { [artist] db in
-            try LibraryDatabase.albums(db, sort: .year, artist: artist).map { album in
+        .observing(model.database, id: "\(kind)-\(artist)", { [artist, kind] db in
+            // A composer's page has their part of each album (a recital's other composers are on their own pages).
+            if kind == .composers {
+                return try LibraryDatabase.albums(db, composer: artist).map { album in
+                    ArtistAlbum(album: album, tracks: try LibraryDatabase.tracks(db, albumKey: album.albumKey, composer: artist))
+                }
+            }
+            return try LibraryDatabase.albums(db, sort: .year, artist: artist).map { album in
                 ArtistAlbum(album: album, tracks: try LibraryDatabase.tracks(db, albumKey: album.albumKey))
             }
         }) { albums = $0 }
@@ -215,6 +251,8 @@ struct CompilationsArtwork: View {
 private struct ArtistAlbumSection: View {
     var album: AlbumSummary
     var tracks: [Track]
+    /// On a composer's page: who plays it (the album's artist), to tell the recordings apart.
+    var showsPerformer = false
     @Environment(AppModel.self) private var model
     @State private var width: CGFloat = 900
 
@@ -261,6 +299,10 @@ private struct ArtistAlbumSection: View {
                             .multilineTextAlignment(.leading)
                     }
                     .buttonStyle(.plain)
+                    if showsPerformer {
+                        ArtistLink(name: album.artist)
+                            .font(.system(size: 15))
+                    }
                     let subtitle = [album.genre, album.year.map(String.init)].compactMap { $0 }.joined(separator: " · ")
                     if !subtitle.isEmpty {
                         Text(subtitle)

@@ -7,6 +7,8 @@ struct SidebarView: View {
     @State private var playlists: [PlaylistSummary] = []
     @State private var renaming: Int64?
     @State private var draftName = ""
+    /// Whether the library has classical albums listed by composer (Composers shows only then).
+    @State private var hasComposers = false
 
     var body: some View {
         @Bindable var model = model
@@ -17,6 +19,9 @@ struct SidebarView: View {
             Section("Library") {
                 Label("Recently Added", systemImage: "clock").tag(SidebarItem.recentlyAdded)
                 Label("Artists", systemImage: "music.microphone").tag(SidebarItem.artists)
+                if hasComposers || model.selection == .composers {
+                    Label("Composers", systemImage: "music.quarternote.3").tag(SidebarItem.composers)
+                }
                 Label("Albums", systemImage: "square.stack").tag(SidebarItem.albums)
                 Label("Songs", systemImage: "music.note").tag(SidebarItem.songs)
                 Label("Genres", systemImage: "guitars").tag(SidebarItem.genres)
@@ -129,6 +134,7 @@ struct SidebarView: View {
             }
         }
         .observing(model.database, id: 0, { try LibraryDatabase.playlistOverview($0).playlists }) { playlists = $0 }
+        .observing(model.database, id: "composers", { try LibraryDatabase.hasComposers($0) }) { hasComposers = $0 }
     }
 
     private var newPlaylistButton: some View {

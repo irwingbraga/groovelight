@@ -20,6 +20,10 @@ extension LibraryDatabase {
             for song in snapshot.songs {
                 var track = Self.track(song, album: albums[song.albumKey], rootId: rootId, musicFolder: musicFolder)
                 try track.insert(db)
+                // Listed by composer as the Mac decided (with its overrides): the device has no tags to decide from.
+                if let composer = song.composer {
+                    try db.execute(sql: "UPDATE track SET composer = ?, composerGroup = ? WHERE id = ?", arguments: [composer, composer, song.id])
+                }
             }
             let songIds = Set(snapshot.songs.map(\.id))
             for item in snapshot.playlists {

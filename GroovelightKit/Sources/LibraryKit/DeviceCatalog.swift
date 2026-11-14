@@ -22,9 +22,13 @@ public struct DeviceCatalog: Codable, Hashable, Sendable {
         public var genre: String?
         public var year: Int?
         public var artworkHash: String?
+        /// The composer the Mac lists the song under (classical albums, in Composers); nil: under its artist. Added
+        /// after version 1: older readers ignore it.
+        public var composer: String? = nil
 
         public init(id: Int64, title: String, artist: String, albumKey: String, discNumber: Int? = nil, trackNumber: Int? = nil, duration: Double,
-                    codec: String, sampleRate: Int? = nil, bitDepth: Int? = nil, genre: String? = nil, year: Int? = nil, artworkHash: String? = nil) {
+                    codec: String, sampleRate: Int? = nil, bitDepth: Int? = nil, genre: String? = nil, year: Int? = nil, artworkHash: String? = nil,
+                    composer: String? = nil) {
             self.id = id
             self.title = title
             self.artist = artist
@@ -38,6 +42,7 @@ public struct DeviceCatalog: Codable, Hashable, Sendable {
             self.genre = genre
             self.year = year
             self.artworkHash = artworkHash
+            self.composer = composer
         }
     }
 
@@ -95,6 +100,7 @@ public struct DeviceCatalog: Codable, Hashable, Sendable {
     public static func build(_ db: Database, selection: DeviceSelection, encoding: LossyEncoding? = nil) throws -> DeviceCatalog {
         var songs: [Song] = []
         var albums: [String: Album] = [:]
+        let composers = try LibraryDatabase.composerGroups(db)
         for track in try LibraryDatabase.allTracks(db) {
             guard let id = track.id else { continue }
             let artwork = track.fetchedArtworkHash ?? track.artworkHash
@@ -102,7 +108,7 @@ public struct DeviceCatalog: Codable, Hashable, Sendable {
                               trackNumber: track.trackNumber, duration: track.duration, codec: AudioSpec.Codec(formatName: track.format).rawValue,
                               sampleRate: track.sampleRate.map { Int($0) }, bitDepth: track.bitDepth,
                               genre: track.genre.map { $0.trimmingCharacters(in: .whitespaces) }.flatMap { $0.isEmpty ? nil : $0 },
-                              year: track.year, artworkHash: artwork))
+                              year: track.year, artworkHash: artwork, composer: composers[id]))
             if albums[track.albumKey] == nil {
                 albums[track.albumKey] = Album(key: track.albumKey, title: track.displayAlbum,
                                                artist: track.isCompilation ? "Various Artists" : track.displayAlbumArtist,
@@ -111,7 +117,7 @@ public struct DeviceCatalog: Codable, Hashable, Sendable {
                 albums[track.albumKey]?.artworkHash = artwork
             }
         }
-        let artists = try LibraryDatabase.artistPhotos(db, names: Set(albums.values.filter { !$0.isCompilation }.map(\.artist)))
+        let artists = try LibraryDatabase.artistPhotos(db, names: Set(albums.values.filter { !$0.isCompilation }.map(\.artist) + composers.values))
             .map { DeviceSnapshot.Artist(name: $0.key, artworkHash: $0.value) }.sorted { $0.name < $1.name }
         return DeviceCatalog(songs: songs.sorted { $0.id < $1.id }, albums: albums.values.sorted { $0.key < $1.key },
                              chosen: Chosen(selection), encoding: encoding?.rawValue, artists: artists)

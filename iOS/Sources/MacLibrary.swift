@@ -69,6 +69,8 @@ struct MergedLibrarySection: View {
                 switch item {
                 case .recentlyAdded: MergedAlbumGrid(albums: catalog.albums(recentFirst: true))
                 case .artists: MergedArtistList()
+                case .composers: ComposerList(entries: catalog.composers.map { ComposerList.Entry(name: $0.name, albums: $0.albums, artworkHash: $0.artworkHash) },
+                                              fromMac: true)
                 case .songs: MergedSongList(songs: catalog.songs, showsCover: true, indexed: true)
                 case .genres: MergedGenreList()
                 default: MergedAlbumGrid(albums: catalog.albums())

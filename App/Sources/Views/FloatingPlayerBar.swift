@@ -349,7 +349,7 @@ private struct PlayerBarBackground: ViewModifier {
 
 extension AppModel {
     /// Artists and Genres show a list column between the sidebar and the page.
-    var hasListColumn: Bool { selection == .artists || selection == .genres }
+    var hasListColumn: Bool { selection == .artists || selection == .composers || selection == .genres }
 }
 
 /// Where the bar goes on pages with a list column (Artists, Genres): across the list and the page, centered on both.

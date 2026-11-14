@@ -106,6 +106,9 @@ class LibraryModel(application: Application) : AndroidViewModel(application) {
 
     val artists: StateFlow<List<ArtistSummary>?> = library.artists().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
+    /** Composers of classical albums, as the Mac lists them (their albums are not in Artists). */
+    val composers: StateFlow<List<ArtistSummary>?> = library.composers().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
     val tracks: StateFlow<List<Track>?> = combine(library.tracks(), songOrder, albumsByKey) { tracks, order, albums ->
         when (order) {
             SongOrder.TITLE -> tracks
@@ -134,6 +137,8 @@ class LibraryModel(application: Application) : AndroidViewModel(application) {
     fun albumsOf(artist: String): Flow<List<Album>> = library.albumsOf(artist)
     fun albumsAppearingOn(artist: String): Flow<List<Album>> = library.albumsAppearingOn(artist)
     fun tracksOfArtist(artist: String): Flow<List<Track>> = library.tracksOfArtist(artist)
+    fun albumsOfComposer(composer: String): Flow<List<Album>> = library.albumsOfComposer(composer)
+    fun tracksOfComposer(composer: String): Flow<List<Track>> = library.tracksOfComposer(composer)
     fun playlist(id: Long): Flow<Playlist?> = library.playlist(id)
     fun tracksOfPlaylist(id: Long): Flow<List<Track>> = library.tracksOfPlaylist(id)
     fun lovedTracks(): Flow<List<Track>> = library.lovedTracks()
@@ -393,6 +398,28 @@ class LibraryModel(application: Application) : AndroidViewModel(application) {
         (mac + here.filter { it.name !in known }.map { CatalogArtist(it.name, it.albums, it.artworkHash) })
             .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** Every composer, the Mac's and this device's. */
+    val mergedComposers: StateFlow<List<CatalogArtist>?> = combine(catalog.composers(), library.composers()) { mac, here ->
+        val known = mac.associateBy { it.name }
+        (mac.map { composer -> here.firstOrNull { it.name == composer.name }?.let { composer.copy(albums = maxOf(composer.albums, it.albums)) } ?: composer } +
+            here.filter { it.name !in known }.map { CatalogArtist(it.name, it.albums, it.artworkHash) })
+            .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** Whether Composers has anything to list (here, or on the Mac). */
+    val hasComposers: StateFlow<Boolean> = combine(catalog.composers(), library.composers()) { mac, here -> mac.isNotEmpty() || here.isNotEmpty() }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    /** A composer's albums, the Mac's and this device's, by year. */
+    fun catalogAlbumsOfComposer(composer: String): Flow<List<CatalogAlbum>> =
+        combine(catalog.albumsOfComposer(composer), library.albumsOfComposer(composer)) { mac, here ->
+            val known = mac.map { it.key }.toSet()
+            val local = here.associateBy { it.key }
+            (mac.map { album -> local[album.key]?.artworkHash?.let { album.copy(artworkHash = it) } ?: album } +
+                here.filter { it.key !in known }.map { CatalogAlbum(it.key, it.title, it.artist, it.year, it.isCompilation, it.artworkHash) })
+                .sortedWith(compareBy<CatalogAlbum> { it.year ?: 0 }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.title })
+        }
 
     /** Every song, the Mac's and this device's, in the songs' sort order. */
     val mergedTracks: StateFlow<List<CatalogTrack>?> = combine(catalog.tracks(), library.tracks(), catalog.albums(), songOrder) { mac, here, albums, order ->

@@ -46,9 +46,29 @@ interface LibraryDao {
     @Query("""
         SELECT artist AS name, COUNT(*) AS albums,
             COALESCE((SELECT artworkHash FROM artist_photo WHERE artist_photo.name = album.artist), MIN(artworkHash)) AS artworkHash
-        FROM album WHERE isCompilation = 0 GROUP BY artist ORDER BY artist COLLATE NOCASE
+        FROM album WHERE isCompilation = 0
+            AND EXISTS (SELECT 1 FROM track WHERE track.albumKey = album.`key` AND track.composer IS NULL)
+        GROUP BY artist ORDER BY artist COLLATE NOCASE
     """)
     fun artists(): Flow<List<ArtistSummary>>
+
+    /** Composers of classical albums, as the Mac lists them (albums whose every song is by composer leave Artists). */
+    @Query("""
+        SELECT composer AS name, COUNT(DISTINCT albumKey) AS albums,
+            COALESCE((SELECT artworkHash FROM artist_photo WHERE artist_photo.name = track.composer), MIN(artworkHash)) AS artworkHash
+        FROM track WHERE composer IS NOT NULL GROUP BY composer ORDER BY composer COLLATE NOCASE
+    """)
+    fun composers(): Flow<List<ArtistSummary>>
+
+    @Query("SELECT * FROM album WHERE `key` IN (SELECT albumKey FROM track WHERE composer = :composer) ORDER BY year, title COLLATE NOCASE")
+    fun albumsOfComposer(composer: String): Flow<List<Album>>
+
+    /** A composer's songs, album by album (their part of a recital). */
+    @Query("""
+        SELECT track.* FROM track JOIN album ON album.`key` = track.albumKey WHERE track.composer = :composer
+        ORDER BY album.year, album.title COLLATE NOCASE, IFNULL(track.discNumber, 1), IFNULL(track.trackNumber, 0)
+    """)
+    fun tracksOfComposer(composer: String): Flow<List<Track>>
 
     @Query("SELECT artworkHash FROM artist_photo WHERE name = :name")
     fun artistPhoto(name: String): Flow<String?>
@@ -266,7 +286,7 @@ interface LibraryDao {
     @Query("""
         SELECT id, title, artist, albumKey, discNumber, trackNumber, genre, year, durationMs, path, codec, sampleRate, bitDepth,
             trackGain, albumGain, loudness, loved, lovedAt, rating, playCount, lastPlayed, dateAdded,
-            CASE WHEN COALESCE(lyrics, '') = '' THEN NULL ELSE '1' END AS lyrics, artworkHash
+            CASE WHEN COALESCE(lyrics, '') = '' THEN NULL ELSE '1' END AS lyrics, artworkHash, composer
         FROM track
     """)
     suspend fun tracksForRules(): List<Track>

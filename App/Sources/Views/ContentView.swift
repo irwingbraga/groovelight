@@ -29,12 +29,16 @@ struct ContentView: View {
     @ViewBuilder private var splitView: some View {
         @Bindable var model = model
         switch model.selection {
-        case .artists, .genres:
+        case .artists, .composers, .genres:
             NavigationSplitView(columnVisibility: $columns) {
                 sidebar
             } content: {
                 Group {
-                    if model.selection == .genres { GenreListColumn() } else { ArtistListColumn() }
+                    switch model.selection {
+                    case .genres: GenreListColumn()
+                    case .composers: ArtistListColumn(kind: .composers)
+                    default: ArtistListColumn(kind: .artists)
+                    }
                 }
                 .playerBarListColumn()
                 .navigationSplitViewColumnWidth(min: 200, ideal: 250, max: 340)
@@ -53,7 +57,7 @@ struct ContentView: View {
     /// Artists and Genres with a side panel open in a window too narrow for all four columns: the page would be
     /// squeezed to a sliver (its header cut, the panel over it), so the sidebar steps aside, as it does in Music.
     private var needsRoom: Bool {
-        (model.selection == .artists || model.selection == .genres) && model.sidePanel != nil && !model.isShowingNowPlaying
+        [.artists, .composers, .genres].contains(model.selection) && model.sidePanel != nil && !model.isShowingNowPlaying
             && windowWidth > 0 && windowWidth < Self.roomForFourColumns
     }
 
@@ -157,7 +161,8 @@ struct DetailView: View {
             case .home: HomeView()
             case .recentlyAdded: AlbumsGridView(mode: .recentlyAdded)
             case .albums: AlbumsGridView(mode: .all)
-            case .artists: ArtistsView()
+            case .artists: ArtistsView(kind: .artists)
+            case .composers: ArtistsView(kind: .composers)
             case .songs: SongsView()
             case .genres: GenresView()
             case .shelf: ShelfView()

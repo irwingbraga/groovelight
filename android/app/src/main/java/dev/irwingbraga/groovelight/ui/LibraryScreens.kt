@@ -76,6 +76,7 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import dev.irwingbraga.groovelight.R
 import dev.irwingbraga.groovelight.library.Album
+import dev.irwingbraga.groovelight.library.CatalogArtist
 import dev.irwingbraga.groovelight.library.Credit
 import dev.irwingbraga.groovelight.sync.Transfers
 import androidx.compose.foundation.lazy.LazyRow
@@ -101,7 +102,14 @@ import coil3.request.ImageRequest
 /** Back from a page (given by the shell's navigation). */
 val LocalBack = staticCompositionLocalOf<() -> Unit> { {} }
 
-enum class LibrarySection(val title: String) { ALBUMS("Albums"), ARTISTS("Artists"), SONGS("Songs"), PLAYLISTS("Playlists") }
+enum class LibrarySection(val title: String) { ALBUMS("Albums"), ARTISTS("Artists"), COMPOSERS("Composers"), SONGS("Songs"), PLAYLISTS("Playlists") }
+
+/** The Library's sections: Composers only when there is classical music listed by composer, as on the Mac. */
+@Composable
+fun librarySections(): List<LibrarySection> {
+    val hasComposers by LocalActions.current.library.hasComposers.collectAsStateWithLifecycle()
+    return LibrarySection.entries.filter { it != LibrarySection.COMPOSERS || hasComposers }
+}
 
 /** In a wide window, the section the sidebar shows: the Library then has no tabs of its own (null: it has them). */
 val LocalLibrarySection = compositionLocalOf<LibrarySection?> { null }
@@ -112,11 +120,12 @@ val LocalLibrarySection = compositionLocalOf<LibrarySection?> { null }
 fun LibraryHome() {
     val library = LocalActions.current.library
     val albums by library.albums.collectAsStateWithLifecycle()
-    val pager = rememberPagerState { LibrarySection.entries.size }
+    val sections = librarySections()
+    val pager = rememberPagerState { sections.size }
     val chosen = LocalLibrarySection.current
-    LaunchedEffect(chosen) { chosen?.let { pager.scrollToPage(it.ordinal) } }
+    LaunchedEffect(chosen, sections) { chosen?.let { sections.indexOf(it).takeIf { index -> index >= 0 }?.let { index -> pager.scrollToPage(index) } } }
     val scope = rememberCoroutineScope()
-    val section = LibrarySection.entries[pager.currentPage]
+    val section = sections.getOrElse(pager.currentPage) { LibrarySection.ALBUMS }
     val source by library.source.collectAsStateWithLifecycle()
     val merged = source == LibraryModel.Source.MAC
     val sortable = section == LibrarySection.ALBUMS || section == LibrarySection.SONGS
@@ -143,7 +152,7 @@ fun LibraryHome() {
             )
         }
         if (chosen == null) PrimaryScrollableTabRow(selectedTabIndex = pager.currentPage, edgePadding = 8.dp, containerColor = Color.Transparent, divider = {}) {
-            LibrarySection.entries.forEachIndexed { index, item ->
+            sections.forEachIndexed { index, item ->
                 Tab(selected = pager.currentPage == index, onClick = { scope.launch { pager.animateScrollToPage(index) } }, text = { Text(item.title) },
                     unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -151,17 +160,18 @@ fun LibraryHome() {
         if (merged) MergedNotice()
     } }) {
         // With the Mac's music: its whole library, what is here marked (a check), what is not added from its page.
-        if (merged) MergedLibrary(pager) else when {
+        if (merged) MergedLibrary(pager, sections) else when {
             albums == null -> Loading()
             albums?.isEmpty() == true -> EmptyState(R.drawable.ic_library, "No music yet",
                 "Turn off Downloaded to see your ${Host.word}'s library and add music from it, or choose what this device gets on your ${Host.word}.",
                 Modifier.padding(top = LocalTopInset.current, bottom = LocalBottomInset.current)) {
                 Button(onClick = { library.setSource(LibraryModel.Source.MAC) }) { Text("Show the ${Host.word}'s Music") }
             }
-            else -> HorizontalPager(pager, Modifier.fillMaxSize(), key = { it }, userScrollEnabled = chosen == null) { page ->
-                when (LibrarySection.entries[page]) {
+            else -> HorizontalPager(pager, Modifier.fillMaxSize(), key = { sections.getOrNull(it) ?: it }, userScrollEnabled = chosen == null) { page ->
+                when (sections.getOrElse(page) { LibrarySection.ALBUMS }) {
                     LibrarySection.ALBUMS -> AlbumsSection(albums.orEmpty())
                     LibrarySection.ARTISTS -> ArtistsSection()
+                    LibrarySection.COMPOSERS -> ComposersSection()
                     LibrarySection.SONGS -> SongsSection()
                     LibrarySection.PLAYLISTS -> PlaylistsSection()
                 }
@@ -172,16 +182,17 @@ fun LibraryHome() {
 
 /** The library with the Mac's music: its albums, artists and songs with this device's, and this device's playlists. */
 @Composable
-private fun MergedLibrary(pager: androidx.compose.foundation.pager.PagerState) {
+private fun MergedLibrary(pager: androidx.compose.foundation.pager.PagerState, sections: List<LibrarySection>) {
     val library = LocalActions.current.library
     val albums by library.mergedAlbums.collectAsStateWithLifecycle()
     val reachable by Transfers.reachable.collectAsStateWithLifecycle()
     // Now, and again when the Mac comes back.
     LaunchedEffect(reachable == true) { library.refreshCatalog() }
-    HorizontalPager(pager, Modifier.fillMaxSize(), key = { it }, userScrollEnabled = LocalLibrarySection.current == null) { page ->
-        when (LibrarySection.entries[page]) {
+    HorizontalPager(pager, Modifier.fillMaxSize(), key = { sections.getOrNull(it) ?: it }, userScrollEnabled = LocalLibrarySection.current == null) { page ->
+        when (sections.getOrElse(page) { LibrarySection.ALBUMS }) {
             LibrarySection.ALBUMS -> CatalogAlbumGrid(albums.orEmpty())
             LibrarySection.ARTISTS -> CatalogArtists()
+            LibrarySection.COMPOSERS -> CatalogComposers()
             LibrarySection.SONGS -> CatalogSongs()
             LibrarySection.PLAYLISTS -> PlaylistsSection()
         }
@@ -305,6 +316,109 @@ private fun ArtistsSection() {
         if (indexed) {
             AlphabetIndex(starts, { list.scrollToItem(it) }, Modifier.align(Alignment.TopEnd).padding(top = LocalTopInset.current, bottom = LocalBottomInset.current))
         }
+    }
+}
+
+/** Composers of the classical albums here: each opening their albums. */
+@Composable
+private fun ComposersSection() {
+    val actions = LocalActions.current
+    val composers by actions.library.composers.collectAsStateWithLifecycle()
+    ComposerRows(composers.orEmpty().map { CatalogArtist(it.name, it.albums, it.artworkHash) }) { hash, modifier ->
+        Cover(actions.library.cover(hash), modifier, round = true)
+    }
+}
+
+/** Composers, the Mac's and this device's. */
+@Composable
+fun CatalogComposers() {
+    val actions = LocalActions.current
+    val composers by actions.library.mergedComposers.collectAsStateWithLifecycle()
+    ComposerRows(composers.orEmpty()) { hash, modifier -> CatalogCover(hash, modifier, round = true) }
+}
+
+@Composable
+private fun ComposerRows(composers: List<CatalogArtist>, cover: @Composable (String?, Modifier) -> Unit) {
+    val actions = LocalActions.current
+    val list = rememberLazyListState()
+    val indexed = composers.size >= ALPHABET_INDEX_MINIMUM
+    val starts = remember(composers) { letterStarts(composers, 0) { it.name } }
+    Box(Modifier.fillMaxSize()) {
+        LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(top = LocalTopInset.current,
+            bottom = 16.dp + LocalBottomInset.current, end = if (indexed) ALPHABET_INDEX_WIDTH else 0.dp)) {
+            items(composers, key = { it.name }) { composer ->
+                ListItem(
+                    headlineContent = { Text(composer.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    supportingContent = { Text(if (composer.albums == 1) "1 album" else "${composer.albums} albums") },
+                    leadingContent = { cover(composer.artworkHash, Modifier.sharedCover("composer:${composer.name}").size(52.dp)) },
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    modifier = Modifier.clickable { actions.open(Route.ComposerPage(composer.name)) },
+                )
+            }
+        }
+        if (indexed) {
+            AlphabetIndex(starts, { list.scrollToItem(it) }, Modifier.align(Alignment.TopEnd).padding(top = LocalTopInset.current, bottom = LocalBottomInset.current))
+        }
+    }
+}
+
+/**
+ * A composer's classical albums (each with who plays it), with Play and Shuffle for their music here; with the Mac's
+ * music shown, its albums too (each opening here or on the Mac).
+ */
+@Composable
+fun ComposerPage(name: String) {
+    val actions = LocalActions.current
+    val source by actions.library.source.collectAsStateWithLifecycle()
+    val tracks by remember(name) { actions.library.tracksOfComposer(name) }.collectAsStateWithLifecycle(emptyList())
+    val play = { shuffle: Boolean -> actions.player.play(actions.library.mediaItems(tracks, "Composer · $name"), 0, shuffle) }
+    if (source == LibraryModel.Source.MAC) {
+        val albums by remember(name) { actions.library.catalogAlbumsOfComposer(name) }.collectAsStateWithLifecycle(emptyList())
+        val photo by remember(name) { actions.library.catalogArtistPhoto(name) }.collectAsStateWithLifecycle(null)
+        GlassTop(bar = { PageBar(name, true) }) {
+            CatalogAlbumGrid(albums) {
+                item(key = "header", span = { GridItemSpan(maxLineSpan) }) {
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        CatalogCover(photo ?: albums.firstOrNull()?.artworkHash, Modifier.sharedCover("composer:$name").widthIn(max = 200.dp).fillMaxWidth(0.5f), round = true)
+                        Spacer(Modifier.height(16.dp))
+                        Text(name, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center,
+                            modifier = Modifier.semantics { heading() })
+                        Text(if (albums.size == 1) "1 album" else "${albums.size} albums", style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.height(12.dp))
+                        if (tracks.isNotEmpty()) PlayButtons(onPlay = { play(false) }, onShuffle = { play(true) },
+                            modifier = Modifier.widthIn(max = 420.dp).padding(bottom = 12.dp))
+                    }
+                }
+            }
+        }
+        return
+    }
+    val albums by remember(name) { actions.library.albumsOfComposer(name) }.collectAsStateWithLifecycle(null)
+    val own = albums ?: return PageLoading()
+    val grid = rememberLazyGridState()
+    val scrolled by remember { derivedStateOf { grid.firstVisibleItemIndex > 0 } }
+    val listed = remember(name) { actions.library.composers.value?.firstOrNull { it.name == name }?.artworkHash }
+    val photo by remember(name) { actions.library.artistPhoto(name) }.collectAsStateWithLifecycle(null)
+    val coverFile = actions.library.cover(photo ?: listed ?: own.firstOrNull()?.artworkHash)
+    GlassTop(modifier = Modifier.background(coverWash(coverFile)), glassVisible = scrolled, bar = { PageBar(name, scrolled) }) {
+        // Each album with who plays it: one composer's music in many recordings.
+        AlbumGrid(
+            own, grid = grid, subtitle = { listOfNotNull(it.artist, it.year?.toString()).joinToString(" · ") },
+            header = {
+                item(key = "header", span = { GridItemSpan(maxLineSpan) }) {
+                    PageHeader(
+                        cover = { Cover(coverFile, Modifier.sharedCover("composer:$name").then(it), round = true) }, round = true, title = name,
+                        details = listOfNotNull(
+                            own.size.takeIf { it > 0 }?.let { if (it == 1) "1 album" else "$it albums" },
+                            if (tracks.size == 1) "1 song" else "${tracks.size} songs",
+                        ).joinToString(" · "),
+                        onPlay = if (tracks.isEmpty()) null else ({ play(false) }),
+                        onShuffle = if (tracks.isEmpty()) null else ({ play(true) }),
+                    )
+                }
+            },
+        ) { actions.open(Route.AlbumPage(it.key)) }
     }
 }
 

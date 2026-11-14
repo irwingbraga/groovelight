@@ -15,6 +15,10 @@ final class LibraryStore {
         var recentlyAdded: [AlbumSummary] = []
         var artists: [ArtistSummary] = []
         var compilations: ArtistSummary?
+        /// Classical music by composer, as the Mac lists it (those albums are not in `artists`).
+        var composers: [ArtistSummary] = []
+        var composerAlbums: [String: Set<String>] = [:]
+        var composerOnlyAlbums: Set<String> = []
         var songs: [Track] = []
         var playlists: [PlaylistSummary] = []
         var lovedCount = 0
@@ -54,7 +58,10 @@ final class LibraryStore {
         let observation = database.observe { db in
             let overview = try LibraryDatabase.playlistOverview(db)
             return Contents(albums: try LibraryDatabase.albums(db), recentlyAdded: try LibraryDatabase.recentlyAddedAlbums(db),
-                            artists: try LibraryDatabase.artists(db), compilations: try LibraryDatabase.compilations(db),
+                            artists: try LibraryDatabase.artists(db, includingComposerAlbums: false),
+                            compilations: try LibraryDatabase.compilations(db, includingComposerAlbums: false),
+                            composers: try LibraryDatabase.composers(db), composerAlbums: try LibraryDatabase.composerAlbums(db),
+                            composerOnlyAlbums: try LibraryDatabase.composerOnlyAlbumKeys(db),
                             songs: try LibraryDatabase.allTracks(db), playlists: overview.playlists.filter { $0.trackCount > 0 || !$0.playlist.isSmart },
                             lovedCount: overview.lovedCount)
         }
