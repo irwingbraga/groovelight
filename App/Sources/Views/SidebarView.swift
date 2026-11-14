@@ -119,6 +119,9 @@ struct SidebarView: View {
         }
         .safeAreaInset(edge: .bottom) {
             VStack(alignment: .leading, spacing: 0) {
+                if let progress = model.metadata.applyProgress {
+                    ApplyRow(progress: progress, queued: model.metadata.queuedApplies)
+                }
                 if let job = model.metadata.libraryJob {
                     LibraryJobRow(job: job)
                 }
@@ -171,6 +174,35 @@ struct TrackTransfer: Codable, Transferable {
 }
 
 /// Progress of the background "Fetch Missing Info" job, at the bottom of the sidebar.
+/// Metadata fixes being saved in the background (the sheets close at once).
+private struct ApplyRow: View {
+    var progress: MetadataStore.ApplyProgress
+    var queued: Int
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 6) {
+                Text(progress.writesFiles ? "Writing tags" : "Saving fixes")
+                    .font(.system(size: 11, weight: .semibold))
+                Spacer()
+                Text("\(progress.done) of \(progress.total)")
+                    .font(.system(size: 11).monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+            ProgressView(value: Double(progress.done), total: Double(max(progress.total, 1)))
+                .controlSize(.small)
+            if queued > 0 {
+                Text(queued == 1 ? "Then 1 more fix" : "Then \(queued) more fixes")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.top, 8)
+        .help("Saving metadata fixes in the background")
+    }
+}
+
 private struct LibraryJobRow: View {
     var job: MetadataStore.LibraryJobProgress
     @Environment(AppModel.self) private var model

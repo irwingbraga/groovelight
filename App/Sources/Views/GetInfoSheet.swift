@@ -59,7 +59,6 @@ struct GetInfoSheet: View {
     @State private var initialLyrics = ""
     @State private var newCover: Data?
     @State private var isDropTargeted = false
-    @State private var isSaving = false
     @State private var didLoad = false
 
     private var isSingle: Bool { tracks.count == 1 }
@@ -89,9 +88,9 @@ struct GetInfoSheet: View {
                 Spacer()
                 Button("Cancel") { dismiss() }
                     .keyboardShortcut(.cancelAction)
-                Button(isSaving ? "Saving…" : "Save") { save() }
+                Button("Save") { save() }
                     .keyboardShortcut(.defaultAction)
-                    .disabled(isSaving || !isValid)
+                    .disabled(!isValid)
             }
         }
         .padding(20)
@@ -374,19 +373,22 @@ struct GetInfoSheet: View {
             dismiss()
             return
         }
-        isSaving = true
+        // Saved in the background (the sidebar shows the progress): the sheet closes at once.
+        let albumKeys = Set(tracks.map(\.albumKey))
+        let cover = newCover
+        let writeToFiles = writeToFiles
+        let model = model
         Task {
             let changes = metadata.isEmpty ? [:] : Dictionary(uniqueKeysWithValues: ids.map { ($0, metadata) })
-            let result = await model.metadata.apply(changes, cover: newCover, coverTrackIds: newCover == nil ? [] : ids,
+            let result = await model.metadata.apply(changes, cover: cover, coverTrackIds: cover == nil ? [] : ids,
                                                     writeToFiles: writeToFiles)
-            isSaving = false
             if !result.failedWrites.isEmpty {
                 model.errorMessage = "Could not write tags to \(result.failedWrites.count) file(s): \(result.failedWrites.prefix(3).joined(separator: ", ")). The changes were saved in the library instead."
             }
-            // The album may have been renamed: reopen its page under the new name.
-            await model.showAlbum(containing: ids.first)
-            dismiss()
+            // The album may have been renamed: reopen its page under the new name, if it is still the one shown.
+            await model.reopenAlbum(containing: ids.first, ifShowingOneOf: albumKeys)
         }
+        dismiss()
     }
 
     private func chooseImage() {

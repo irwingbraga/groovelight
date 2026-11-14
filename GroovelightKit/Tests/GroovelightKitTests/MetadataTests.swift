@@ -373,6 +373,53 @@ struct MetadataLibraryTests {
         #expect(cleared.overrides == nil && cleared.title == "In File")
     }
 
+    @Test func rewrittenFilesAreNotReadAgain() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("groovelight-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        _ = try ScannerIntegrationTests.makeFixtures(in: directory)
+
+        let database = try LibraryDatabase.inMemory()
+        let artwork = try ArtworkCache(directory: directory.appendingPathComponent("Artwork"))
+        let root = try database.addRoot(path: directory.path, bookmark: Data())
+        let scanner = LibraryScanner(database: database, artwork: artwork)
+        _ = try await scanner.scan(root: root)
+        let tracks = try await database.writer.read { db in try Track.fetchAll(db) }
+        #expect(tracks.count >= 2)
+
+        // As after writing tags: every file has a new date, recorded in one go.
+        var info: [Int64: LibraryDatabase.FileInfo] = [:]
+        for track in tracks {
+            let date = Date.now.addingTimeInterval(120)
+            try FileManager.default.setAttributes([.modificationDate: date], ofItemAtPath: track.path)
+            let values = try URL(fileURLWithPath: track.path).resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
+            info[try #require(track.id)] = LibraryDatabase.FileInfo(fileSize: Int64(try #require(values.fileSize)),
+                                                                    modifiedAt: try #require(values.contentModificationDate))
+        }
+        try database.updateFileInfo(info)
+        try database.updateFileInfo([:])
+
+        let summary = try await scanner.scan(root: root)
+        #expect(summary.updated == 0 && summary.added == 0 && summary.removed == 0)
+    }
+
+    @Test func folderCoversAreNamedAfterTheirFormat() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("groovelight-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let png = ScannerIntegrationTests.pngData()
+        let written = try ArtworkCache.writeFolderCover(png, in: directory)
+        #expect(written.lastPathComponent == "cover.png")
+        #expect(ArtworkCache.folderImage(in: directory)?.lastPathComponent == "cover.png")
+        #expect(try Data(contentsOf: written) == png)
+        // The same name again replaces it.
+        try ArtworkCache.writeFolderCover(png, in: directory)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path) == ["cover.png"])
+        let jpeg = Data([0xFF, 0xD8, 0xFF, 0xE0]) + Data(repeating: 0, count: 16)
+        let other = directory.appendingPathComponent("Other")
+        try FileManager.default.createDirectory(at: other, withIntermediateDirectories: true)
+        #expect(try ArtworkCache.writeFolderCover(jpeg, in: other).lastPathComponent == "cover.jpg")
+    }
+
     @Test func manualEditsSetAndClearFields() throws {
         var track = LibraryDatabaseTests.makeTrack(rootId: 1, "Song", artist: "Artist", album: "Album", number: 3)
         track.comment = "old"

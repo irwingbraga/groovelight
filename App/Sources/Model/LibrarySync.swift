@@ -27,6 +27,8 @@ final class LibrarySync {
     /// Library folders whose next scan shows progress (first scan of a new folder, Rescan Now).
     @ObservationIgnored private var loudRoots = Set<Int64>()
     @ObservationIgnored private var drainTask: Task<Void, Never>?
+    /// Holds on the watcher's scans (while tags are written into files): changes wait until the last one is released.
+    @ObservationIgnored private var holds = 0
     @ObservationIgnored private var timerTask: Task<Void, Never>?
     @ObservationIgnored private var noteTask: Task<Void, Never>?
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
@@ -102,6 +104,27 @@ final class LibrarySync {
         }
     }
 
+    /// Checks only these folders (in whichever library folders hold them) and returns when done (after an import, which
+    /// knows where its songs went: checking every file of every folder would compete with everything else for the disk).
+    func checkFoldersAndWait(_ paths: [String]) async {
+        var work = LibraryChanges(roots: (await availableRoots()).compactMap { root in root.id.map { ($0, root.path) } })
+        for path in paths { work.addFolder(path) }
+        for (rootId, scope) in work.take() {
+            await scan(rootId: rootId, scope: scope)
+        }
+    }
+
+    /// Holds the watcher's scans until `resumeScans` (while Groovelight writes tags into files, so their changes are not
+    /// read back mid-write and the disk is left to the writes). Holds nest.
+    func holdScans() {
+        holds += 1
+    }
+
+    func resumeScans() {
+        holds = max(0, holds - 1)
+        kick()
+    }
+
     /// Checks the folder of a song whose file could not be opened.
     func checkFolder(of url: URL) {
         guard !FileManager.default.fileExists(atPath: url.path) else { return }
@@ -135,12 +158,12 @@ final class LibrarySync {
 
     /// Runs the waiting work, and whatever comes in meanwhile, until nothing is left.
     private func kick() {
-        guard drainTask == nil, !changes.isEmpty else { return }
+        guard holds == 0, drainTask == nil, !changes.isEmpty else { return }
         drainTask = Task {
             // A moment for a burst of events (copying an album) to arrive together.
             try? await Task.sleep(for: .milliseconds(500))
             var total = ScanSummary()
-            while !changes.isEmpty {
+            while !changes.isEmpty, holds == 0 {
                 let upTo = changes.latestEventId
                 for (rootId, scope) in changes.take() {
                     if let summary = await scan(rootId: rootId, scope: scope) {

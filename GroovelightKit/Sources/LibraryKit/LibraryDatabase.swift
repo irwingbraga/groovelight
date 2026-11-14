@@ -510,10 +510,26 @@ extension LibraryDatabase {
         }
     }
 
-    /// Records the file's new size and date after Groovelight rewrote its tags, so the scanner does not reread it.
-    public func updateFileInfo(trackId: Int64, fileSize: Int64, modifiedAt: Date) throws {
+    /// A file's size and date, as recorded after rewriting its tags.
+    public struct FileInfo: Sendable, Equatable {
+        public var fileSize: Int64
+        public var modifiedAt: Date
+
+        public init(fileSize: Int64, modifiedAt: Date) {
+            self.fileSize = fileSize
+            self.modifiedAt = modifiedAt
+        }
+    }
+
+    /// Records the new size and date of files after Groovelight rewrote their tags (one transaction for all of them), so
+    /// the scanner does not read them again.
+    public func updateFileInfo(_ files: [Int64: FileInfo]) throws {
+        guard !files.isEmpty else { return }
         try writer.write { db in
-            try db.execute(sql: "UPDATE track SET fileSize = ?, modifiedAt = ? WHERE id = ?", arguments: [fileSize, modifiedAt, trackId])
+            for (trackId, info) in files {
+                try db.execute(sql: "UPDATE track SET fileSize = ?, modifiedAt = ? WHERE id = ?",
+                               arguments: [info.fileSize, info.modifiedAt, trackId])
+            }
         }
     }
 

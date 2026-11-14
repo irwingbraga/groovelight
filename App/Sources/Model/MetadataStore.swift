@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import LibraryKit
 import MetadataKit
@@ -27,6 +28,8 @@ final class MetadataStore {
 
     @ObservationIgnored private let database: LibraryDatabase
     @ObservationIgnored private let artworkCache: ArtworkCache
+    /// Library scans, held while tags are written into files.
+    @ObservationIgnored weak var sync: LibrarySync?
 
     init(database: LibraryDatabase, artwork: ArtworkCache) {
         self.database = database
@@ -167,30 +170,142 @@ final class MetadataStore {
         var failedWrites: [String] = []
     }
 
-    /// Applies accepted changes. When writing to files is on, tags (and the cover) go into the files and the database
-    /// follows; files that cannot be written keep the fix as a database override. `progress` hears how many songs are
-    /// done out of how many, after each one.
+    /// Fixes being saved (this one and those waiting behind it), shown in the sidebar while they run.
+    struct ApplyProgress: Equatable {
+        var done: Int
+        var total: Int
+        var writesFiles: Bool
+    }
+
+    private(set) var applyProgress: ApplyProgress?
+    var isApplying: Bool { pendingApplies > 0 }
+    /// Fixes waiting behind the one being saved.
+    var queuedApplies: Int { max(0, pendingApplies - 1) }
+    private var pendingApplies = 0
+    @ObservationIgnored private var lastApply: Task<Void, Never>?
+    /// "Stop After This Song" when quitting: the rest is left as it was.
+    @ObservationIgnored private var stopApplying = false
+    @ObservationIgnored private var quitWhenDone = false
+
+    /// Applies accepted changes. When writing to files is on, tags go into the files and the database follows; files
+    /// that cannot be written keep the fix as a database override. A new cover is kept in the library and, when writing
+    /// to files, saved once as the album folder's cover.jpg: embedding it would make the file outgrow the room kept for
+    /// tags, rewriting all of it (seconds a song on an external drive). It is embedded only in songs that share their
+    /// folder with songs not being fixed. Fixes run one after another, in the background: the sheets close at once and
+    /// the sidebar shows the progress. `progress` hears how many songs are done out of how many, after each one.
     func apply(_ changes: [Int64: TrackMetadata], cover: Data?, coverTrackIds: [Int64], writeToFiles: Bool,
-               progress: @MainActor (_ done: Int, _ total: Int) -> Void = { _, _ in }) async -> ApplyResult {
+               progress: @escaping @MainActor (_ done: Int, _ total: Int) -> Void = { _, _ in }) async -> ApplyResult {
+        let previous = lastApply
+        pendingApplies += 1
+        let task = Task { @MainActor in
+            await previous?.value
+            return await performApply(changes, cover: cover, coverTrackIds: coverTrackIds, writeToFiles: writeToFiles, progress: progress)
+        }
+        lastApply = Task { _ = await task.value }
+        let result = await task.value
+        pendingApplies -= 1
+        if pendingApplies == 0 {
+            applyProgress = nil
+            stopApplying = false
+            if quitWhenDone {
+                quitWhenDone = false
+                NSApp.reply(toApplicationShouldTerminate: true)
+            }
+        }
+        return result
+    }
+
+    /// Asked on quitting while fixes are being saved.
+    func shouldQuit() -> NSApplication.TerminateReply {
+        guard isApplying else { return .terminateNow }
+        let alert = NSAlert()
+        alert.messageText = "Groovelight is still saving metadata fixes."
+        var detail = ""
+        if let progress = applyProgress {
+            detail = "\(progress.writesFiles ? "Writing tags into" : "Saving") \(progress.done.formatted()) of \(progress.total.formatted()) songs"
+                + (queuedApplies > 0 ? ", with \(queuedApplies) more fixes waiting. " : ". ")
+        }
+        alert.informativeText = detail + "Stopping after the song being written leaves the others as they were (a song is never left half written)."
+        alert.addButton(withTitle: "Quit When Done")
+        alert.addButton(withTitle: "Stop After This Song")
+        alert.addButton(withTitle: "Cancel")
+        switch alert.runModal() {
+        case .alertFirstButtonReturn:
+            guard isApplying else { return .terminateNow }
+            quitWhenDone = true
+            return .terminateLater
+        case .alertSecondButtonReturn:
+            guard isApplying else { return .terminateNow }
+            stopApplying = true
+            quitWhenDone = true
+            return .terminateLater
+        default:
+            return .terminateCancel
+        }
+    }
+
+    private func performApply(_ changes: [Int64: TrackMetadata], cover: Data?, coverTrackIds: [Int64], writeToFiles: Bool,
+                              progress: @MainActor (_ done: Int, _ total: Int) -> Void) async -> ApplyResult {
         var result = ApplyResult()
-        let tracks = (try? await database.writer.read { db in try Track.fetchAll(db, keys: Array(changes.keys) + coverTrackIds) }) ?? []
+        guard !stopApplying else { return result }
+        let coverIds = Set(coverTrackIds)
+        let (tracks, folderSongs) = (try? await database.writer.read { db -> ([Track], [URL: Set<Int64>]) in
+            let tracks = try Track.fetchAll(db, keys: Array(changes.keys) + coverTrackIds)
+            // The songs of each folder the cover goes to, to tell whether all of them get it.
+            var folderSongs: [URL: Set<Int64>] = [:]
+            guard cover != nil, writeToFiles else { return (tracks, folderSongs) }
+            for folder in Set(tracks.filter { coverIds.contains($0.id ?? -1) }.map { $0.url.deletingLastPathComponent() }) {
+                let path = folder.path
+                let inside = try Track.fetchAll(db, sql: "SELECT * FROM track WHERE (path >= ? AND path < ?) OR (audioPath >= ? AND audioPath < ?)",
+                                                arguments: [path + "/", path + "0", path + "/", path + "0"])
+                folderSongs[folder] = Set(inside.filter { $0.url.deletingLastPathComponent() == folder }.compactMap(\.id))
+            }
+            return (tracks, folderSongs)
+        }) ?? ([], [:])
         let byId = Dictionary(tracks.compactMap { track in track.id.map { ($0, track) } }, uniquingKeysWith: { first, _ in first })
 
         var coverHash: String?
         if let cover {
             coverHash = artworkCache.store(cover)
         }
+        // Folders whose every song gets the cover take it as their cover file.
+        let coverFolders = Set(folderSongs.filter { $0.value.isSubset(of: coverIds) }.keys)
 
         var overrides: [Int64: TrackMetadata] = [:]
         var inFiles: [Int64: TrackMetadata] = [:]
-        let ids = Set(changes.keys).union(coverHash == nil ? [] : coverTrackIds)
+        var fileInfo: [Int64: LibraryDatabase.FileInfo] = [:]
+        // The library's own scans wait while files are rewritten: they would read them back and compete for the disk.
+        // Released once the database knows the files' new size and date, so the scans that follow skip them.
+        if writeToFiles { sync?.holdScans() }
+        defer { if writeToFiles { sync?.resumeScans() } }
+
+        if let cover, coverHash != nil {
+            for folder in coverFolders {
+                do {
+                    _ = try await Task.detached(priority: .userInitiated) { try ArtworkCache.writeFolderCover(cover, in: folder) }.value
+                } catch {
+                    result.failedWrites.append("\(folder.lastPathComponent)/cover")
+                }
+            }
+        }
+        // Songs that get the cover embedded (sharing a folder with others), or text fixes.
+        let embedIds = coverHash == nil ? Set<Int64>() : coverIds.filter { id in
+            guard let folder = byId[id]?.url.deletingLastPathComponent() else { return false }
+            return !coverFolders.contains(folder)
+        }
+        let ids = Set(changes.keys).union(writeToFiles ? embedIds : [])
         var done = 0
+        applyProgress = ApplyProgress(done: 0, total: ids.count, writesFiles: writeToFiles)
         progress(0, ids.count)
+        var applied = Set<Int64>()
         for id in ids {
+            if stopApplying { break }
             defer {
                 done += 1
+                applyProgress?.done = done
                 progress(done, ids.count)
             }
+            applied.insert(id)
             #if DEBUG
             // `-GLDebugSlowApply YES`: a second per song, to see the progress.
             if UserDefaults.standard.bool(forKey: "GLDebugSlowApply") { try? await Task.sleep(for: .seconds(1)) }
@@ -201,7 +316,7 @@ final class MetadataStore {
                 overrides[id] = metadata
                 continue
             }
-            let embedCover = coverHash != nil && coverTrackIds.contains(id) ? cover : nil
+            let embedCover = embedIds.contains(id) ? cover : nil
             let url = track.url
             // Earlier fixes kept only in the database go into the file too, since its overrides are cleared after.
             let toWrite = (track.overrides ?? TrackMetadata()).merging(metadata)
@@ -209,7 +324,7 @@ final class MetadataStore {
                 let written = try await Task.detached(priority: .userInitiated) {
                     try TagWriter.write(toWrite, frontCover: embedCover, to: url)
                 }.value
-                try database.updateFileInfo(trackId: id, fileSize: written.fileSize, modifiedAt: written.modifiedAt)
+                fileInfo[id] = LibraryDatabase.FileInfo(fileSize: written.fileSize, modifiedAt: written.modifiedAt)
                 inFiles[id] = toWrite
                 result.written += 1
             } catch {
@@ -217,14 +332,16 @@ final class MetadataStore {
                 overrides[id] = metadata
             }
         }
+        // One write for every song at the end, rather than one per song waiting behind other writers each time.
         do {
+            try database.updateFileInfo(fileInfo)
             try database.applyMetadata(overrides.filter { !$0.value.isEmpty }, asOverrides: true)
             try database.applyMetadata(inFiles, asOverrides: false)
             if let coverHash { try database.setFetchedArtwork(coverHash, trackIds: coverTrackIds) }
         } catch {
             result.failedWrites.append(error.localizedDescription)
         }
-        result.updated = ids.count
+        result.updated = applied.count
         return result
     }
 

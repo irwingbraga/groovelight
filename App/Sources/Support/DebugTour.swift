@@ -1493,8 +1493,10 @@ enum DebugTour {
         try? await Task.sleep(for: .seconds(1))
         lines.append("import review: \(session.groups.map { "\($0.title) by \($0.artist) [\($0.matchedRelease ?? "file tags")]: \($0.items.count) files" }), duplicates \(session.duplicateCount)")
         await snapshot("141-import-review", output)
+        let scansBefore = model.sync.activity.count
         await session.run()
         let imported = model.files.undoable?.entries ?? []
+        lines.append("import scans: " + model.sync.activity.dropFirst(scansBefore).filter { $0.hasPrefix("scanned") }.joined(separator: " | "))
         let cueSongs = ((try? await model.database.writer.read { try LibraryDatabase.allTracks($0) }) ?? []).filter(\.isCueTrack)
         let cueFolders: [String] = Set(cueSongs.map { $0.url.deletingLastPathComponent().path }).sorted().map { String($0.dropFirst(root.count + 1)) }
         lines.append("cue songs after import: \(cueSongs.count), in " + cueFolders.joined(separator: " | "))
@@ -2914,6 +2916,16 @@ enum DebugTour {
             try? await Task.sleep(for: .seconds(1))
             if !NSApp.windows.contains(where: { $0.isSheet && $0.isVisible }) { break }
         }
+        // The sheet closes at once; the fix is saved in the background (the sidebar shows it).
+        lines.append("sheet closed, saving in the background \(model.metadata.isApplying)")
+        let saving = Date.now
+        for _ in 0..<240 where model.metadata.isApplying { try? await Task.sleep(for: .milliseconds(500)) }
+        lines.append(String(format: "saved after %.1fs more", Date.now.timeIntervalSince(saving)))
+        let folders = Set(tracks.map { $0.url.deletingLastPathComponent() })
+        lines.append("cover files: " + folders.sorted { $0.path < $1.path }.map { folder in
+            let covers = ((try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []).filter { $0.lowercased().hasPrefix("cover.") }
+            return "\(folder.lastPathComponent): \(covers.isEmpty ? "none" : covers.joined(separator: ", "))"
+        }.joined(separator: "; "))
         tracks = await untagged()
         lines.append("after: " + tracks.map {
             "\($0.trackNumber.map(String.init) ?? "-")/\($0.trackTotal.map(String.init) ?? "-") \($0.title) [\($0.displayAlbum) \($0.year.map(String.init) ?? "-") \($0.genre ?? "-")] art=\($0.artworkHash != nil) override=\($0.metadataOverrides != nil)"

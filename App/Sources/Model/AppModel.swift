@@ -190,6 +190,7 @@ final class AppModel {
         ArtworkLoader.shared.cache = artwork
 
         sync = LibrarySync(model: self, scanner: scanner)
+        metadata.sync = sync
         lastfm = LastFMStore(database: database)
         sleepTimer = SleepTimer(player: player)
         loudness = LoudnessStore(database: database)
@@ -270,6 +271,11 @@ final class AppModel {
     /// Rescans every library folder and returns when done (after an import).
     func rescanAndWait() async {
         await sync.checkEverythingAndWait()
+    }
+
+    /// Rescans only these folders and returns when done (after an import, which knows where its songs went).
+    func rescanAndWait(folders: [String]) async {
+        await sync.checkFoldersAndWait(folders)
     }
 
     private func roots() async throws -> [LibraryRoot] {
@@ -558,6 +564,12 @@ final class AppModel {
     }
 
     /// Opens the album page of a track (after its album changed, the old page would be empty).
+    /// After a fix saved in the background: reopens the album (maybe renamed) only if its page is still the one shown.
+    func reopenAlbum(containing trackId: Int64?, ifShowingOneOf albumKeys: Set<String>) async {
+        guard let shown = albumPath.last, albumKeys.contains(shown.albumKey) else { return }
+        await showAlbum(containing: trackId)
+    }
+
     func showAlbum(containing trackId: Int64?) async {
         guard !albumPath.isEmpty, let trackId,
               let album = try? await database.writer.read({ db -> AlbumSummary? in

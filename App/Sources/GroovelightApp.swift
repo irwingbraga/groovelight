@@ -303,7 +303,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let reason, [kAELogOut, kAEReallyLogOut, kAEShowRestartDialog, kAERestart, kAEShowShutdownDialog, kAEShutDown].contains(reason) {
             return .terminateNow
         }
-        return MainActor.assumeIsolated { AppModel.current?.backup.shouldQuit() ?? .terminateNow }
+        return MainActor.assumeIsolated {
+            guard let model = AppModel.current else { return .terminateNow }
+            let backup = model.backup.shouldQuit()
+            return backup == .terminateNow ? model.metadata.shouldQuit() : backup
+        }
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {

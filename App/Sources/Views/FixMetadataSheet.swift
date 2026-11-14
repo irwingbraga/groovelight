@@ -35,15 +35,11 @@ struct FixMetadataSheet: View {
     @State private var coverSource: String?
     @State private var isLoadingCover = false
     @State private var useCover = true
-    @State private var isApplying = false
-    /// Songs written so far and in all, while applying.
-    @State private var applyProgress: (done: Int, total: Int) = (0, 0)
     @State private var loadTask: Task<Void, Never>?
 
     var body: some View {
         VStack(spacing: 0) {
             header
-                .disabled(isApplying)
             Divider()
             HStack(spacing: 0) {
                 candidateList
@@ -52,12 +48,10 @@ struct FixMetadataSheet: View {
                 detail
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .disabled(isApplying)
             Divider()
             footer
         }
         .frame(width: 920, height: 640)
-        .interactiveDismissDisabled(isApplying)
         #if DEBUG
         .onChange(of: "\(phase) cover=\(cover != nil) loadingCover=\(isLoadingCover) release=\(match?.release.title ?? "-") changes=\(changes.count)", initial: true) { _, state in
             DebugHitTargets.metadataSheetState = state
@@ -256,24 +250,14 @@ struct FixMetadataSheet: View {
 
     private var footer: some View {
         HStack(spacing: 12) {
-            if isApplying {
-                // Writing tags and covers into many files takes a while.
-                ProgressView(value: Double(applyProgress.done), total: Double(max(applyProgress.total, 1)))
-                    .frame(width: 200)
-                Text("\(writeToFiles ? "Writing" : "Saving") \(min(applyProgress.done + 1, max(applyProgress.total, 1))) of \(max(applyProgress.total, 1)) songs…")
-                    .font(.callout.monospacedDigit())
-                    .foregroundStyle(.secondary)
-            } else {
-                Toggle("Write changes into the files", isOn: $writeToFiles)
-                    .help("Off: fixes live in Groovelight's library only and survive rescans. On: tags and cover are saved into the audio files.")
-            }
+            Toggle("Write changes into the files", isOn: $writeToFiles)
+                .help("Off: fixes live in Groovelight's library only and survive rescans. On: tags go into the audio files, and the cover is saved as the album folder's cover.jpg.")
             Spacer()
             Button("Cancel") { dismiss() }
                 .keyboardShortcut(.cancelAction)
-                .disabled(isApplying)
-            Button(isApplying ? "Applying…" : "Apply") { apply() }
+            Button("Apply") { apply() }
                 .keyboardShortcut(.defaultAction)
-                .disabled(isApplying || phase != .ready || changeCount == 0)
+                .disabled(phase != .ready || changeCount == 0)
         }
         .padding(16)
     }
@@ -377,23 +361,22 @@ struct FixMetadataSheet: View {
         }
     }
 
+    /// Saves in the background (the sidebar shows the progress) and closes at once.
     private func apply() {
-        isApplying = true
-        applyProgress = (0, 0)
         let changes = changes
         let coverData = useCover ? cover : nil
+        let ids = tracks.compactMap(\.id)
+        let albumKeys = Set(tracks.map(\.albumKey))
+        let writeToFiles = writeToFiles
+        let model = model
         Task {
-            let result = await model.metadata.apply(changes, cover: coverData, coverTrackIds: tracks.compactMap(\.id),
-                                                    writeToFiles: writeToFiles) { done, total in
-                applyProgress = (done, total)
-            }
-            isApplying = false
+            let result = await model.metadata.apply(changes, cover: coverData, coverTrackIds: ids, writeToFiles: writeToFiles)
             if !result.failedWrites.isEmpty {
                 model.errorMessage = "Could not write tags to \(result.failedWrites.count) file(s): \(result.failedWrites.prefix(3).joined(separator: ", ")). The changes were saved in the library instead."
             }
-            await model.showAlbum(containing: tracks.compactMap(\.id).first)
-            dismiss()
+            await model.reopenAlbum(containing: ids.first, ifShowingOneOf: albumKeys)
         }
+        dismiss()
     }
 }
 

@@ -97,6 +97,24 @@ public final class ArtworkCache: Sendable {
         guard CGImageDestinationFinalize(destination) else { throw CocoaError(.fileWriteUnknown) }
     }
 
+    /// Saves an album's cover beside its songs as cover.jpg (or .png, .webp, after the image's format), the name
+    /// `folderImage` looks for first. An earlier cover.* image there goes to the Trash, so only the new one remains.
+    @discardableResult
+    public static func writeFolderCover(_ data: Data, in directory: URL) throws -> URL {
+        let bytes = [UInt8](data.prefix(12))
+        let ext = bytes.starts(with: [0x89, 0x50, 0x4E, 0x47]) ? "png"
+            : (bytes.count == 12 && bytes[0..<4].elementsEqual("RIFF".utf8) && bytes[8..<12].elementsEqual("WEBP".utf8)) ? "webp" : "jpg"
+        let target = directory.appendingPathComponent("cover.\(ext)")
+        let names = ["jpg", "jpeg", "png", "webp", "heic"]
+        let existing = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
+        for old in existing where old.deletingPathExtension().lastPathComponent.lowercased() == "cover"
+            && names.contains(old.pathExtension.lowercased()) && old.lastPathComponent != target.lastPathComponent {
+            try? FileManager.default.trashItem(at: old, resultingItemURL: nil)
+        }
+        try data.write(to: target, options: .atomic)
+        return target
+    }
+
     /// Looks for a cover image next to the audio files (cover.jpg, folder.png, front.jpeg, ...).
     public static func folderImage(in directory: URL) -> URL? {
         let names = ["cover", "folder", "front", "albumart", "album", "artwork"]

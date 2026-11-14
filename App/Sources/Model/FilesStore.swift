@@ -557,8 +557,12 @@ final class ImportSession: Identifiable {
             phase = .importing(done: index + 1, total: selected.count)
         }
 
-        // Scan so the songs join the library, then record their ids for undo.
-        await model.rescanAndWait()
+        // Scan the folders the songs went to (and those they left, when moved within the library) so they join the
+        // library, then record their ids for undo.
+        let touched = Set(entries.flatMap { entry in
+            [entry.to, entry.from].map { ($0 as NSString).deletingLastPathComponent }
+        })
+        await model.rescanAndWait(folders: Array(touched))
         let paths = entries.map(\.to)
         let ids = (try? await model.database.writer.read { db in
             try LibraryDatabase.allTracks(db).filter { paths.contains($0.path) }.reduce(into: [String: Int64]()) { $0[$1.path] = $1.id }
