@@ -117,6 +117,7 @@ Everything below is on the Mac and on Windows unless it says otherwise; the phon
 - Watches your music folders live, catches up with what changed while it was closed, and keeps songs on unplugged drives until they come back.
 - Several library folders, on internal, external or network drives (on the Mac with security-scoped access, in a sandboxed app).
 - Recently Added, Artists, Albums (cover size by slider, menu or pinch), Songs (sortable table with quality), Genres.
+- Composers: classical albums by composer (the composer tag), not spread over their performers in Artists; an album's "List In" choice when its tags say otherwise. On Android, iPhone and iPad too.
 - Album artists and compilations, multi-disc albums, CUE sheets (external or embedded) shown as individual songs.
 - Search with categories (artists, albums, songs, credited people), recent searches, and a toolbar field reachable everywhere (⌘F, Ctrl+F).
 - Get Info with a tag editor for one song or many at once; ratings, loves with dates, play and skip counts.
@@ -154,7 +155,7 @@ Everything below is on the Mac and on Windows unless it says otherwise; the phon
 - Visualizers: Bars & Waves, Lights, Ambience and Magnetosphere, in a window or full screen (Metal on the Mac, SkiaSharp on Windows).
 
 ### Metadata
-- Fix Metadata: candidates from MusicBrainz, a field-by-field review, optional writing to the files.
+- Fix Metadata: candidates from MusicBrainz, a field-by-field review, optional writing to the files (the cover as the album folder's cover.jpg), saved in the background.
 - Artwork from your files, cover images in the folder, the Cover Art Archive and the iTunes Search API.
 - Credits (performers, producers, engineers, songwriters, studios) with a page for every person and the songs they worked on.
 - Album and artist backgrounds from Wikipedia, artist photos.
