@@ -81,6 +81,7 @@ public sealed class ControlService
                 CreatePlaylistRequest create => CreatePlaylist(create.Name, create.SongIds),
                 AddToPlaylistRequest add => AddToPlaylist(add.Playlist, add.SongIds),
                 NowPlayingRequest => NowPlaying(),
+                ArtworkRequest artwork => Artwork(artwork.SongId),
                 TodayRequest => Today(),
                 ListeningStatsRequest stats => Stats(stats.Range),
                 PollRequest poll => Poll(poll.Job),
@@ -529,7 +530,23 @@ public sealed class ControlService
             PlaybackState.Paused => "paused",
             _ => "stopped",
         };
-        return new NowPlayingResult(item.Id, item.Title, item.Artist, item.Album, state, player.CurrentTime, item.Duration);
+        return new NowPlayingResult(item.Id, item.Title, item.Artist, item.Album, state, player.CurrentTime, item.Duration, item.ArtworkHash);
+    }
+
+    /// <summary>A song's cover as a 256-pixel JPEG, in base64 (no data when it has none).</summary>
+    private ControlReply Artwork(long songId)
+    {
+        var track = model.Database.Read(db => db.FetchTracks($"SELECT * FROM track WHERE id = {songId}")).FirstOrDefault()
+            ?? throw new ControlException($"No song with the id {songId} (search finds them).");
+        if (track.ArtworkHash is not { } hash) return new ControlReply { Summary = $"“{track.Title}” has no cover." };
+        var small = model.Artwork.PathFor(hash, ArtworkCache.Size.Small);
+        var data = File.Exists(small) ? File.ReadAllBytes(small) : model.Artwork.Jpeg(hash, (int)ArtworkCache.Size.Small);
+        if (data is null) return new ControlReply { Summary = $"“{track.Title}” has no cover." };
+        return new ControlReply
+        {
+            Summary = $"Cover of “{track.Title}”: {data.Length / 1024} KB JPEG.",
+            Data = Node(new ArtworkResult(songId, hash, "image/jpeg", Convert.ToBase64String(data))),
+        };
     }
 
     // MARK: Playlists
@@ -710,7 +727,8 @@ public sealed class ControlService
 
     private sealed record StatusResult(string Version, int Songs, int Albums, int Artists, List<FolderResult> Folders, NowPlayingResult? NowPlaying);
     private sealed record FolderResult(string Path, int Songs, bool Available, bool ImportsHere);
-    private sealed record NowPlayingResult(long Id, string Title, string Artist, string Album, string State, double Position, double Duration);
+    private sealed record NowPlayingResult(long Id, string Title, string Artist, string Album, string State, double Position, double Duration, string? Artwork);
+    private sealed record ArtworkResult(long SongId, string Hash, string Mime, string Base64);
     private sealed record SearchResult(List<string> Artists, List<AlbumResult> Albums, List<SongResult> Songs);
 
     private sealed record AlbumResult(string Title, string Artist, int? Year, int Songs)

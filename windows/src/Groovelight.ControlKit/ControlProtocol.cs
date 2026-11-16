@@ -49,6 +49,7 @@ public static class ControlPipe
 [JsonDerivedType(typeof(CreatePlaylistRequest), "createPlaylist")]
 [JsonDerivedType(typeof(AddToPlaylistRequest), "addToPlaylist")]
 [JsonDerivedType(typeof(NowPlayingRequest), "nowPlaying")]
+[JsonDerivedType(typeof(ArtworkRequest), "artwork")]
 [JsonDerivedType(typeof(TodayRequest), "today")]
 [JsonDerivedType(typeof(ListeningStatsRequest), "listeningStats")]
 [JsonDerivedType(typeof(PollRequest), "poll")]
@@ -73,6 +74,8 @@ public sealed record CreatePlaylistRequest(string Name, IReadOnlyList<long> Song
 /// <summary>Adds songs at the end of a playlist (by name).</summary>
 public sealed record AddToPlaylistRequest(string Playlist, IReadOnlyList<long> SongIds) : ControlRequest;
 public sealed record NowPlayingRequest : ControlRequest;
+/// <summary>A song's cover, as a small JPEG (for remotes such as Stream Deck keys).</summary>
+public sealed record ArtworkRequest(long SongId) : ControlRequest;
 /// <summary>Song, Album and Artist of the Day (Home's picks), with why each was picked and its songs.</summary>
 public sealed record TodayRequest : ControlRequest;
 /// <summary>Home's dashboard for a range ("week", "month", "year" or "all").</summary>

@@ -14,7 +14,7 @@ struct Groovelight: ParsableCommand {
                 """,
             version: Runner.version,
             subcommands: [Status.self, Search.self, Import.self, FixMetadata.self, Organize.self, Undo.self, Rescan.self,
-                          Play.self, Pause.self, Resume.self, Toggle.self, Next.self, Previous.self, Stop.self, NowPlaying.self,
+                          Play.self, Pause.self, Resume.self, Toggle.self, Next.self, Previous.self, Stop.self, NowPlaying.self, Artwork.self,
                           Playlists.self, CreatePlaylist.self, AddToPlaylist.self, Today.self, Stats.self,
                           Backup.self, MCP.self]
         )
@@ -238,6 +238,28 @@ struct NowPlaying: ParsableCommand {
     static let configuration = CommandConfiguration(abstract: "Show what is playing.")
     @OptionGroup var output: OutputOptions
     func run() throws { try Runner.execute(.nowPlaying, output: output) }
+}
+
+struct Artwork: ParsableCommand {
+    static let configuration = CommandConfiguration(abstract: "Save or print a song's cover (a 256-pixel JPEG).",
+                                                    discussion: "Song ids come from search and now-playing. With --json, the image comes in base64.")
+    @Argument(help: "The song's id.")
+    var songId: Int64
+    @Option(help: "Save the cover to this file.")
+    var output: String?
+    @OptionGroup var format: OutputOptions
+
+    func run() throws {
+        guard let output else { return try Runner.execute(.artwork(songId: songId), output: format) }
+        try Runner.ensureRunning()
+        let reply = try ControlClient.send(.artwork(songId: songId))
+        if let error = reply.error { throw ToolError(error) }
+        guard case .object(let fields) = reply.data, case .string(let base64) = fields["base64"], let data = Data(base64Encoded: base64) else {
+            throw ToolError(reply.summary ?? "The song has no cover.")
+        }
+        try data.write(to: URL(fileURLWithPath: output))
+        print("Saved the cover to \(output).")
+    }
 }
 
 // MARK: - Home

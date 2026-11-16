@@ -39,6 +39,8 @@ public enum ControlRequest: Codable, Hashable, Sendable {
     /// Adds songs at the end of a playlist (by name).
     case addToPlaylist(playlist: String, songIds: [Int64])
     case nowPlaying
+    /// A song's cover, as a small JPEG (for remotes such as Stream Deck keys).
+    case artwork(songId: Int64)
     /// Song, Album and Artist of the Day (Home's picks), with why each was picked and its songs.
     case today
     /// Home's dashboard for a range ("week", "month", "year" or "all"): listening time, plays, top songs, albums,

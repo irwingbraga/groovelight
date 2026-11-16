@@ -235,6 +235,14 @@ The song playing (or paused), its album, and the position.
 groovelight now-playing [--json]
 ```
 
+#### `artwork`
+
+A song's cover as a 256-pixel JPEG: saved to a file, or in base64 with `--json`. Song ids come from `search` and `now-playing`, whose `artwork` field (the cover's hash) changes only when the cover does, so remotes such as Stream Deck keys fetch it once per cover.
+
+```sh
+groovelight artwork <song-id> [--output <file>] [--json]
+```
+
 ### Home
 
 #### `today`
@@ -307,7 +315,8 @@ JSON shapes (fields without a value are left out):
 | `undo` | `undone` |
 | `rescan` | `added`, `updated`, `removed`, `unreadable` |
 | `play` | `playing` |
-| `now-playing` and playback commands | `id`, `title`, `artist`, `album`, `state` (`playing`, `paused`, `stopped`), `position`, `duration` (seconds); `null` when nothing is playing |
+| `now-playing` and playback commands | `id`, `title`, `artist`, `album`, `state` (`playing`, `paused`, `stopped`), `position`, `duration` (seconds), `artwork` (the cover's hash, absent without one); `null` when nothing is playing |
+| `artwork` | `songId`, `hash`, `mime` (`image/jpeg`), `base64`; `null` when the song has no cover |
 | `playlists` | `playlists` (`id`, `name`, `smart`, `songs`) |
 | `create-playlist`, `add-to-playlist` | `id`, `name`, `smart`, `songs` |
 | `today` | `picks` (`kind`: `song`, `album` or `artist`; `title`, `subtitle`, `key`, `reason`, `song_ids`) |

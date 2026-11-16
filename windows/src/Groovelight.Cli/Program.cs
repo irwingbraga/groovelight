@@ -37,6 +37,8 @@ public static class Program
         new("previous", "previous [--json]", "Go back to the previous song.", args => Simple(args, new PlaybackRequest(PlaybackAction.Previous))),
         new("stop", "stop [--json]", "Stop playing.", args => Simple(args, new PlaybackRequest(PlaybackAction.Stop))),
         new("now-playing", "now-playing [--json]", "Show what is playing.", args => Simple(args, new NowPlayingRequest())),
+        new("artwork", "artwork <song-id> [--output FILE] [--json]", "Save or print a song's cover (a 256-pixel JPEG).", Artwork,
+            "Song ids come from search and now-playing. With --json, the image comes in base64."),
         new("playlists", "playlists [--json]", "List the playlists.", args => Simple(args, new ListPlaylistsRequest())),
         new("today", "today [--json]", "Show Song, Album and Artist of the Day, and why each was picked.", args => Simple(args, new TodayRequest())),
         new("stats", "stats [--range week|month|year|all] [--json]", "Show what you listened to: time, plays, top songs, albums, artists and genres.", Stats),
@@ -179,6 +181,20 @@ public static class Program
             SongIds = songs.Count == 0 ? null : songs, Album = parsed.Option("album"), Artist = parsed.Option("artist"), Playlist = parsed.Option("playlist"),
             Song = parsed.Option("song"), Query = parsed.Positional.Count == 0 ? null : string.Join(' ', parsed.Positional), Shuffle = parsed.Flag("shuffle"),
         }), parsed.Flag("json"));
+    }
+
+    private static int Artwork(string[] args)
+    {
+        var parsed = new Arguments(args, ["json"], ["output"]);
+        if (parsed.Positional.Count != 1 || !long.TryParse(parsed.Positional[0], out var songId)) throw new UsageException("Give the song's id.");
+        if (parsed.Option("output") is not { } output) return Execute(new ArtworkRequest(songId), parsed.Flag("json"));
+        EnsureRunning();
+        var reply = ControlClient.Send(new ArtworkRequest(songId));
+        if (reply.Error is { } error) throw new ControlException(error);
+        if (reply.Data?["base64"]?.GetValue<string>() is not { } base64) throw new ControlException(reply.Summary ?? "The song has no cover.");
+        File.WriteAllBytes(output, Convert.FromBase64String(base64));
+        Console.WriteLine($"Saved the cover to {output}.");
+        return 0;
     }
 
     private static int Stats(string[] args)

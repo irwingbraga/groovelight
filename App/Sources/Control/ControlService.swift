@@ -86,6 +86,7 @@ final class ControlService {
             case .createPlaylist(let name, let songIds): return try createPlaylist(named: name, songIds: songIds)
             case .addToPlaylist(let playlist, let songIds): return try addToPlaylist(playlist, songIds: songIds)
             case .nowPlaying: return nowPlaying()
+            case .artwork(let songId): return try artwork(songId: songId)
             case .today: return try today()
             case .listeningStats(let range): return try listeningStats(range)
             case .expectFiles(let paths):
@@ -640,8 +641,24 @@ final class ControlService {
         case .paused: "paused"
         case .stopped: "stopped"
         }
+        // The cover's hash, from its file name (`<hash>_800.jpg`): remotes fetch the cover again only when it changes.
+        let artwork = item.artworkURL.map { String($0.deletingPathExtension().lastPathComponent.prefix { $0 != "_" }) }
         return NowPlayingResult(id: item.id, title: item.title, artist: item.artist, album: item.album, state: state,
-                                position: player.currentTime, duration: item.duration)
+                                position: player.currentTime, duration: item.duration, artwork: artwork)
+    }
+
+    /// A song's cover as a 256-pixel JPEG, in base64 (null data when it has none).
+    private func artwork(songId: Int64) throws -> ControlReply {
+        guard let track = try model.database.writer.read({ try Track.fetchOne($0, key: songId) }) else {
+            throw ControlError("No song with the id \(songId) (search finds them).")
+        }
+        guard let hash = track.artworkHash else { return ControlReply(summary: "“\(track.title)” has no cover.", data: .null) }
+        let file = model.artwork.url(for: hash, size: .small)
+        if !FileManager.default.fileExists(atPath: file.path) { model.artwork.makeThumbnails(hash) }
+        guard let data = try? Data(contentsOf: file) else { return ControlReply(summary: "“\(track.title)” has no cover.", data: .null) }
+        return ControlReply(summary: "Cover of “\(track.title)”: \(data.count / 1024) KB JPEG.",
+                            data: try JSONValue(encoding: ArtworkResult(songId: songId, hash: hash, mime: "image/jpeg",
+                                                                        base64: data.base64EncodedString())))
     }
 
     private static func count(_ number: Int, _ noun: String) -> String {
@@ -796,6 +813,15 @@ struct NowPlayingResult: Encodable {
     var state: String
     var position: Double
     var duration: Double
+    /// The cover's hash (nil: no cover).
+    var artwork: String?
+}
+
+struct ArtworkResult: Encodable {
+    var songId: Int64
+    var hash: String
+    var mime: String
+    var base64: String
 }
 
 struct SearchResult: Encodable {
