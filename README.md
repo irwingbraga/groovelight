@@ -202,6 +202,7 @@ Everything below is on the Mac and on Windows unless it says otherwise; the phon
 - The tool asks the app to do the work, so the library, undo and the windows stay in step; it starts Groovelight in the background when needed.
 - Settings, General, Command Line puts it in your PATH (a one-line command on the Mac, a button on Windows).
 - **Use it with Claude:** `groovelight mcp` is an MCP server. Claude Desktop installs it from the extension attached to each release (`Groovelight-<version>.mcpb`: download and open it); Claude Code with `claude mcp add groovelight -- /usr/local/bin/groovelight mcp`. Claude can then search your library, play music, and import, fix and organize files. Changes to files always come as a preview first, applied only after you agree.
+- **Stream Deck:** the [Groovelight plugin for OpenDeck](https://github.com/irwingbraga/opendeck-groovelight) puts play and pause, skip, now playing with its cover, and one-key playlists, albums and the Album of the Day on your deck (Mac and Windows).
 
 - See [Works with Claude and your scripts](#works-with-claude-and-your-scripts), [docs/CLI.md](docs/CLI.md) and [docs/MCP.md](docs/MCP.md).
 
