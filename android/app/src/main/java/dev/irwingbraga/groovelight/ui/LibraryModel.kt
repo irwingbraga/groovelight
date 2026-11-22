@@ -460,6 +460,14 @@ class LibraryModel(application: Application) : AndroidViewModel(application) {
         settings.edit { putFloat("gridSize", gridSize.value) }
     }
 
+    /** The Albums tab as a compact list (cover, title, artist and year on rows) rather than a grid of covers. */
+    val albumsAsList = MutableStateFlow(settings.getBoolean("albumsAsList", false))
+
+    fun setAlbumsAsList(on: Boolean) {
+        albumsAsList.value = on
+        settings.edit { putBoolean("albumsAsList", on) }
+    }
+
     /** The search field's text; results follow it, a moment after typing stops. */
     val query = MutableStateFlow("")
     val results: StateFlow<SearchResults?> = query.debounce { if (it.isBlank()) 0 else 150 }.flatMapLatest { text ->

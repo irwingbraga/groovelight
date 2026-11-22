@@ -506,6 +506,33 @@ fun AlbumCard(album: Album, subtitle: String = album.artist, onOpen: () -> Unit)
     }
 }
 
+/** An album as a row of the compact Albums list: the cover, the title, then the artist and the year. */
+@Composable
+fun AlbumRow(album: Album, onOpen: () -> Unit) {
+    val actions = LocalActions.current
+    val haptics = LocalHapticFeedback.current
+    var menu by remember { mutableStateOf(false) }
+    var tracks by remember { mutableStateOf<List<Track>>(emptyList()) }
+    ListItem(
+        headlineContent = { Text(album.title, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        supportingContent = {
+            Text(albumByline(album.artist, album.year), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            LaunchedEffect(menu) { if (menu) tracks = actions.library.tracksOfAlbum(album.key).first() }
+            Box { SongMenu(tracks, expanded = menu && tracks.isNotEmpty(), onDismiss = { menu = false },
+                artist = album.artist.takeUnless { album.isCompilation }, subject = MenuSubject.AlbumOf(album)) }
+        },
+        leadingContent = { Cover(actions.library.cover(album.artworkHash), Modifier.sharedCover("album:${album.key}").size(56.dp), corner = 6.dp) },
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+        modifier = Modifier.combinedClickable(onClick = onOpen, onLongClick = {
+            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+            menu = true
+        }, onLongClickLabel = "More actions"),
+    )
+}
+
+/** "Artist · Year", or the artist alone when the year is unknown. */
+fun albumByline(artist: String, year: Int?): String = listOfNotNull(artist, year?.toString()).joinToString(" · ")
+
 /** Play and Shuffle side by side, small, for headers in short windows. */
 @Composable
 fun CompactPlayButtons(onPlay: () -> Unit, onShuffle: () -> Unit, modifier: Modifier = Modifier) {

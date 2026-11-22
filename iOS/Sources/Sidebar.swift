@@ -89,6 +89,7 @@ extension View {
 struct SidebarItemContent: View {
     @Environment(AppModel.self) private var model
     let item: SidebarItem
+    @AppStorage(AlbumsViewMenu.storageKey) private var albumsAsList = false
 
     var body: some View {
         let contents = model.library.contents
@@ -103,7 +104,8 @@ struct SidebarItemContent: View {
                 case .search: SearchResults()
                 case .home: HomeScreen()
                 case .recentlyAdded: AlbumGrid(albums: contents.recentlyAdded)
-                case .albums: AlbumGrid(albums: contents.albums)
+                case .albums:
+                    if albumsAsList { AlbumList(albums: contents.albums) } else { AlbumGrid(albums: contents.albums) }
                 case .artists: ArtistList(artists: contents.artists, compilations: contents.compilations)
                 case .composers: ComposerList(entries: contents.composers.map {
                     ComposerList.Entry(name: $0.name, albums: $0.albumCount, artworkHash: model.library.artistPhoto($0.name) ?? $0.artworkHash)
@@ -119,6 +121,7 @@ struct SidebarItemContent: View {
         }
         .navigationTitle(titleOf(item))
         .toolbar {
+            if item == .albums { ToolbarItem(placement: .topBarTrailing) { AlbumsViewMenu() } }
             if filtered { ToolbarItem(placement: .topBarTrailing) { DownloadedToggle() } }
         }
     }

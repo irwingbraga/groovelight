@@ -202,6 +202,32 @@ fun CatalogAlbumGrid(albums: List<CatalogAlbum>, header: (androidx.compose.found
     }
 }
 
+/** The Albums tab as a compact list with the computer's music: a row per album, marked when on this device or on its way. */
+@Composable
+fun CatalogAlbumList(albums: List<CatalogAlbum>) {
+    val actions = LocalActions.current
+    val holdings by actions.library.holdings.collectAsStateWithLifecycle()
+    LazyColumn(Modifier.fillMaxSize(), state = rememberLazyListState(),
+        contentPadding = PaddingValues(top = 4.dp + LocalTopInset.current, bottom = 16.dp + LocalBottomInset.current)) {
+        items(albums, key = { it.key }) { album ->
+            val availability = holdings.of(album)
+            val here = album.key in holdings.albumKeys
+            ListItem(
+                headlineContent = { Text(album.title, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                supportingContent = { Text(albumByline(album.artist, album.year), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                leadingContent = {
+                    CatalogCover(album.artworkHash, Modifier.sharedCover(if (here) "album:${album.key}" else "macalbum:${album.key}").size(56.dp), corner = 6.dp)
+                },
+                trailingContent = if (availability != Availability.ON_MAC) ({ AvailabilityMark(availability) }) else null,
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                modifier = Modifier.clickable(onClickLabel = "Open album") {
+                    actions.open(if (here) Route.AlbumPage(album.key) else Route.MacAlbumPage(album.key))
+                },
+            )
+        }
+    }
+}
+
 @Composable
 fun CatalogArtists() {
     val actions = LocalActions.current

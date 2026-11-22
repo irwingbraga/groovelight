@@ -37,6 +37,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
@@ -190,7 +191,8 @@ private fun MergedLibrary(pager: androidx.compose.foundation.pager.PagerState, s
     LaunchedEffect(reachable == true) { library.refreshCatalog() }
     HorizontalPager(pager, Modifier.fillMaxSize(), key = { sections.getOrNull(it) ?: it }, userScrollEnabled = LocalLibrarySection.current == null) { page ->
         when (sections.getOrElse(page) { LibrarySection.ALBUMS }) {
-            LibrarySection.ALBUMS -> CatalogAlbumGrid(albums.orEmpty())
+            LibrarySection.ALBUMS -> if (library.albumsAsList.collectAsStateWithLifecycle().value) CatalogAlbumList(albums.orEmpty())
+                else CatalogAlbumGrid(albums.orEmpty())
             LibrarySection.ARTISTS -> CatalogArtists()
             LibrarySection.COMPOSERS -> CatalogComposers()
             LibrarySection.SONGS -> CatalogSongs()
@@ -216,9 +218,19 @@ private fun SortMenu(section: LibrarySection) {
     var open by remember { mutableStateOf(false) }
     val albumOrder by library.albumOrder.collectAsStateWithLifecycle()
     val songOrder by library.songOrder.collectAsStateWithLifecycle()
+    val asList by library.albumsAsList.collectAsStateWithLifecycle()
     Box {
         IconButton(onClick = { open = true }) { Icon(painterResource(R.drawable.ic_sort), contentDescription = "Sort ${section.title.lowercase()}") }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            if (section == LibrarySection.ALBUMS) {
+                Text("View as", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+                for ((label, list) in listOf("Grid" to false, "List" to true)) {
+                    DropdownMenuItem(text = { Text(label) }, leadingIcon = { RadioButton(selected = asList == list, onClick = null) },
+                        onClick = { open = false; library.setAlbumsAsList(list) })
+                }
+                HorizontalDivider()
+            }
             Text("Sort by", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
             if (section == LibrarySection.ALBUMS) LibraryModel.AlbumOrder.entries.forEach { order ->
@@ -240,6 +252,36 @@ private fun AlbumsSection(albums: List<Album>) {
     // A new sort order starts from the top.
     LaunchedEffect(Unit) { actions.library.albumOrder.drop(1).collect { grid.scrollToItem(0) } }
     val size by actions.library.gridSize.collectAsStateWithLifecycle()
+    val asList by actions.library.albumsAsList.collectAsStateWithLifecycle()
+    val label: (Int) -> String? = { index ->
+        albums.getOrNull(index)?.let { album ->
+            when (order) {
+                LibraryModel.AlbumOrder.ARTIST -> indexLetter(album.artist)
+                LibraryModel.AlbumOrder.TITLE -> indexLetter(album.title)
+                LibraryModel.AlbumOrder.YEAR -> album.year?.toString() ?: "-"
+                LibraryModel.AlbumOrder.RECENT -> null
+            }
+        }
+    }
+    if (asList) {
+        // The compact list: a row per album, with the same fast scroller.
+        val list = rememberLazyListState()
+        LaunchedEffect(Unit) { actions.library.albumOrder.drop(1).collect { list.scrollToItem(0) } }
+        Box(Modifier.fillMaxSize()) {
+            LazyColumn(Modifier.fillMaxSize(), state = list,
+                contentPadding = PaddingValues(top = 4.dp + LocalTopInset.current, bottom = 16.dp + LocalBottomInset.current)) {
+                items(albums, key = { it.key }) { album -> AlbumRow(album) { actions.open(Route.AlbumPage(album.key)) } }
+            }
+            val first by remember { derivedStateOf { list.firstVisibleItemIndex } }
+            val visible by remember { derivedStateOf { list.layoutInfo.visibleItemsInfo.size } }
+            FastScroller(
+                count = albums.size, firstVisible = first, visibleCount = visible,
+                scrolling = list.isScrollInProgress, scrollTo = { list.scrollToItem(it) }, label = label,
+                modifier = Modifier.align(Alignment.TopEnd).padding(top = LocalTopInset.current, bottom = LocalBottomInset.current),
+            )
+        }
+        return
+    }
     // Pinching makes the covers bigger or smaller (fewer or more per row); one finger still scrolls.
     Box(Modifier.fillMaxSize().pinchToResize { zoom -> actions.library.setGridSize(size * zoom) }) {
         // Two covers a row at least in a narrow window (split screen), where the size set by pinching may fit one.
@@ -249,17 +291,7 @@ private fun AlbumsSection(albums: List<Album>) {
         val visible by remember { derivedStateOf { grid.layoutInfo.visibleItemsInfo.size } }
         FastScroller(
             count = albums.size, firstVisible = first, visibleCount = visible,
-            scrolling = grid.isScrollInProgress, scrollTo = { grid.scrollToItem(it) },
-            label = { index ->
-                albums.getOrNull(index)?.let { album ->
-                    when (order) {
-                        LibraryModel.AlbumOrder.ARTIST -> indexLetter(album.artist)
-                        LibraryModel.AlbumOrder.TITLE -> indexLetter(album.title)
-                        LibraryModel.AlbumOrder.YEAR -> album.year?.toString() ?: "-"
-                        LibraryModel.AlbumOrder.RECENT -> null
-                    }
-                }
-            },
+            scrolling = grid.isScrollInProgress, scrollTo = { grid.scrollToItem(it) }, label = label,
             modifier = Modifier.align(Alignment.TopEnd).padding(top = LocalTopInset.current, bottom = LocalBottomInset.current),
         )
     }

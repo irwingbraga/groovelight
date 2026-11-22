@@ -77,6 +77,71 @@ struct AlbumGrid: View {
     }
 }
 
+/// The Albums page as a compact list (chosen in its View As menu): a row per album with its cover, title, artist and year.
+struct AlbumList: View {
+    @Environment(AppModel.self) private var model
+    let albums: [AlbumSummary]
+
+    var body: some View {
+        List(albums) { album in
+            NavigationLink(value: LibraryRoute.album(album.albumKey)) {
+                AlbumListRow(title: album.title, artist: album.artist, year: album.year) {
+                    Cover(hash: album.artworkHash, size: 56, corner: 6)
+                }
+            }
+            .draggable(SongsTransfer(ids: model.library.read { try LibraryDatabase.tracks($0, albumKey: album.albumKey) }?.compactMap(\.id) ?? []))
+        }
+        .listStyle(.plain)
+    }
+}
+
+/// A row of the compact Albums list: the cover, the title, then "Artist · Year".
+struct AlbumListRow<Artwork: View, Accessory: View>: View {
+    let title: String
+    let artist: String
+    let year: Int?
+    @ViewBuilder var artwork: Artwork
+    @ViewBuilder var accessory: Accessory
+
+    init(title: String, artist: String, year: Int?, @ViewBuilder artwork: () -> Artwork, @ViewBuilder accessory: () -> Accessory = { EmptyView() }) {
+        self.title = title
+        self.artist = artist
+        self.year = year
+        self.artwork = artwork()
+        self.accessory = accessory()
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            artwork
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.body.weight(.semibold)).lineLimit(1)
+                Text([artist, year.map(String.init)].compactMap { $0 }.joined(separator: " · "))
+                    .font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+            }
+            Spacer(minLength: 0)
+            accessory
+        }
+    }
+}
+
+/// Grid or List for the Albums page, kept on the device.
+struct AlbumsViewMenu: View {
+    @AppStorage(AlbumsViewMenu.storageKey) private var asList = false
+    static let storageKey = "albums.asList"
+
+    var body: some View {
+        Menu {
+            Picker("View As", selection: $asList) {
+                Label("Grid", systemImage: "square.grid.2x2").tag(false)
+                Label("List", systemImage: "list.bullet").tag(true)
+            }
+        } label: {
+            Label("View As", systemImage: asList ? "list.bullet" : "square.grid.2x2")
+        }
+    }
+}
+
 struct ArtistList: View {
     let artists: [ArtistSummary]
     let compilations: ArtistSummary?

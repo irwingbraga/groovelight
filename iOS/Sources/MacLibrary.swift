@@ -59,6 +59,7 @@ struct CatalogNotice: View {
 struct MergedLibrarySection: View {
     @Environment(AppModel.self) private var model
     let item: SidebarItem
+    @AppStorage(AlbumsViewMenu.storageKey) private var albumsAsList = false
 
     var body: some View {
         let catalog = model.catalog
@@ -73,7 +74,8 @@ struct MergedLibrarySection: View {
                                               fromMac: true)
                 case .songs: MergedSongList(songs: catalog.songs, showsCover: true, indexed: true)
                 case .genres: MergedGenreList()
-                default: MergedAlbumGrid(albums: catalog.albums())
+                default:
+                    if albumsAsList { MergedAlbumList(albums: catalog.albums()) } else { MergedAlbumGrid(albums: catalog.albums()) }
                 }
             }
         }
@@ -150,6 +152,26 @@ struct MergedAlbumGrid: View {
             }
         }
         .padding()
+    }
+}
+
+/// The Albums page as a compact list with the Mac's music: one here opens its page, one only on the Mac its page there.
+struct MergedAlbumList: View {
+    @Environment(AppModel.self) private var model
+    let albums: [DeviceCatalog.Album]
+
+    var body: some View {
+        let catalog = model.catalog
+        List(albums, id: \.key) { album in
+            NavigationLink(value: catalog.isHere(album: album.key) ? LibraryRoute.album(album.key) : LibraryRoute.macAlbum(album.key)) {
+                AlbumListRow(title: album.title, artist: album.artist, year: album.year) {
+                    CatalogCover(hash: album.artworkHash, size: 56, corner: 6)
+                } accessory: {
+                    AvailabilityMark(availability: catalog.availability(album: album))
+                }
+            }
+        }
+        .listStyle(.plain)
     }
 }
 
