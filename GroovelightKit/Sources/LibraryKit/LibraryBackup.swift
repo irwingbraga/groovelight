@@ -114,8 +114,10 @@ public enum LibraryBackup {
             for (index, copy) in copies.enumerated() {
                 try Task.checkCancellation()
                 if let through = copy.through {
+                    // The contents only, as the music is copied: copying a cover's attributes too can be refused by a
+                    // NAS ("you don't have permission to access Artwork").
                     try? fileManager.removeItem(at: through)
-                    try fileManager.copyItem(at: copy.from, to: through)
+                    _ = try LibraryMirror.copyHashing(from: copy.from, to: through)
                     if fileManager.fileExists(atPath: copy.to.path) { try? fileManager.removeItem(at: through) } else { try fileManager.moveItem(at: through, to: copy.to) }
                 } else {
                     try fileManager.copyItem(at: copy.from, to: copy.to)
