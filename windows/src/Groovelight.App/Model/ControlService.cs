@@ -471,6 +471,16 @@ public sealed class ControlService
             model.Play(database.Read(db => db.TracksOfArtist(artist.Name)), shuffle: options.Shuffle);
             what = artist.DisplayName;
         }
+        else if (options.Playlist is { } lovedName && Matches("Loved Songs", lovedName, true)
+                 && !database.Read(db => db.Playlists()).Any(playlist => Matches(playlist.Name, lovedName, true)))
+        {
+            // Loved Songs is in the sidebar with the playlists without being one, so its name plays it too (unless a
+            // playlist has that name).
+            var songs = database.Read(db => db.LovedTracks());
+            if (songs.Count == 0) throw new ControlException("No loved songs yet.");
+            model.Play(songs, shuffle: options.Shuffle);
+            what = "Loved Songs";
+        }
         else if (options.Playlist is { } playlistName)
         {
             var playlist = Pick(database.Read(db => db.Playlists()), playlistName, "playlist", item => item.Name, item => item.Name);

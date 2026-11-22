@@ -367,7 +367,7 @@ public sealed class McpServer(string version, Func<ControlRequest, Action<Contro
              "song_ids": {"type": "array", "items": {"type": "integer"}, "description": "Play these songs (ids from search_library), in this order."},
              "album": {"type": "string", "description": "An album (with artist to tell albums apart), when no song or query is given."},
              "artist": {"type": "string", "description": "Every song of the artist when alone; otherwise narrows down song, query or album."},
-             "playlist": {"type": "string"},
+             "playlist": {"type": "string", "description": "A playlist, by its name; \"Loved Songs\" plays the loved songs."},
              "shuffle": {"type": "boolean"}}},
            "annotations": {"readOnlyHint": false, "destructiveHint": false}},
           {"name": "list_playlists", "title": "List playlists",

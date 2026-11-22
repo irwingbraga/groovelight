@@ -497,6 +497,14 @@ final class ControlService {
             let tracks = try database.writer.read { try LibraryDatabase.tracks($0, artist: artist.name) }
             model.play(tracks, shuffle: options.shuffle)
             what = artist.name
+        } else if let name = options.playlist, Self.matches("Loved Songs", name, exact: true),
+                  try !database.writer.read({ try LibraryDatabase.playlists($0) }).contains(where: { Self.matches($0.name, name, exact: true) }) {
+            // Loved Songs is in the sidebar with the playlists without being one, so its name plays it too (unless a
+            // playlist has that name).
+            let songs = try database.writer.read { try LibraryDatabase.lovedTracks($0) }
+            guard !songs.isEmpty else { throw ControlError("No loved songs yet.") }
+            model.play(songs, shuffle: options.shuffle)
+            what = "Loved Songs"
         } else if let name = options.playlist {
             let playlist = try Self.pick(try database.writer.read { try LibraryDatabase.playlists($0) }, named: name, what: "playlist", key: \.name, describe: \.name)
             guard let id = playlist.id else { throw ControlError("That playlist cannot be played.") }

@@ -214,7 +214,7 @@ What plays, in this order:
 3. `<query>`: the songs a search finds, narrowed by `--artist` and `--album` when given.
 4. `--album <title>`: the album (`--artist` tells albums apart).
 5. `--artist <name>`: every song of the artist.
-6. `--playlist <name>`: the playlist.
+6. `--playlist <name>`: the playlist; `--playlist "Loved Songs"` plays the loved songs.
 7. Nothing: resume.
 
 `--shuffle` shuffles what is played.
