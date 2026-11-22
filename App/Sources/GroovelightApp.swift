@@ -310,6 +310,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// The Dock icon's menu, like Music's: the song playing and the playback controls.
+    @MainActor func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
+        AppModel.current.map(DockMenu.make)
+    }
+
     func application(_ application: NSApplication, open urls: [URL]) {
         MainActor.assumeIsolated {
             guard let model = AppModel.current else { return }
