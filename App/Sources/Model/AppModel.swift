@@ -200,6 +200,7 @@ final class AppModel {
         lastfm = LastFMStore(database: database)
         sleepTimer = SleepTimer(player: player)
         loudness = LoudnessStore(database: database)
+        loudness.isPlaying = { [weak self] in self?.player.state == .playing }
         PlaybackPrefs.register()
         PlaybackPrefs.apply(to: player)
         loudness.setEnabled(player.normalization != .off)

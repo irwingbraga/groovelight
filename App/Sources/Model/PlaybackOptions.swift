@@ -39,7 +39,8 @@ enum PlaybackPrefs {
 }
 
 /// Measures the loudness of songs without ReplayGain tags in the background while volume normalization is on, one song
-/// at a time, the playing and next songs first.
+/// at a time, the playing and next songs first. While music plays only songs already in memory are measured: the rest
+/// wait for the music to pause, so the job never competes with playback for the drive.
 @MainActor @Observable
 final class LoudnessStore {
     private(set) var measured = 0
@@ -79,6 +80,12 @@ final class LoudnessStore {
         (VolumeNormalization(rawValue: UserDefaults.standard.string(forKey: PlaybackPrefs.normalization) ?? "") ?? .off) != .off
     }
 
+    /// Whether music is playing (set by the app): the backlog is measured only while it is not.
+    @ObservationIgnored var isPlaying: @MainActor () -> Bool = { false }
+
+    /// How often the backlog checks whether the music has paused.
+    private static let playingRecheck = Duration.seconds(10)
+
     /// Songs failing in a row after which the job stops for the session.
     private static let failureLimit = 8
 
@@ -87,27 +94,51 @@ final class LoudnessStore {
         isRunning = true
         task = Task { [weak self, database] in
             var failuresInARow = 0
-            while let self, !Task.isCancelled {
+            jobs: while let self, !Task.isCancelled {
                 let wanted = self.priority
                 self.priority = []
                 let skipped = self.skipped
                 var ids = (try? await database.writer.read { try LibraryDatabase.trackIdsNeedingLoudness($0, among: wanted) }) ?? []
-                if ids.isEmpty {
+                let fromBacklog = ids.isEmpty
+                if fromBacklog {
                     ids = (try? await database.writer.read { try LibraryDatabase.trackIdsNeedingLoudness($0, limit: 10 + skipped.count) }) ?? []
                 }
                 ids.removeAll { skipped.contains($0) }
                 guard !ids.isEmpty else { break }
+                // While music plays the drive is the player's: a song read from it in full competes with the one playing,
+                // which then stutters. The backlog waits for the music to pause.
+                if fromBacklog, self.isPlaying() {
+                    try? await Task.sleep(for: Self.playingRecheck)
+                    continue
+                }
                 for id in ids where !Task.isCancelled {
                     guard let track = try? await database.writer.read({ try Track.fetchOne($0, key: id) }) else { continue }
                     let (url, start, end) = (track.url, track.startTime, track.endTime)
-                    let result = await Task.detached(priority: .utility) {
-                        Result { try LoudnessMeter.measure(url: url, start: start, end: end) }
-                    }.value
+                    // The songs playing and next are usually in memory already (read ahead for playback).
+                    let data = ReadAhead.shared.data(for: url)
+                    if data == nil, self.isPlaying() {
+                        // Measured when it plays again, or with the backlog once the music pauses.
+                        if fromBacklog { break } else { continue }
+                    }
+                    let measuring = Task.detached(priority: .utility) {
+                        Result { try LoudnessMeter.measure(url: url, start: start, end: end, data: data) }
+                    }
+                    // A song read from the drive is left for later as soon as the music starts.
+                    let watcher = data != nil ? nil : Task { [weak self] in
+                        while !Task.isCancelled {
+                            try? await Task.sleep(for: .milliseconds(250))
+                            if self?.isPlaying() == true { measuring.cancel(); return }
+                        }
+                    }
+                    let result = await measuring.value
+                    watcher?.cancel()
                     switch result {
                     case .success(let loudness):
                         // A level, or nil for silence: either way it is known now.
                         try? database.setLoudness(loudness, trackId: id)
                         failuresInARow = 0
+                    case .failure(let error) where error is CancellationError:
+                        continue jobs
                     case .failure:
                         // Unreadable now (an unplugged drive): skipped this session, tried again next time.
                         self.skipped.insert(id)

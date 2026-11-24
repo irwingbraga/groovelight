@@ -265,6 +265,10 @@ struct LoudnessTests {
         // A region of the file (cue tracks): the same level.
         let region = try #require(try LoudnessMeter.measure(url: tone("region.wav", amplitude: 0.1), start: 1, end: 3))
         #expect(abs(region - -20) < 0.3)
+        // The file's contents already in memory (read ahead for playback): the same level.
+        let quietURL = directory.appendingPathComponent("quiet.wav")
+        let inMemory = try #require(try LoudnessMeter.measure(url: quietURL, data: Data(contentsOf: quietURL)))
+        #expect(abs(inMemory - quiet) < 0.01)
         // Silence has no loudness.
         #expect(try LoudnessMeter.measure(url: tone("silent.wav", amplitude: 0)) == nil)
     }

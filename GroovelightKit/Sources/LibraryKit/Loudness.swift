@@ -2,6 +2,7 @@ import AVFAudio
 import Foundation
 import GRDB
 import SFBAudioEngine
+import UniformTypeIdentifiers
 
 /// Integrated loudness of a song (EBU R128 / ITU-R BS.1770, in LUFS), for volume normalization of songs without
 /// ReplayGain tags: K-weighting, 400 ms blocks every 100 ms, then the absolute (-70 LUFS) and relative (-10 LU) gates.
@@ -13,8 +14,15 @@ public enum LoudnessMeter {
     public static func gain(forLoudness loudness: Double) -> Double { referenceLUFS - loudness }
 
     /// Measures a file, or the region of it a cue track covers (`start` and `end` in seconds). Nil for silence.
-    public static func measure(url: URL, start: Double? = nil, end: Double? = nil) throws -> Double? {
-        let decoder = try AudioDecoder(url: url)
+    /// `data`, the file's contents already in memory, spares reading the disk. Throws `CancellationError` when the
+    /// task running it is cancelled.
+    public static func measure(url: URL, start: Double? = nil, end: Double? = nil, data: Data? = nil) throws -> Double? {
+        let decoder = if let data {
+            try AudioDecoder(inputSource: InputSource(data: data), detectContentType: true,
+                             mimeTypeHint: UTType(filenameExtension: url.pathExtension)?.preferredMIMEType)
+        } else {
+            try AudioDecoder(url: url)
+        }
         try decoder.open()
         defer { try? decoder.close() }
         let format = decoder.processingFormat
@@ -32,6 +40,7 @@ public enum LoudnessMeter {
         if format.commonFormat != .pcmFormatFloat32, converter == nil || converted == nil { return nil }
 
         while remaining > 0 {
+            try Task.checkCancellation()
             try decoder.decode(into: buffer, length: AVAudioFrameCount(min(Int64(capacity), remaining)))
             let frames = Int(buffer.frameLength)
             guard frames > 0 else { break }
