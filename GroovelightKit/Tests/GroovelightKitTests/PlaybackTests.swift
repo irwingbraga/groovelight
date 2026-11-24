@@ -242,3 +242,34 @@ struct LoudnessTests {
         #expect(try LoudnessMeter.measure(url: tone("silent.wav", amplitude: 0)) == nil)
     }
 }
+
+#if os(macOS)
+import CoreAudio
+
+struct OutputFormatTests {
+    private func format(_ channels: UInt32, _ rate: Double, _ bits: UInt32, float: Bool = false) -> AudioStreamBasicDescription {
+        AudioStreamBasicDescription(mSampleRate: rate, mFormatID: kAudioFormatLinearPCM,
+                                    mFormatFlags: float ? kAudioFormatFlagIsFloat : kAudioFormatFlagIsSignedInteger,
+                                    mBytesPerPacket: 0, mFramesPerPacket: 1, mBytesPerFrame: 0, mChannelsPerFrame: channels,
+                                    mBitsPerChannel: bits, mReserved: 0)
+    }
+
+    @Test func keepsStereoWhenSwitchingRates() throws {
+        // A USB speaker offering mono and stereo at each rate, mono listed first.
+        let formats = [format(1, 48_000, 16), format(2, 48_000, 16), format(1, 32_000, 16), format(2, 32_000, 16)]
+        let best = try #require(OutputDevice.bestPhysicalFormat(formats, rate: 32_000, channels: 2))
+        #expect(best.mChannelsPerFrame == 2 && best.mSampleRate == 32_000)
+        // A device already left in mono is put back in stereo.
+        #expect(OutputDevice.bestPhysicalFormat(formats, rate: 48_000, channels: 1)?.mChannelsPerFrame == 2)
+    }
+
+    @Test func prefersDeepIntegerFormatsAtTheChannelCount() {
+        let formats = [format(2, 96_000, 32, float: true), format(2, 96_000, 16), format(2, 96_000, 24),
+                       format(8, 96_000, 32), format(2, 44_100, 32)]
+        let best = OutputDevice.bestPhysicalFormat(formats, rate: 96_000, channels: 2)
+        #expect(best?.mChannelsPerFrame == 2 && best?.mBitsPerChannel == 24 && best?.mFormatFlags == kAudioFormatFlagIsSignedInteger)
+        // Only mono at that rate: mono rather than nothing.
+        #expect(OutputDevice.bestPhysicalFormat([format(1, 32_000, 16)], rate: 32_000, channels: 2)?.mChannelsPerFrame == 1)
+    }
+}
+#endif

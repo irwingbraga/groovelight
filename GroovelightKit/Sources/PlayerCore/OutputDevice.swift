@@ -94,17 +94,26 @@ public struct OutputDevice: Sendable, Equatable {
         var formats = [AudioStreamRangedDescription](repeating: AudioStreamRangedDescription(),
                                                      count: Int(size) / MemoryLayout<AudioStreamRangedDescription>.size)
         guard AudioObjectGetPropertyData(stream, &address, 0, nil, &size, &formats) == noErr else { return false }
-        let candidates = formats.map(\.mFormat).filter { format in
-            format.mFormatID == kAudioFormatLinearPCM && abs(format.mSampleRate - rate) < 1
-        }
-        // Integer formats first (what DACs take natively), then the most bits.
-        let best = candidates.max { lhs, rhs in
-            let lhsInt = lhs.mFormatFlags & kAudioFormatFlagIsFloat == 0, rhsInt = rhs.mFormatFlags & kAudioFormatFlagIsFloat == 0
-            if lhsInt != rhsInt { return !lhsInt }
-            return lhs.mBitsPerChannel < rhs.mBitsPerChannel
-        }
-        guard var format = best else { return false }
+        var current = AudioStreamBasicDescription()
+        let channels = Self.getProperty(stream, kAudioStreamPropertyPhysicalFormat, &current) ? Int(current.mChannelsPerFrame) : 2
+        guard var format = Self.bestPhysicalFormat(formats.map(\.mFormat), rate: rate, channels: channels) else { return false }
         return Self.setProperty(stream, kAudioStreamPropertyPhysicalFormat, &format)
+    }
+
+    /// The format to use at `rate` among `formats`: the channel count the device runs with (at least stereo, so a device
+    /// left in a mono format is put back), then integer formats (what DACs take natively), then the most bits.
+    static func bestPhysicalFormat(_ formats: [AudioStreamBasicDescription], rate: Double, channels: Int) -> AudioStreamBasicDescription? {
+        let wanted = max(channels, 2)
+        let candidates = formats.filter { $0.mFormatID == kAudioFormatLinearPCM && abs($0.mSampleRate - rate) < 1 }
+        func rank(_ format: AudioStreamBasicDescription) -> (Int, Int, Int, Int) {
+            let count = Int(format.mChannelsPerFrame)
+            return (count == wanted ? 1 : 0,
+                    // Otherwise the nearest above (a stereo device's 4 channel mode) before fewer (mono).
+                    count >= wanted ? -count : count - 1000,
+                    format.mFormatFlags & kAudioFormatFlagIsFloat == 0 ? 1 : 0,
+                    Int(format.mBitsPerChannel))
+        }
+        return candidates.max { rank($0) < rank($1) }
     }
 
     // MARK: - Volume
