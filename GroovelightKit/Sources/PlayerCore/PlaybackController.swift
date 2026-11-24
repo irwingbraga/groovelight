@@ -244,6 +244,7 @@ public final class PlaybackController {
         state = .stopped
         currentTime = 0
         analyzer.reset()
+        ReadAhead.shared.keep([])
     }
 
     public func next() {
@@ -370,8 +371,21 @@ public final class PlaybackController {
     }
 
     private func enqueueNextForGapless() {
+        // Only the songs playing and next stay read into memory (see ReadAhead).
+        let readAhead = ReadAhead.shared
+        readAhead.keep(Set([queue.current?.url, queue.nextForAutoAdvance?.url].compactMap { $0 }))
+        guard !stopsAfterCurrentItem, let next = queue.nextForAutoAdvance else { return }
+        // The next song is read into memory first, then handed to the engine (or to the crossfade), so it plays
+        // without touching the disk. Songs are far longer than reading one takes.
+        guard readAhead.isReady(next.url) else {
+            readAhead.load(next.url) { [weak self] in
+                guard let self, self.state != .stopped, self.enqueuedNext == nil, self.queue.nextForAutoAdvance == next else { return }
+                self.enqueueNextForGapless()
+            }
+            return
+        }
         // A crossfade starts the next song on the other deck instead.
-        guard !stopsAfterCurrentItem, let next = queue.nextForAutoAdvance, !shouldCrossfade(to: next) else { return }
+        guard !shouldCrossfade(to: next) else { return }
         do {
             let decoder = try Self.makeDecoder(for: next)
             // Bit-perfect: a song at another rate waits for the device to switch (a short gap), so it is not enqueued.
@@ -406,13 +420,16 @@ public final class PlaybackController {
         }
     }
 
+    /// Reads from memory when the song was read ahead, otherwise from the disk.
     static func makeDecoder(for item: PlayableItem) throws -> any PCMDecoding {
+        let inMemory = try ReadAhead.shared.decoder(for: item.url)
         if let start = item.startTime, let rate = item.sampleRate, rate > 0 {
             let startFrame = AVAudioFramePosition((start * rate).rounded())
             let length = item.endTime.map { AVAudioFramePosition((($0 - start) * rate).rounded()) } ?? -1
+            if let inMemory { return try AudioRegionDecoder(decoder: inMemory, startFrame: startFrame, frameLength: length) }
             return try AudioRegionDecoder(url: item.url, startFrame: startFrame, frameLength: length)
         }
-        return try AudioDecoder(url: item.url)
+        return try inMemory ?? AudioDecoder(url: item.url)
     }
 
     /// Queue order (or crossfade setting) changed: drop what the engine had pre-loaded and enqueue the new next item.

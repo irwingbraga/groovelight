@@ -105,6 +105,33 @@ struct PlaybackTests {
         #expect((run.end ?? 0) > 3.6)
     }
 
+    @Test(.timeLimit(.minutes(1))) func readsTheNextSongAheadAndPlaysItFromMemory() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("groovelight-ahead-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let items = try Self.tones(2, albums: ["X", "X", "X"], in: directory)
+        let player = PlaybackController()
+        player.volume = 0
+        // Off (the default): nothing is read into memory.
+        player.play(items)
+        try await Task.sleep(for: .milliseconds(300))
+        #expect(ReadAhead.shared.data(for: items[1].url) == nil)
+        player.stop()
+        ReadAhead.shared.isEnabled = true
+        defer { ReadAhead.shared.isEnabled = false }
+        player.play(items)
+        // The second song is read while the first plays; the third is not read yet.
+        for _ in 0..<20 where ReadAhead.shared.data(for: items[1].url) == nil { try await Task.sleep(for: .milliseconds(50)) }
+        #expect(ReadAhead.shared.data(for: items[1].url) != nil)
+        #expect(ReadAhead.shared.data(for: items[2].url) == nil)
+        player.stop()
+        #expect(ReadAhead.shared.data(for: items[1].url) == nil, "stopped: nothing is kept in memory")
+        let run = try await Self.timeline(player, items)
+        let second = try #require(run.starts[1])
+        let third = try #require(run.starts[2])
+        #expect(abs((third - second) - 2) < 0.3, "the songs follow each other gaplessly (\(third - second) s apart)")
+        #expect(player.lastError == nil)
+    }
+
     @Test(.timeLimit(.minutes(1))) func bitPerfectFollowsTheFileRate() async throws {
         guard let device = OutputDevice.systemDefault, device.supports(sampleRate: 48_000) else { return }
         let rates = device.availableSampleRates.map(\.lowerBound).filter { $0 != 48_000 }

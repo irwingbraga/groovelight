@@ -11,6 +11,7 @@ struct PlaybackSettings: View {
     @AppStorage(PlaybackPrefs.rate) private var rate = 1.0
     @AppStorage(PlaybackPrefs.bitPerfect) private var bitPerfect = false
     @AppStorage(PlaybackPrefs.exclusive) private var exclusive = false
+    @AppStorage(PlaybackPrefs.readAhead) private var readAhead = false
     @AppStorage(NowPlayingSkin.tapeCueStorageKey) private var tapeCue = true
 
     var body: some View {
@@ -27,6 +28,15 @@ struct PlaybackSettings: View {
                 Text(bitPerfect
                      ? "The output device switches to each song's sample rate and the samples reach it untouched: the equalizer, crossfade, Sound Check and speed are paused, and the volume slider sets the device's own volume. Exclusive access keeps other apps' sounds from mixing in or changing the rate."
                      : "Plays songs exactly as they are in the files: the output device follows each song's sample rate and nothing in Groovelight changes the sound. Best with a USB DAC.")
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
+                Toggle("Read the next song into memory", isOn: $readAhead)
+            } header: {
+                Text("Memory Buffer")
+            } footer: {
+                Text("While a song plays, the next one is read whole into memory and plays from there, so a busy or slow drive (an external disk during a backup, a network share) cannot interrupt it. Uses memory for two songs at a time; songs over 400 MB still play from the drive.")
                     .foregroundStyle(.secondary)
             }
 
@@ -119,6 +129,7 @@ struct PlaybackSettings: View {
         .onChange(of: rate) { model.player.rate = Float(rate) }
         .onChange(of: bitPerfect) { model.player.bitPerfect = bitPerfect }
         .onChange(of: exclusive) { model.player.exclusiveAccess = exclusive }
+        .onChange(of: readAhead) { ReadAhead.shared.isEnabled = readAhead }
     }
 }
 

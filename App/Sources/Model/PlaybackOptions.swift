@@ -11,13 +11,14 @@ enum PlaybackPrefs {
     static let rate = "player.rate"
     static let bitPerfect = "player.bitPerfect"
     static let exclusive = "player.exclusive"
+    static let readAhead = "player.readAhead"
 
     static let speeds: [Float] = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]
 
     static func register() {
         UserDefaults.standard.register(defaults: [crossfade: 0.0, crossfadeSkipsAlbum: true,
                                                   normalization: VolumeNormalization.off.rawValue, rate: 1.0,
-                                                  bitPerfect: false, exclusive: false])
+                                                  bitPerfect: false, exclusive: false, readAhead: false])
     }
 
     /// Puts the saved preferences on the player.
@@ -29,6 +30,7 @@ enum PlaybackPrefs {
         player.rate = Float(defaults.double(forKey: rate))
         player.exclusiveAccess = defaults.bool(forKey: exclusive)
         player.bitPerfect = defaults.bool(forKey: bitPerfect)
+        ReadAhead.shared.isEnabled = defaults.bool(forKey: readAhead)
     }
 
     static func speedLabel(_ rate: Float) -> String {
