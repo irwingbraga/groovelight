@@ -50,18 +50,21 @@ struct ArtworkImage: View {
     }
 
     var body: some View {
-        ZStack {
-            if let image {
-                Image(nsImage: image)
-                    .resizable()
-                    .interpolation(.high)
-                    .aspectRatio(contentMode: .fill)
-            } else {
-                PlaceholderArtwork(seed: hash ?? "")
+        // A square that the image fills: an image that is not square (an artist photo) is cropped to it rather than
+        // making the view wider or taller than the square, which would push it over its neighbors.
+        Color.clear
+            .aspectRatio(1, contentMode: .fit)
+            .overlay {
+                if let image {
+                    Image(nsImage: image)
+                        .resizable()
+                        .interpolation(.high)
+                        .aspectRatio(contentMode: .fill)
+                } else {
+                    PlaceholderArtwork(seed: hash ?? "")
+                }
             }
-        }
-        .aspectRatio(1, contentMode: .fit)
-        .clipShape(.rect(cornerRadius: cornerRadius))
+            .clipShape(.rect(cornerRadius: cornerRadius))
         .task(id: hash) {
             guard let hash else {
                 image = nil
